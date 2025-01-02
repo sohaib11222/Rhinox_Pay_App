@@ -150,6 +150,11 @@ const AccountSecurity = () => {
           title: 'Reset Password',
           icon: require('../../../assets/lock-password.png'), // Using lock-password icon placeholder
         },
+        {
+          id: 'devices-sessions',
+          title: 'Devices & Sessions',
+          icon: require('../../../assets/monitor.png'),
+        },
       ],
     },
     {
@@ -185,6 +190,10 @@ const AccountSecurity = () => {
       setShow2FAModal(true);
     } else if (item.id === 'setup-pin') {
       setShowPasswordModal(true);
+    } else if (item.id === 'devices-sessions') {
+      (navigation as any).navigate('Settings', {
+        screen: 'DevicesAndSessions',
+      });
     } else {
       console.log('Pressed:', item.id);
       // TODO: Implement navigation or actions for other items

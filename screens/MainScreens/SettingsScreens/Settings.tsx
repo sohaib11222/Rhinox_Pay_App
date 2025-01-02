@@ -233,6 +233,11 @@ const Settings = () => {
           icon: require('../../../assets/logout-square-01.png'), // TODO: Replace with privacy icon image
         },
         {
+          id: 'rewards',
+          title: 'Rewards',
+          icon: require('../../../assets/shield-tick.png'), // Using shield as placeholder for rewards icon
+        },
+        {
           id: 'logout',
           title: 'Logout',
           icon: require('../../../assets/logout-square-01.png'), // TODO: Replace with logout icon image
@@ -258,6 +263,14 @@ const Settings = () => {
     } else if (item.id === 'support') {
       (navigation as any).navigate('Settings', {
         screen: 'Support',
+      });
+    } else if (item.id === 'rewards') {
+      (navigation as any).navigate('Settings', {
+        screen: 'Rewards',
+      });
+    } else if (item.id === 'notifications') {
+      (navigation as any).navigate('Settings', {
+        screen: 'NotificationSettings',
       });
     } else if (item.id === 'logout') {
       // Show confirmation before logout

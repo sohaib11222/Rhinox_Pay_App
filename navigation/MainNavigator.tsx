@@ -30,6 +30,11 @@ import P2PProfile from "../screens/MainScreens/SettingsScreens/P2PProfile";
 import AccountSecurity from "../screens/MainScreens/SettingsScreens/AccountSecurity";
 import Support from "../screens/MainScreens/SettingsScreens/Support";
 import ChatScreen from "../screens/MainScreens/SettingsScreens/ChatScreen";
+import Rewards from "../screens/MainScreens/SettingsScreens/Rewards";
+import RewardsHistory from "../screens/MainScreens/SettingsScreens/RewardsHistory";
+import ClaimRewardScreen from "../screens/MainScreens/SettingsScreens/ClaimRewardScreen";
+import NotificationSettings from "../screens/MainScreens/SettingsScreens/NotificationSettings";
+import DevicesAndSessions from "../screens/MainScreens/SettingsScreens/DevicesAndSessions";
 import PaymentSettings from "../screens/MainScreens/P2PScreens/PaymentSettings";
 import BuyOrder from "../screens/MainScreens/P2PScreens/BuyOrder";
 import SellOrder from "../screens/MainScreens/P2PScreens/SellOrder";
@@ -129,6 +134,11 @@ const SettingsStackNavigator = () => {
       <SettingsStack.Screen name="AccountSecurity" component={AccountSecurity} />
       <SettingsStack.Screen name="Support" component={Support} />
       <SettingsStack.Screen name="ChatScreen" component={ChatScreen} />
+      <SettingsStack.Screen name="Rewards" component={Rewards} />
+      <SettingsStack.Screen name="RewardsHistory" component={RewardsHistory} />
+      <SettingsStack.Screen name="ClaimReward" component={ClaimRewardScreen} />
+      <SettingsStack.Screen name="NotificationSettings" component={NotificationSettings} />
+      <SettingsStack.Screen name="DevicesAndSessions" component={DevicesAndSessions} />
     </SettingsStack.Navigator>
   );
 };
@@ -177,7 +187,7 @@ const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }
 // Custom Tab Bar Component that checks navigation state
 const CustomTabBar = (props: any) => {
   // Screens that should hide the tab bar
-  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings', 'Beneficiaries'];
+  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings', 'Rewards', 'RewardsHistory', 'ClaimReward', 'NotificationSettings', 'DevicesAndSessions'];
   
   // Get the current navigation state
   const navigationState = useNavigationState((state) => state);
