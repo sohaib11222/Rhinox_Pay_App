@@ -17,7 +17,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
-import { useGetTransactionHistory } from '../../queries/transactionHistory.queries';
+import { useGetTransactionHistory, useGetTransactionDetails } from '../../queries/transactionHistory.queries';
+import TransactionReceiptModal from '../components/TransactionReceiptModal';
+import TransactionErrorModal from '../components/TransactionErrorModal';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
 
@@ -30,6 +32,7 @@ interface Transaction {
     amountNGN: string;
     amountUSD: string;
     icon: string;
+    rawData?: any; // Store raw API data for details
 }
 
 interface ChartData {
@@ -58,6 +61,10 @@ const TransactionsScreen = () => {
     const [tempEndDate, setTempEndDate] = useState<string>('');
     const [fiatDisplayLimit, setFiatDisplayLimit] = useState<number>(10);
     const [cryptoDisplayLimit, setCryptoDisplayLimit] = useState<number>(10);
+    const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+    const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+    const [showReceiptModal, setShowReceiptModal] = useState(false);
+    const [showErrorModal, setShowErrorModal] = useState(false);
 
     // Format date for API (YYYY-MM-DD)
     const formatDateForAPI = (date: Date): string => {
@@ -412,6 +419,77 @@ const TransactionsScreen = () => {
         refreshDelay: 2000,
     });
 
+    // Fetch transaction details when a transaction is selected
+    const {
+        data: transactionDetailsData,
+        isLoading: isLoadingDetails,
+        error: detailsError,
+    } = useGetTransactionDetails(selectedTransactionId || 0, {
+        enabled: !!selectedTransactionId,
+        queryKey: ['transaction-history', 'details', selectedTransactionId],
+    });
+
+    // Helper function to normalize status
+    const normalizeStatus = (status: string): 'Successful' | 'Pending' | 'Failed' => {
+        const statusLower = status?.toLowerCase() || '';
+        if (statusLower === 'completed' || statusLower === 'successful') return 'Successful';
+        if (statusLower === 'pending') return 'Pending';
+        if (statusLower === 'failed') return 'Failed';
+        return 'Successful'; // Default
+    };
+
+    // Handle crypto transaction press
+    const handleCryptoTransactionPress = (transaction: Transaction) => {
+        const rawData = transaction.rawData;
+        const transactionId = rawData?.id;
+        
+        if (transactionId) {
+            setSelectedTransactionId(Number(transactionId));
+        }
+        
+        setSelectedTransaction(transaction);
+        
+        // If no ID, show modal immediately with existing data
+        if (!transactionId) {
+            const status = normalizeStatus(rawData?.status || '');
+            if (status === 'Failed') {
+                setShowErrorModal(true);
+            } else {
+                setShowReceiptModal(true);
+            }
+        }
+    };
+
+    // Show modal when details are loaded
+    useEffect(() => {
+        if (selectedTransaction && selectedTransactionId) {
+            if (isLoadingDetails) {
+                // Still loading details, don't show modal yet
+                return;
+            }
+            
+            // Details loaded, show appropriate modal
+            const status = normalizeStatus(
+                transactionDetailsData?.data?.status || 
+                selectedTransaction.rawData?.status || 
+                ''
+            );
+            
+            if (status === 'Failed') {
+                setShowErrorModal(true);
+            } else {
+                setShowReceiptModal(true);
+            }
+        }
+    }, [selectedTransaction, selectedTransactionId, isLoadingDetails, transactionDetailsData]);
+
+    // Update selected transaction with details when loaded
+    useEffect(() => {
+        if (transactionDetailsData?.data && selectedTransaction) {
+            // Transaction details are loaded, they will be used in the modal
+        }
+    }, [transactionDetailsData, selectedTransaction]);
+
     return (
         <View style={styles.container}>
             <StatusBar barStyle="light-content" backgroundColor="#020c19" />
@@ -721,19 +799,7 @@ const TransactionsScreen = () => {
                             <TouchableOpacity
                                 key={transaction.id}
                                 style={styles.transactionItem}
-                                onPress={() => {
-                                    if (transaction.title === 'Crypto Deposit') {
-                                        // @ts-ignore - allow parent route name
-                                        navigation.navigate('CryptoDeposit' as never);
-                                    } else if (transaction.title === 'Crypto Withdrawals') {
-                                        // @ts-ignore - allow parent route name
-                                        navigation.navigate('CryptoWithdrawals' as never);
-                                    } else if (transaction.title === 'Crypto Received') {
-                                        // @ts-ignore - allow parent route name
-                                        // navigation.navigate('CryptoReceived' as never);
-                                        // TODO: Add Crypto Received screen navigation
-                                    }
-                                }}
+                                onPress={() => handleCryptoTransactionPress(transaction)}
                             >
                                 <View style={styles.transactionIconContainer}>
                                     <View style={styles.transactionIconCircle}>
@@ -785,6 +851,77 @@ const TransactionsScreen = () => {
                 {/* Bottom spacing for tab bar */}
                 <View style={styles.bottomSpacer} />
             </ScrollView>
+
+            {/* Transaction Receipt Modal */}
+            {selectedTransaction && (
+                <TransactionReceiptModal
+                    visible={showReceiptModal && !isLoadingDetails}
+                    transaction={{
+                        transactionType: selectedTransaction.rawData?.type === 'deposit'
+                            ? 'cryptoDeposit'
+                            : selectedTransaction.rawData?.type === 'withdrawal'
+                            ? 'cryptoWithdrawal'
+                            : selectedTransaction.rawData?.type === 'p2p'
+                            ? 'p2p'
+                            : 'cryptoDeposit',
+                        cryptoType: selectedTransaction.rawData?.currency || '',
+                        network: selectedTransaction.rawData?.metadata?.blockchain || '',
+                        quantity: `${selectedTransaction.rawData?.amount || '0'} ${selectedTransaction.rawData?.currency || ''}`,
+                        dateTime: selectedTransaction.date,
+                        transactionId: transactionDetailsData?.data?.reference || selectedTransaction.rawData?.reference || selectedTransaction.id,
+                        amountNGN: selectedTransaction.amountNGN,
+                        receivingAddress: transactionDetailsData?.data?.metadata?.toAddress || selectedTransaction.rawData?.metadata?.toAddress,
+                        sendingAddress: transactionDetailsData?.data?.metadata?.fromAddress || selectedTransaction.rawData?.metadata?.fromAddress,
+                        txHash: transactionDetailsData?.data?.metadata?.txHash || selectedTransaction.rawData?.metadata?.txHash,
+                        fee: transactionDetailsData?.data?.fee ? `$${parseFloat(transactionDetailsData.data.fee).toFixed(2)}` : undefined,
+                        feeCrypto: transactionDetailsData?.data?.fee ? `${transactionDetailsData.data.fee} ${transactionDetailsData.data.currency}` : undefined,
+                        feeUSD: transactionDetailsData?.data?.fee ? `$${parseFloat(transactionDetailsData.data.fee).toFixed(2)}` : undefined,
+                        status: normalizeStatus(
+                            transactionDetailsData?.data?.status || 
+                            selectedTransaction.rawData?.status || 
+                            'Successful'
+                        ),
+                    }}
+                    onClose={() => {
+                        setShowReceiptModal(false);
+                        setSelectedTransaction(null);
+                        setSelectedTransactionId(null);
+                    }}
+                />
+            )}
+
+            {/* Loading Modal for Transaction Details */}
+            {selectedTransaction && isLoadingDetails && (
+                <Modal visible={true} transparent={true} animationType="fade">
+                    <View style={[styles.modalOverlay, { justifyContent: 'center' }]}>
+                        <View style={styles.loadingModalContent}>
+                            <ActivityIndicator size="large" color="#A9EF45" />
+                            <ThemedText style={styles.loadingModalText}>Loading transaction details...</ThemedText>
+                        </View>
+                    </View>
+                </Modal>
+            )}
+
+            {/* Transaction Error Modal */}
+            {selectedTransaction && (
+                <TransactionErrorModal
+                    visible={showErrorModal && !isLoadingDetails}
+                    transaction={transactionDetailsData?.data || selectedTransaction.rawData || selectedTransaction}
+                    onRetry={() => {
+                        if (selectedTransactionId) {
+                            refetchHistory();
+                        }
+                        setShowErrorModal(false);
+                        setSelectedTransaction(null);
+                        setSelectedTransactionId(null);
+                    }}
+                    onCancel={() => {
+                        setShowErrorModal(false);
+                        setSelectedTransaction(null);
+                        setSelectedTransactionId(null);
+                    }}
+                />
+            )}
 
             {/* Custom Date Range Modal */}
             <Modal
@@ -1268,6 +1405,18 @@ const styles = StyleSheet.create({
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.7)',
         marginBottom: 25 * SCALE,
+    },
+    loadingModalContent: {
+        backgroundColor: '#020c19',
+        borderRadius: 15 * SCALE,
+        padding: 30 * SCALE,
+        alignItems: 'center',
+        gap: 15 * SCALE,
+    },
+    loadingModalText: {
+        fontSize: 14 * SCALE,
+        fontWeight: '300',
+        color: '#FFFFFF',
     },
     dateInputSection: {
         marginBottom: 20 * SCALE,
