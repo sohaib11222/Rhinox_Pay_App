@@ -1088,10 +1088,10 @@ const Wallet = () => {
                             screen: 'CryptoWithdrawals' as never,
                           } as never);
                         } else if (action.id === '3' && action.title === 'P2P') {
-                            // Navigate to P2PFund screen in Settings stack to browse P2P ads and create orders
+                            // Navigate to CryptoFundDeposit screen in Settings stack for crypto deposits
                           // @ts-ignore - allow parent route name
                             navigation.navigate('Settings' as never, {
-                              screen: 'P2PFund' as never,
+                              screen: 'CryptoFundDeposit' as never,
                           } as never);
                         }
                       }}

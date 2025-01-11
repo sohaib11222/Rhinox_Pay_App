@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { useGetTransactionHistory, useGetTransactionDetails } from '../../queries/transactionHistory.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -50,6 +52,7 @@ interface CryptoWithdrawalTransaction {
   receivingAddress?: string; // Wallet address (where crypto is being sent)
   sendingAddress?: string; // Sender address (user's wallet)
   txHash?: string; // Transaction hash
+  rawData?: any; // Store raw API data for reference
 }
 
 const CryptoWithdrawalsScreen = () => {
@@ -61,22 +64,50 @@ const CryptoWithdrawalsScreen = () => {
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<CryptoWithdrawalTransaction | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
+  // Build query params for transaction history
+  const queryParams = useMemo(() => {
+    const params: any = {
+      period: 'M', // Default to Monthly
+    };
+    
+    if (selectedCurrency !== 'All') {
+      params.currency = selectedCurrency;
+    }
+    
+    return params;
+  }, [selectedCurrency]);
+
+  // Fetch transaction history from API
+  const {
+    data: transactionHistoryData,
+    isLoading: isLoadingHistory,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useGetTransactionHistory(queryParams);
+
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+    error: detailsError,
+  } = useGetTransactionDetails(selectedTransactionId || 0, {
+    enabled: !!selectedTransactionId,
+    queryKey: ['transaction-history', 'details', selectedTransactionId],
+  });
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest crypto withdrawal transactions
-        // - Fetch updated summary data
-        // - Update any other data that needs refreshing
-        console.log('Refreshing crypto withdrawal data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[CryptoWithdrawals] Refreshing data...');
+    try {
+      await refetchHistory();
+      console.log('[CryptoWithdrawals] Data refreshed successfully');
+    } catch (error) {
+      console.error('[CryptoWithdrawals] Error refreshing data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -84,8 +115,150 @@ const CryptoWithdrawalsScreen = () => {
     refreshDelay: 2000,
   });
 
-  // Mock data - Replace with API calls later
-  const cryptoWithdrawalTransactions: CryptoWithdrawalTransaction[] = [
+  // Helper function to normalize status
+  const normalizeStatus = (status: string): 'Successful' | 'Pending' | 'Failed' => {
+    const statusLower = status?.toLowerCase() || '';
+    if (statusLower === 'completed' || statusLower === 'successful') return 'Successful';
+    if (statusLower === 'pending') return 'Pending';
+    if (statusLower === 'failed') return 'Failed';
+    return 'Successful'; // Default
+  };
+
+  // Format currency amount
+  const formatCurrency = (amount: string | number, currency: string = 'NGN') => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatUSD = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '$0.00';
+    return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  // Extract and transform crypto withdrawal transactions from API response
+  const cryptoWithdrawalTransactions: CryptoWithdrawalTransaction[] = useMemo(() => {
+    if (!transactionHistoryData?.data?.crypto || !Array.isArray(transactionHistoryData.data.crypto)) {
+      return [];
+    }
+
+    // Filter for withdrawals only
+    const withdrawals = transactionHistoryData.data.crypto.filter(
+      (tx: any) => tx.type === 'withdrawal' || tx.normalizedType === 'Crypto Withdrawals'
+    );
+
+    // Transform to UI format
+    return withdrawals.map((tx: any) => {
+      const metadata = tx.metadata || {};
+      const toAddress = metadata.toAddress || '';
+      const addressPreview = toAddress.length > 10 
+        ? `${toAddress.substring(0, 6)}...${toAddress.substring(toAddress.length - 6)}`
+        : toAddress;
+
+      const amount = parseFloat(tx.amount || '0');
+      const fee = parseFloat(tx.fee || '0');
+      const currency = tx.currency || 'USDT';
+      
+      // Format date
+      const date = tx.createdAt || tx.completedAt || '';
+      let formattedDate = 'N/A';
+      if (date) {
+        try {
+          const dateObj = new Date(date);
+          formattedDate = dateObj.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            year: 'numeric'
+          });
+        } catch (e) {
+          formattedDate = date;
+        }
+      }
+
+      return {
+        id: String(tx.id),
+        recipientName: addressPreview,
+        amountNGN: `N${formatCurrency(amount)}`,
+        amountUSD: formatUSD(amount),
+        date: formattedDate,
+        status: normalizeStatus(tx.status),
+        paymentMethod: 'Bank Transfer', // Not applicable for crypto but keeping for compatibility
+        transferAmount: `${amount} ${currency}`,
+        fee: fee > 0 ? formatUSD(fee) : undefined,
+        paymentAmount: `${amount} ${currency}`,
+        cryptoType: currency === 'USDT' ? 'USDT' : currency === 'BTC' ? 'Bitcoin' : currency === 'ETH' ? 'Ethereum' : currency,
+        network: metadata.blockchain || metadata.network || currency,
+        quantity: `${amount} ${currency}`,
+        amountUSDValue: formatUSD(amount),
+        feeCrypto: fee > 0 ? `${fee} ${currency}` : undefined,
+        feeUSD: fee > 0 ? formatUSD(fee) : undefined,
+        receivingAddress: toAddress,
+        sendingAddress: metadata.fromAddress || '',
+        txHash: metadata.txHash || '',
+        transactionId: tx.reference || String(tx.id),
+        dateTime: formattedDate,
+        rawData: tx, // Store raw API data for details
+      };
+    });
+  }, [transactionHistoryData?.data?.crypto]);
+
+  // Calculate summary data from API response
+  const summaryData = useMemo(() => {
+    const transactionData = transactionHistoryData?.data;
+    const summary = transactionData?.summary || { incoming: '0', outgoing: '0' };
+    
+    // Calculate incoming and outgoing from crypto withdrawals
+    const withdrawals = cryptoWithdrawalTransactions;
+    const incomingTotal = withdrawals.reduce((sum, tx) => {
+      // For withdrawals, incoming would be zero (outgoing only)
+      return sum;
+    }, 0);
+    
+    const outgoingTotal = withdrawals.reduce((sum, tx) => {
+      const amount = parseFloat(tx.rawData?.amount || '0');
+      return sum + amount;
+    }, 0);
+
+    // Use API summary if available, otherwise calculate from transactions
+    const incoming = parseFloat(summary.incoming?.toString() || '0');
+    const outgoing = parseFloat(summary.outgoing?.toString() || outgoingTotal.toString());
+
+    return {
+      incoming: {
+        ngn: formatCurrency(incoming),
+        usd: formatUSD(incoming),
+      },
+      outgoing: {
+        ngn: formatCurrency(outgoing),
+        usd: formatUSD(outgoing),
+      },
+    };
+  }, [transactionHistoryData?.data?.summary, cryptoWithdrawalTransactions]);
+
+  // Update transaction details when details data is fetched
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransaction) {
+      const details = transactionDetailsData.data;
+      const metadata = details.metadata || {};
+      
+      const updatedTransaction: CryptoWithdrawalTransaction = {
+        ...selectedTransaction,
+        receivingAddress: metadata.toAddress || selectedTransaction.receivingAddress,
+        sendingAddress: metadata.fromAddress || selectedTransaction.sendingAddress,
+        txHash: metadata.txHash || selectedTransaction.txHash,
+        feeCrypto: details.fee ? `${details.fee} ${details.currency || ''}` : selectedTransaction.feeCrypto,
+        feeUSD: details.fee ? formatUSD(details.fee) : selectedTransaction.feeUSD,
+        fee: details.fee ? formatUSD(details.fee) : selectedTransaction.fee,
+        network: metadata.blockchain || metadata.network || selectedTransaction.network,
+      };
+
+      setSelectedTransaction(updatedTransaction);
+    }
+  }, [transactionDetailsData, selectedTransaction]);
+
+  // Mock data - kept for reference but now using API data
+  const mockCryptoWithdrawalTransactions: CryptoWithdrawalTransaction[] = [
     {
       id: '1',
       recipientName: '0x123...fcj2ifk3edw',
@@ -209,16 +382,6 @@ const CryptoWithdrawalsScreen = () => {
     },
   ];
 
-  const summaryData = {
-    incoming: {
-      ngn: '2,000,000.00',
-      usd: '$20,000',
-    },
-    outgoing: {
-      ngn: '500.00',
-      usd: '$0.001',
-    },
-  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -234,25 +397,77 @@ const CryptoWithdrawalsScreen = () => {
   };
 
   const handleTransactionPress = (transaction: CryptoWithdrawalTransaction) => {
-    if (transaction.status === 'Failed') {
-      setSelectedTransaction(transaction);
-      setShowErrorModal(true);
+    const rawData = (transaction as any).rawData;
+    const transactionId = rawData?.id;
+    
+    if (transactionId) {
+      setSelectedTransactionId(transactionId);
+    }
+    
+    setSelectedTransaction(transaction);
+    
+    // Fetch details if we have an ID
+    if (transactionId) {
+      // Details will be fetched via useGetTransactionDetails hook
+      // Modal will be shown after details are loaded
     } else {
-      setSelectedTransaction(transaction);
-      setShowReceiptModal(true);
+      // If no ID, show modal immediately with existing data
+      if (transaction.status === 'Failed') {
+        setShowErrorModal(true);
+      } else {
+        setShowReceiptModal(true);
+      }
     }
   };
 
-  const filteredTransactions = cryptoWithdrawalTransactions.filter((transaction) => {
-    if (selectedStatus !== 'All' && transaction.status !== selectedStatus) {
-      return false;
+  // Show modal when details are loaded or transaction is set
+  useEffect(() => {
+    if (selectedTransaction) {
+      if (isLoadingDetails) {
+        // Still loading details, don't show modal yet
+        return;
+      }
+      
+      // Details loaded or no details to load, show appropriate modal
+      if (selectedTransaction.status === 'Failed') {
+        setShowErrorModal(true);
+      } else {
+        setShowReceiptModal(true);
+      }
     }
-    if (selectedType !== 'All' && transaction.cryptoType !== selectedType) {
-      return false;
-    }
-    // Add more filters as needed
-    return true;
-  });
+  }, [selectedTransaction, isLoadingDetails]);
+
+  const filteredTransactions = useMemo(() => {
+    return cryptoWithdrawalTransactions.filter((transaction) => {
+      // Status filter
+      if (selectedStatus !== 'All') {
+        const statusMap: Record<string, string> = {
+          'Completed': 'Successful',
+          'Pending': 'Pending',
+          'Failed': 'Failed',
+        };
+        const mappedStatus = statusMap[selectedStatus];
+        if (mappedStatus && transaction.status !== mappedStatus) {
+          return false;
+        }
+      }
+      
+      // Type filter (crypto type)
+      if (selectedType !== 'All' && transaction.cryptoType !== selectedType) {
+        return false;
+      }
+      
+      // Currency filter
+      if (selectedCurrency !== 'All') {
+        const currency = transaction.rawData?.currency || '';
+        if (currency !== selectedCurrency) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }, [cryptoWithdrawalTransactions, selectedStatus, selectedType, selectedCurrency]);
 
   return (
     <View style={styles.container}>
@@ -320,63 +535,74 @@ const CryptoWithdrawalsScreen = () => {
                 setShowStatusDropdown(false);
               }}
             >
+              <ThemedText style={styles.filterButtonText}>Type</ThemedText>
+              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Summary Cards */}
-        <View style={styles.summaryContainer}>
-          <LinearGradient
-            colors={['#4880C0', '#1B589E']}
-            start={{ x: 1, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.summaryCardGradient}
-          >
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryIconCircle}>
-                <Image
-                  source={require('../../assets/ArrowLineDownLeft (1).png')}
-                  style={styles.summaryIconImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
+        {isLoadingHistory ? (
+          <View style={styles.summaryContainer}>
+            <View style={styles.loadingSummaryCard}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={styles.loadingText}>Loading summary...</ThemedText>
             </View>
-            <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
-              </View>
-            </View>
-            <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
-          </LinearGradient>
-
-          <View style={styles.summaryCardWhite}>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryIconCircleWhite}>
-                <Image
-                  source={require('../../assets/Vector (31).png')}
-                  style={styles.summaryIconImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
-            </View>
-            <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
-              </View>
-            </View>
-            <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
           </View>
-        </View>
+        ) : (
+          <View style={styles.summaryContainer}>
+            <LinearGradient
+              colors={['#4880C0', '#1B589E']}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.summaryCardGradient}
+            >
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryIconCircle}>
+                  <Image
+                    source={require('../../assets/ArrowLineDownLeft (1).png')}
+                    style={styles.summaryIconImage}
+                    resizeMode="cover"
+                  />
+                </View>
+                <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
+              </View>
+              <View style={styles.summaryAmountContainer}>
+                <View style={styles.summaryAmountRow}>
+                  <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
+                  <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
+                </View>
+              </View>
+              <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
+            </LinearGradient>
+
+            <View style={styles.summaryCardWhite}>
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryIconCircleWhite}>
+                  <Image
+                    source={require('../../assets/Vector (31).png')}
+                    style={styles.summaryIconImage}
+                    resizeMode="cover"
+                  />
+                </View>
+                <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
+              </View>
+              <View style={styles.summaryAmountContainer}>
+                <View style={styles.summaryAmountRow}>
+                  <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
+                  <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
+                </View>
+              </View>
+              <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
+            </View>
+          </View>
+        )}
 
         {/* Dropdowns */}
         {showStatusDropdown && (
           <View style={[styles.dropdownContainer, { left: SCREEN_WIDTH * 0.047 }]}>
             <View style={styles.dropdown}>
-              {['All', 'Completed', 'Pending', 'Failed'].map((status) => (
+              {['All', 'Successful', 'Pending', 'Failed'].map((status) => (
                 <TouchableOpacity
                   key={status}
                   style={styles.dropdownItem}
@@ -432,45 +658,67 @@ const CryptoWithdrawalsScreen = () => {
 
         {/* Transaction List Card */}
         <View style={styles.transactionCard}>
-          <ThemedText style={styles.cardTitle}>Today</ThemedText>
-          <View style={styles.transactionList}>
-            {filteredTransactions.map((transaction) => (
-              <TouchableOpacity
-                key={transaction.id}
-                style={styles.transactionItem}
-                onPress={() => handleTransactionPress(transaction)}
-              >
-                <View style={styles.transactionIconContainer}>
-                  <View style={styles.transactionIconCircle}>
-                    <MaterialCommunityIcons
-                      name="bitcoin"
-                      size={20 * SCALE}
-                      color="#A9EF45"
-                    />
-                  </View>
-                </View>
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionTitle}>{transaction.recipientName}</ThemedText>
-                  <View style={styles.transactionStatusRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: getStatusColor(transaction.status) },
-                      ]}
-                    />
-                    <ThemedText style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
-                      {transaction.status}
-                      {transaction.cryptoType && ` • ${transaction.cryptoType}`}
-                    </ThemedText>
-                  </View>
-                </View>
-                <View style={styles.transactionAmountContainer}>
-                  <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
-                  <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
-                </View>
+          <ThemedText style={styles.cardTitle}>Transactions</ThemedText>
+          {isLoadingHistory ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={styles.loadingText}>Loading transactions...</ThemedText>
+            </View>
+          ) : historyError ? (
+            <View style={styles.errorContainer}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={styles.errorText}>
+                {(historyError as any)?.message || 'Failed to load transactions'}
+              </ThemedText>
+              <TouchableOpacity style={styles.retryButton} onPress={() => refetchHistory()}>
+                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
               </TouchableOpacity>
-            ))}
-          </View>
+            </View>
+          ) : filteredTransactions.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="wallet-outline" size={40 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+              <ThemedText style={styles.emptyText}>No crypto withdrawals found</ThemedText>
+            </View>
+          ) : (
+            <View style={styles.transactionList}>
+              {filteredTransactions.map((transaction) => (
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={styles.transactionItem}
+                  onPress={() => handleTransactionPress(transaction)}
+                >
+                  <View style={styles.transactionIconContainer}>
+                    <View style={styles.transactionIconCircle}>
+                      <MaterialCommunityIcons
+                        name="bitcoin"
+                        size={20 * SCALE}
+                        color="#A9EF45"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionTitle}>{transaction.recipientName}</ThemedText>
+                    <View style={styles.transactionStatusRow}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: getStatusColor(transaction.status) },
+                        ]}
+                      />
+                      <ThemedText style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
+                        {transaction.status}
+                        {transaction.cryptoType && ` • ${transaction.cryptoType}`}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionAmountContainer}>
+                    <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
+                    <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -480,7 +728,7 @@ const CryptoWithdrawalsScreen = () => {
       {/* Transaction Receipt Modal */}
       {selectedTransaction && (
         <TransactionReceiptModal
-          visible={showReceiptModal}
+          visible={showReceiptModal && !isLoadingDetails}
           transaction={{
             ...selectedTransaction,
             transactionType: 'cryptoWithdrawal',
@@ -489,23 +737,41 @@ const CryptoWithdrawalsScreen = () => {
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
+      )}
+
+      {/* Loading Modal for Transaction Details */}
+      {selectedTransaction && isLoadingDetails && (
+        <Modal visible={true} transparent={true} animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.loadingModalContent}>
+              <ActivityIndicator size="large" color="#A9EF45" />
+              <ThemedText style={styles.loadingModalText}>Loading transaction details...</ThemedText>
+            </View>
+          </View>
+        </Modal>
       )}
 
       {/* Transaction Error Modal */}
       {selectedTransaction && (
         <TransactionErrorModal
-          visible={showErrorModal}
+          visible={showErrorModal && !isLoadingDetails}
           transaction={selectedTransaction}
           onRetry={() => {
-            // TODO: Implement retry logic
+            // Retry by refetching transaction details
+            if (selectedTransactionId) {
+              refetchHistory();
+            }
             setShowErrorModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
           onCancel={() => {
             setShowErrorModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
       )}
@@ -791,6 +1057,79 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100 * SCALE,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  loadingText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10 * SCALE,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  errorText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#ff0000',
+    marginTop: 10 * SCALE,
+    textAlign: 'center',
+    paddingHorizontal: 20 * SCALE,
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingHorizontal: 30 * SCALE,
+    paddingVertical: 12 * SCALE,
+    marginTop: 20 * SCALE,
+  },
+  retryButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  emptyText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10 * SCALE,
+    textAlign: 'center',
+  },
+  loadingSummaryCard: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 30 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingModalContent: {
+    backgroundColor: '#020c19',
+    borderRadius: 15 * SCALE,
+    padding: 30 * SCALE,
+    alignItems: 'center',
+    gap: 15 * SCALE,
+  },
+  loadingModalText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
   },
 });
 

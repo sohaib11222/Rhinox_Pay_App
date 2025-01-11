@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,13 +10,17 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import * as LocalAuthentication from 'expo-local-authentication';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '../../../components';
-import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useCreateP2POrder, useMarkPaymentReceived, useCreateP2PReview } from '../../../mutations/p2p.mutations';
 
@@ -68,6 +72,11 @@ const SellOrderFlow = () => {
   // PIN states
   const [pin, setPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
+  
+  // Biometric states
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
 
   // Security verification states
   const [emailCode, setEmailCode] = useState('');
@@ -373,31 +382,190 @@ const SellOrderFlow = () => {
     }
   };
 
-  const handlePinPress = (num: string) => {
+  // Check biometric availability on mount
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  // Reset PIN when PIN modal opens
+  const pinResetRef = useRef(false);
+  const previousShowPinModal = useRef(false);
+  
+  useEffect(() => {
+    // Only reset PIN when modal transitions from closed to open
+    if (showPinModal && !previousShowPinModal.current) {
+      // Reset PIN only when modal first opens
+      setPin('');
+      pinResetRef.current = true;
+      console.log('[SellOrderFlow] PIN modal opened, PIN reset');
+    } else if (!showPinModal && previousShowPinModal.current) {
+      // Reset the flag when modal closes
+      pinResetRef.current = false;
+      console.log('[SellOrderFlow] PIN modal closed');
+    }
+    previousShowPinModal.current = showPinModal;
+  }, [showPinModal]);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      if (!hasHardware) {
+        setIsBiometricAvailable(false);
+        return;
+      }
+
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!isEnrolled) {
+        setIsBiometricAvailable(false);
+        return;
+      }
+
+      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      setIsBiometricAvailable(true);
+
+      // Determine biometric type
+      if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+        setBiometricType('Face ID');
+      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+        setBiometricType('Fingerprint');
+      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+        setBiometricType('Iris');
+      } else {
+        setBiometricType('Biometric');
+      }
+    } catch (error) {
+      console.error('[SellOrderFlow] Error checking biometric availability:', error);
+      setIsBiometricAvailable(false);
+    }
+  };
+
+  // Get stored PIN from secure storage
+  const getStoredPin = async (): Promise<string | null> => {
+    try {
+      const storedPin = await AsyncStorage.getItem('user_pin');
+      return storedPin;
+    } catch (error) {
+      console.error('[SellOrderFlow] Error retrieving stored PIN:', error);
+      return null;
+    }
+  };
+
+  // Handle biometric authentication
+  const handleBiometricAuth = async () => {
+    if (!isBiometricAvailable) {
+      showWarningAlert(
+        'Biometrics Not Available',
+        'Your device does not support biometrics or it is not set up. Please enter your PIN manually.'
+      );
+      return;
+    }
+
+    if (!orderId) {
+      showErrorAlert('Error', 'Order ID not found. Please try again.');
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Authenticate with ${biometricType} to complete P2P transaction`,
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+        fallbackLabel: 'Use PIN',
+      });
+
+      setIsScanning(false);
+
+      if (result.success) {
+        // Try to get stored PIN
+        const storedPin = await getStoredPin();
+        
+        if (storedPin) {
+          // Set PIN and auto-proceed to security modal
+          setPin(storedPin);
+          if (storedPin.length >= 5) {
+            setTimeout(() => {
+              setShowPinModal(false);
+              setShowSecurityModal(true);
+            }, 300);
+          }
+        } else {
+          showWarningAlert(
+            'PIN Required',
+            'Biometric authentication successful. Please enter your PIN to complete the transaction.'
+          );
+        }
+      } else {
+        if (result.error === 'user_cancel') {
+          // User cancelled - do nothing
+        } else {
+          showWarningAlert(
+            'Biometric Authentication Failed',
+            'Please try again or enter your PIN manually.'
+          );
+        }
+      }
+    } catch (error: any) {
+      setIsScanning(false);
+      console.error('[SellOrderFlow] Biometric authentication error:', error);
+      showErrorAlert(
+        'Error',
+        'An error occurred during biometric authentication. Please enter your PIN manually.'
+      );
+    }
+  };
+
+  const handlePinPress = useCallback((num: string) => {
+    // Only allow numeric digits for PIN
+    if (num === '.' || !/^\d$/.test(num)) {
+      return;
+    }
+
+    // Use functional setState to ensure we're working with the latest PIN value
+    setPin((currentPin) => {
+      const currentPinValue = currentPin || '';
+      // Only add digit if PIN is less than 5 digits
+      if (currentPinValue.length < 5) {
+        const newPin = currentPinValue + num;
+        console.log('[SellOrderFlow] PIN updated:', newPin, 'Length:', newPin.length);
+        
+        // Auto proceed to security verification when PIN is complete
+        if (newPin.length === 5) {
+          setTimeout(() => {
+            setShowPinModal(false);
+            setShowSecurityModal(true);
+          }, 300);
+        }
+        
+        return newPin;
+      }
+      return currentPinValue;
+    });
+
+    // Update last pressed button for visual feedback
     setLastPressedButton(num);
     setTimeout(() => {
       setLastPressedButton(null);
     }, 200);
+  }, []);
 
-    if (pin.length < 5) {
-      const newPin = pin + num;
-      setPin(newPin);
-
-      if (newPin.length === 5) {
-        // Auto proceed to security verification
-        setTimeout(() => {
-          setShowPinModal(false);
-          setShowSecurityModal(true);
-        }, 300);
+  const handlePinBackspace = useCallback(() => {
+    setPin((currentPin) => {
+      const currentPinValue = currentPin || '';
+      // Remove last digit if PIN has any digits
+      if (currentPinValue.length > 0) {
+        const newPin = currentPinValue.slice(0, -1);
+        console.log('[SellOrderFlow] PIN backspace - Previous:', currentPinValue, 'New:', newPin);
+        return newPin;
       }
-    }
-  };
-
-  const handlePinBackspace = () => {
-    if (pin.length > 0) {
-      setPin(pin.slice(0, -1));
-    }
-  };
+      return currentPinValue;
+    });
+    // Add visual feedback
+    setLastPressedButton('backspace');
+    setTimeout(() => {
+      setLastPressedButton(null);
+    }, 200);
+  }, []);
 
   const handleSecurityProceed = () => {
     if (emailCode && authenticatorCode && orderId) {
@@ -767,12 +935,18 @@ const SellOrderFlow = () => {
             <TouchableOpacity 
               style={styles.openChatButton}
               onPress={() => {
+                if (!orderId) {
+                  showErrorAlert('Error', 'Order ID not available. Please wait for the order to be created.');
+                  return;
+                }
                 (navigation as any).navigate('Settings', {
                   screen: 'ChatScreen',
                   params: {
+                    orderId: String(orderId),
                     chatName: orderData.buyerName,
                     chatEmail: 'buyer@example.com',
                     reason: 'P2P Transaction',
+                    isP2PChat: true,
                   },
                 });
               }}
@@ -1031,13 +1205,19 @@ const SellOrderFlow = () => {
         visible={showPinModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowPinModal(false)}
+        onRequestClose={() => {
+          setShowPinModal(false);
+          setPin(''); // Reset PIN when modal closes
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
             <View style={styles.pinModalHeader}>
               <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
-              <TouchableOpacity onPress={() => setShowPinModal(false)}>
+              <TouchableOpacity onPress={() => {
+                setShowPinModal(false);
+                setPin(''); // Reset PIN when modal closes
+              }}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
@@ -1054,7 +1234,9 @@ const SellOrderFlow = () => {
 
             <View style={styles.pinModalTextContainer}>
               <ThemedText style={styles.pinInstruction}>Input Pin to Complete p2p Transaction</ThemedText>
-              <ThemedText style={styles.pinAmount}>N2,000,000</ThemedText>
+              <ThemedText style={styles.pinAmount}>
+                {orderData?.amountToPay || orderData?.amountToBePaid || (routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : 'N0.00')}
+              </ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -1073,7 +1255,42 @@ const SellOrderFlow = () => {
                   );
                 })}
               </View>
+              <TouchableOpacity 
+                style={[
+                  styles.fingerprintButton,
+                  (!isBiometricAvailable || isScanning) && styles.fingerprintButtonDisabled
+                ]}
+                onPress={handleBiometricAuth}
+                disabled={!isBiometricAvailable || isScanning || markPaymentReceivedMutation.isPending}
+              >
+                {isScanning ? (
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                ) : (
+                  <MaterialCommunityIcons 
+                    name="fingerprint" 
+                    size={24 * SCALE} 
+                    color={isBiometricAvailable ? "#A9EF45" : "rgba(169, 239, 69, 0.5)"} 
+                  />
+                )}
+              </TouchableOpacity>
             </View>
+            
+            {markPaymentReceivedMutation.isPending && (
+              <View style={{ alignItems: 'center', marginTop: 20 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 12, marginTop: 8 }}>
+                  Processing transaction...
+                </ThemedText>
+              </View>
+            )}
+            
+            {markPaymentReceivedMutation.isError && (
+              <View style={{ alignItems: 'center', marginTop: 20 }}>
+                <ThemedText style={{ color: '#ff0000', fontSize: 12 }}>
+                  {markPaymentReceivedMutation.error?.message || 'Transaction failed. Please try again.'}
+                </ThemedText>
+              </View>
+            )}
 
             <View style={styles.numpad}>
               <View style={styles.numpadRow}>
@@ -1152,11 +1369,27 @@ const SellOrderFlow = () => {
                 ))}
               </View>
               <View style={styles.numpadRow}>
-                <View style={styles.numpadButton}>
-                  <View style={styles.ghostCircle}>
-                    <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={handleBiometricAuth}
+                  disabled={!isBiometricAvailable || isScanning || markPaymentReceivedMutation.isPending}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.ghostCircle,
+                    lastPressedButton === 'fingerprint' && styles.numpadCirclePressed
+                  ]}>
+                    {isScanning ? (
+                      <ActivityIndicator size="small" color="#A9EF45" />
+                    ) : (
+                      <MaterialCommunityIcons 
+                        name="fingerprint" 
+                        size={24 * SCALE} 
+                        color={isBiometricAvailable ? "#A9EF45" : "rgba(169, 239, 69, 0.5)"} 
+                      />
+                    )}
                   </View>
-                </View>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.numpadButton}
                   onPress={() => handlePinPress('0')}
@@ -1180,9 +1413,18 @@ const SellOrderFlow = () => {
                 <TouchableOpacity
                   style={styles.numpadButton}
                   onPress={handlePinBackspace}
+                  disabled={markPaymentReceivedMutation.isPending}
+                  activeOpacity={0.7}
                 >
-                  <View style={styles.backspaceSquare}>
-                    <MaterialCommunityIcons name="backspace-outline" size={18 * SCALE} color="#FFFFFF" />
+                  <View style={[
+                    styles.backspaceSquare,
+                    lastPressedButton === 'backspace' && styles.numpadCirclePressed
+                  ]}>
+                    <MaterialCommunityIcons 
+                      name="backspace-outline" 
+                      size={18 * SCALE} 
+                      color={lastPressedButton === 'backspace' ? "#000000" : "#FFFFFF"} 
+                    />
                   </View>
                 </TouchableOpacity>
               </View>
@@ -1198,65 +1440,88 @@ const SellOrderFlow = () => {
         transparent={true}
         onRequestClose={() => setShowSecurityModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.securityModalContentBottom}>
-            <View style={styles.securityModalHeader}>
-              <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
-              <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowSecurityModal(false)}
+          >
+            <View
+              style={styles.securityModalContentBottom}
+              onStartShouldSetResponder={() => true}
+            >
+              <View style={styles.securityModalHeader}>
+                <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
+                <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={styles.securityModalScrollView}
+                contentContainerStyle={styles.securityModalScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled={true}
+              >
+                <View style={styles.securityIconContainer}>
+                  <View style={styles.securityIconCircle}>
+                    <Image
+                      source={require('../../../assets/Group 49.png')}
+                      style={styles.securityIcon}
+                      resizeMode="contain"
+                    />
+                  </View>
+                </View>
+
+                <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+                <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
+
+                <View style={styles.securityInputWrapper}>
+                  <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
+                  <View style={styles.securityInputField}>
+                    <TextInput
+                      style={styles.securityInput}
+                      placeholder="Input Code sent to your email"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={emailCode}
+                      onChangeText={setEmailCode}
+                      keyboardType="numeric"
+                      maxLength={6}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.securityInputWrapper}>
+                  <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
+                  <View style={styles.securityInputField}>
+                    <TextInput
+                      style={styles.securityInput}
+                      placeholder="Input Code from your authenticator app"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={authenticatorCode}
+                      onChangeText={setAuthenticatorCode}
+                      keyboardType="numeric"
+                      maxLength={6}
+                    />
+                  </View>
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                style={[styles.proceedButton, (!emailCode || !authenticatorCode) && styles.proceedButtonDisabled]}
+                onPress={handleSecurityProceed}
+                disabled={!emailCode || !authenticatorCode}
+              >
+                <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
               </TouchableOpacity>
             </View>
-
-            <View style={styles.securityIconContainer}>
-              <View style={styles.securityIconCircle}>
-                <Image
-                  source={require('../../../assets/Group 49.png')}
-                  style={styles.securityIcon}
-                  resizeMode="contain"
-                />
-              </View>
-            </View>
-
-            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
-            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
-
-            <View style={styles.securityInputWrapper}>
-              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
-              <View style={styles.securityInputField}>
-                <TextInput
-                  style={styles.securityInput}
-                  placeholder="Input Code sent to your email"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={emailCode}
-                  onChangeText={setEmailCode}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <View style={styles.securityInputWrapper}>
-              <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
-              <View style={styles.securityInputField}>
-                <TextInput
-                  style={styles.securityInput}
-                  placeholder="Input Code from your authenticator app"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={authenticatorCode}
-                  onChangeText={setAuthenticatorCode}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.proceedButton, (!emailCode || !authenticatorCode) && styles.proceedButtonDisabled]}
-              onPress={handleSecurityProceed}
-              disabled={!emailCode || !authenticatorCode}
-            >
-              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -2065,9 +2330,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   pinBar: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 22 * SCALE,
     marginBottom: 35 * SCALE,
+    gap: 12 * SCALE,
   },
   pinBarInner: {
     height: 60 * SCALE,
@@ -2080,6 +2348,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24 * SCALE,
+  },
+  fingerprintButton: {
+    width: 60 * SCALE,
+    height: 60 * SCALE,
+    borderRadius: 30 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fingerprintButtonDisabled: {
+    opacity: 0.5,
   },
   pinSlot: {
     width: 28 * SCALE,
@@ -2164,9 +2445,19 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30 * SCALE,
     paddingHorizontal: 20 * SCALE,
     paddingTop: 20 * SCALE,
-    paddingBottom: 30 * SCALE,
+    paddingBottom: Platform.OS === 'ios' ? 30 * SCALE : 20 * SCALE,
     alignItems: 'center',
     maxHeight: '90%',
+    minHeight: '50%',
+  },
+  securityModalScrollView: {
+    maxHeight: '60%',
+    flexGrow: 0,
+    width: '100%',
+  },
+  securityModalScrollContent: {
+    paddingBottom: 20 * SCALE,
+    alignItems: 'center',
   },
   securityModalHeader: {
     flexDirection: 'row',
@@ -2248,8 +2539,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20 * SCALE,
+    marginBottom: Platform.OS === 'ios' ? 10 * SCALE : 0,
     minHeight: 60 * SCALE,
     marginHorizontal: 10 * SCALE,
+    alignSelf: 'stretch',
   },
   proceedButtonDisabled: {
     backgroundColor: 'rgba(169, 239, 69, 0.3)',

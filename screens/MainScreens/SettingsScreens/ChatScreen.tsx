@@ -24,6 +24,9 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetSupportChatDetails } from '../../../queries/support.queries';
 import { useSendSupportMessage, useMarkSupportMessagesRead } from '../../../mutations/support.mutations';
+import { useGetP2PChatMessages } from '../../../queries/p2p.queries';
+import { useSendP2PMessage, useMarkMessagesAsRead } from '../../../mutations/p2p.mutations';
+import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { showErrorAlert, showWarningAlert, showAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -41,7 +44,7 @@ interface Message {
 const ChatScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { chatName, chatEmail, reason, chatId } = route.params as any;
+  const { chatName, chatEmail, reason, chatId, orderId, isP2PChat } = route.params as any;
   const [message, setMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -51,28 +54,70 @@ const ChatScreen = () => {
   const [sentImageMap, setSentImageMap] = useState<Map<string, string>>(new Map());
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Fetch chat details with messages
+  // Get current user to determine if message is from current user
+  const { data: currentUserData } = useGetCurrentUser();
+  const currentUserId = currentUserData?.data?.user?.id;
+
+  // Determine if this is a P2P chat
+  const isP2P = isP2PChat || !!orderId;
+
+  // Fetch support chat details with messages (for support chat)
   const {
-    data: chatDetailsData,
-    isLoading: isLoadingChatDetails,
-    isError: isChatDetailsError,
-    error: chatDetailsError,
-    refetch: refetchChatDetails,
-  } = useGetSupportChatDetails(chatId ? Number(chatId) : 0);
+    data: supportChatDetailsData,
+    isLoading: isLoadingSupportChatDetails,
+    isError: isSupportChatDetailsError,
+    error: supportChatDetailsError,
+    refetch: refetchSupportChatDetails,
+  } = useGetSupportChatDetails(!isP2P && chatId ? Number(chatId) : 0);
+
+  // Fetch P2P chat messages (for P2P chat)
+  const {
+    data: p2pChatMessagesData,
+    isLoading: isLoadingP2PChatMessages,
+    isError: isP2PChatMessagesError,
+    error: p2pChatMessagesError,
+    refetch: refetchP2PChatMessages,
+  } = useGetP2PChatMessages(isP2P && orderId ? orderId : '');
+
+  // Poll for new P2P messages
+  useEffect(() => {
+    if (isP2P && orderId) {
+      const interval = setInterval(() => {
+        refetchP2PChatMessages();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isP2P, orderId, refetchP2PChatMessages]);
+
+  // Use appropriate data based on chat type
+  const chatDetailsData = isP2P ? p2pChatMessagesData : supportChatDetailsData;
+  const isLoadingChatDetails = isP2P ? isLoadingP2PChatMessages : isLoadingSupportChatDetails;
+  const isChatDetailsError = isP2P ? isP2PChatMessagesError : isSupportChatDetailsError;
+  const chatDetailsError = isP2P ? p2pChatMessagesError : supportChatDetailsError;
+  const refetchChatDetails = isP2P ? refetchP2PChatMessages : refetchSupportChatDetails;
 
   // Transform API messages to UI format
   const messages: Message[] = useMemo(() => {
-    const apiMessages = chatDetailsData?.data?.messages || [];
+    // For P2P chat, messages are directly in data array
+    // For support chat, messages are in data.messages
+    const apiMessages = isP2P 
+      ? (chatDetailsData?.data || [])
+      : (chatDetailsData?.data?.messages || []);
+    
     if (!Array.isArray(apiMessages)) {
       return [];
     }
     
     const transformedMessages: Message[] = apiMessages.map((msg: any) => {
-      // Determine if message is from user or agent
-      // API typically returns senderType or we can check if senderId matches the chat owner
-      // For now, we'll check senderType first, then fallback to checking if it's not an admin/agent
-      const isUserMessage = msg.senderType === 'user' || 
-                           (msg.senderType !== 'admin' && msg.senderType !== 'agent' && !msg.isFromSupport);
+      // For P2P chat: determine if message is from current user by comparing senderId
+      // For support chat: check senderType
+      let isUserMessage: boolean;
+      if (isP2P) {
+        isUserMessage = msg.senderId === currentUserId;
+      } else {
+        isUserMessage = msg.senderType === 'user' || 
+                       (msg.senderType !== 'admin' && msg.senderType !== 'agent' && !msg.isFromSupport);
+      }
       
       // Format timestamp
       let formattedTimestamp = 'Now';
@@ -135,55 +180,59 @@ const ChatScreen = () => {
     }
 
     return transformedMessages;
-  }, [chatDetailsData?.data?.messages, pendingImageUri, message, sentImageMap]);
+  }, [chatDetailsData?.data, isP2P, currentUserId, pendingImageUri, message, sentImageMap]);
 
-  // Mark messages as read when chat is opened
-  const markAsReadMutation = useMarkSupportMessagesRead(chatId ? Number(chatId) : 0, {
+  // Mark support messages as read when chat is opened (for support chat only)
+  const markSupportAsReadMutation = useMarkSupportMessagesRead(chatId ? Number(chatId) : 0, {
     onSuccess: () => {
-      console.log('[ChatScreen] Messages marked as read');
-      // Refetch chat details to update unread count
+      console.log('[ChatScreen] Support messages marked as read');
       refetchChatDetails();
     },
     onError: (error) => {
-      console.error('[ChatScreen] Error marking messages as read:', error);
+      console.error('[ChatScreen] Error marking support messages as read:', error);
     },
   });
 
-  // Mark messages as read when component mounts or chatId changes
-  useEffect(() => {
-    if (chatId) {
-      markAsReadMutation.mutate();
-    }
-  }, [chatId]);
+  // Mark P2P messages as read when chat is opened (for P2P chat only)
+  const markP2PAsReadMutation = useMarkMessagesAsRead({
+    onSuccess: () => {
+      console.log('[ChatScreen] P2P messages marked as read');
+      refetchChatDetails();
+    },
+    onError: (error) => {
+      console.error('[ChatScreen] Error marking P2P messages as read:', error);
+    },
+  });
 
-  // Send message mutation
-  const sendMessageMutation = useSendSupportMessage(chatId ? Number(chatId) : 0, {
+  // Mark messages as read when component mounts or chatId/orderId changes
+  useEffect(() => {
+    if (isP2P && orderId) {
+      markP2PAsReadMutation.mutate(orderId);
+    } else if (!isP2P && chatId) {
+      markSupportAsReadMutation.mutate();
+    }
+  }, [chatId, orderId, isP2P]);
+
+  // Send support message mutation (for support chat only)
+  const sendSupportMessageMutation = useSendSupportMessage(!isP2P && chatId ? Number(chatId) : 0, {
     onSuccess: (data) => {
-      console.log('[ChatScreen] Message sent successfully:', data);
+      console.log('[ChatScreen] Support message sent successfully:', data);
       setMessage('');
-      // Keep pendingImageUri until refetch completes to show image in the message
-      // The image is stored in sentImageMap, so it will persist after refetch
-      // Refetch chat details to get new message
       refetchChatDetails().then(() => {
-        // Clear pending image after refetch completes (image is now in sentImageMap)
         setPendingImageUri(null);
-        // Scroll to bottom after refetch
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
         }, 100);
       });
-      // Scroll to bottom immediately
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
       }, 100);
     },
     onError: (error: any) => {
-      console.error('[ChatScreen] Error sending message:', error);
+      console.error('[ChatScreen] Error sending support message:', error);
       setPendingImageUri(null);
-      // Remove image from map on error
       setSentImageMap(prev => {
         const newMap = new Map(prev);
-        // Find and remove the image entry
         for (const [key, value] of newMap.entries()) {
           if (value === pendingImageUri) {
             newMap.delete(key);
@@ -195,6 +244,41 @@ const ChatScreen = () => {
       showErrorAlert('Error', error?.message || 'Failed to send message. Please try again.');
     },
   });
+
+  // Send P2P message mutation (for P2P chat only)
+  const sendP2PMessageMutation = useSendP2PMessage({
+    onSuccess: (data) => {
+      console.log('[ChatScreen] P2P message sent successfully:', data);
+      setMessage('');
+      refetchChatDetails().then(() => {
+        setPendingImageUri(null);
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      });
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    },
+    onError: (error: any) => {
+      console.error('[ChatScreen] Error sending P2P message:', error);
+      setPendingImageUri(null);
+      setSentImageMap(prev => {
+        const newMap = new Map(prev);
+        for (const [key, value] of newMap.entries()) {
+          if (value === pendingImageUri) {
+            newMap.delete(key);
+            break;
+          }
+        }
+        return newMap;
+      });
+      showErrorAlert('Error', error?.message || 'Failed to send message. Please try again.');
+    },
+  });
+
+  // Use appropriate mutation based on chat type
+  const sendMessageMutation = isP2P ? sendP2PMessageMutation : sendSupportMessageMutation;
 
   // Hide bottom tab bar when screen is focused
   useFocusEffect(
@@ -388,9 +472,16 @@ const ChatScreen = () => {
         return newMap;
       });
       
-      sendMessageMutation.mutate({
-        message: imageMessage,
-      });
+      if (isP2P && orderId) {
+        sendP2PMessageMutation.mutate({
+          orderId: String(orderId),
+          message: imageMessage,
+        });
+      } else if (!isP2P && chatId) {
+        sendSupportMessageMutation.mutate({
+          message: imageMessage,
+        });
+      }
 
       // Clear selected image after sending
       setSelectedImage(null);
@@ -407,13 +498,17 @@ const ChatScreen = () => {
       return;
     }
 
-    if (!chatId) {
+    // Validate chat ID or order ID based on chat type
+    if (isP2P && !orderId) {
+      showErrorAlert('Error', 'Order ID not found. Please try again.');
+      return;
+    } else if (!isP2P && !chatId) {
       showErrorAlert('Error', 'Chat ID not found. Please try again.');
       return;
     }
 
-    // Check if chat is resolved or appealed (can't send messages)
-    if (chatDetailsData?.data?.status === 'resolved' || chatDetailsData?.data?.status === 'appealed') {
+    // Check if support chat is resolved or appealed (only applies to support chat)
+    if (!isP2P && (chatDetailsData?.data?.status === 'resolved' || chatDetailsData?.data?.status === 'appealed')) {
       showWarningAlert('Chat Closed', 'This chat has been closed. You cannot send messages to resolved or appealed chats.');
       return;
     }
@@ -423,9 +518,16 @@ const ChatScreen = () => {
       handleSendImage(selectedImage);
     } else if (message.trim()) {
       // Send text message via API
-      sendMessageMutation.mutate({
-        message: message.trim(),
-      });
+      if (isP2P && orderId) {
+        sendP2PMessageMutation.mutate({
+          orderId: String(orderId),
+          message: message.trim(),
+        });
+      } else if (!isP2P && chatId) {
+        sendSupportMessageMutation.mutate({
+          message: message.trim(),
+        });
+      }
     }
   };
 

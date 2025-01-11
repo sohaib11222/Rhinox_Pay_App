@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { useGetTransactionHistory, useGetTransactionDetails } from '../../queries/transactionHistory.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -64,19 +66,136 @@ const CryptoDepositScreen = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
+  // Fetch transaction history from API
+  const {
+    data: transactionHistoryData,
+    isLoading: isLoadingHistory,
+    isError: isHistoryError,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useGetTransactionHistory({
+    period: 'M', // Default to Monthly
+    currency: selectedCurrency !== 'All' ? selectedCurrency : undefined,
+  }, {
+    queryKey: ['transaction-history', 'crypto-deposits', selectedCurrency],
+  } as any);
+
+  // Get transaction details when a transaction is selected
+  const selectedTransactionId = selectedTransaction?.id ? parseInt(selectedTransaction.id) : null;
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      enabled: !!selectedTransactionId && showReceiptModal,
+      queryKey: ['transaction-history', 'details', selectedTransactionId || 0],
+    } as any
+  );
+
+  // Extract and filter crypto deposits from API response
+  const cryptoDeposits = useMemo(() => {
+    if (!transactionHistoryData?.data?.crypto || !Array.isArray(transactionHistoryData.data.crypto)) {
+      return [];
+    }
+    // Filter for deposits only
+    return transactionHistoryData.data.crypto.filter(
+      (tx: any) => tx.type === 'deposit' && tx.normalizedType === 'Crypto Deposit'
+    );
+  }, [transactionHistoryData?.data?.crypto]);
+
+  // Get summary data from API
+  const summaryData = useMemo(() => {
+    const transactionData = transactionHistoryData?.data;
+    const summary = transactionData?.summary || { total: '0', incoming: '0', outgoing: '0' };
+    
+    // Calculate incoming/outgoing from crypto deposits
+    const incoming = cryptoDeposits
+      .filter((tx: any) => tx.status === 'completed')
+      .reduce((sum: number, tx: any) => sum + parseFloat(tx.amount || '0'), 0);
+    
+    const outgoing = cryptoDeposits
+      .filter((tx: any) => tx.status === 'completed' && tx.type === 'withdrawal')
+      .reduce((sum: number, tx: any) => sum + parseFloat(tx.amount || '0'), 0);
+
+    return {
+      incoming: {
+        ngn: summary.incoming || incoming.toFixed(2),
+        usd: `$${incoming.toFixed(2)}`,
+      },
+      outgoing: {
+        ngn: summary.outgoing || outgoing.toFixed(2),
+        usd: `$${outgoing.toFixed(2)}`,
+      },
+    };
+  }, [transactionHistoryData?.data?.summary, cryptoDeposits]);
+
+  // Transform API transactions to UI format
+  const cryptoDepositTransactions: CryptoDepositTransaction[] = useMemo(() => {
+    if (!cryptoDeposits || cryptoDeposits.length === 0) {
+      return [];
+    }
+
+    return cryptoDeposits.map((tx: any) => {
+      // Format address (show first and last few characters)
+      const address = tx.metadata?.fromAddress || tx.metadata?.toAddress || '';
+      const formattedAddress = address.length > 12 
+        ? `${address.substring(0, 6)}...${address.substring(address.length - 6)}`
+        : address;
+
+      // Format date
+      const date = tx.completedAt || tx.createdAt || '';
+      const formattedDate = date 
+        ? new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'N/A';
+
+      // Map status
+      const statusMap: Record<string, 'Successful' | 'Pending' | 'Failed'> = {
+        'completed': 'Successful',
+        'pending': 'Pending',
+        'failed': 'Failed',
+      };
+
+      // Determine crypto type from currency
+      const cryptoType = tx.currency === 'ETH' ? 'Ethereum' :
+                        tx.currency === 'BTC' ? 'Bitcoin' :
+                        tx.currency || 'USDT';
+
+      // Format amount
+      const amount = parseFloat(tx.amount || '0');
+      const amountInUSD = tx.amountInUSD ? parseFloat(tx.amountInUSD) : amount;
+
+      return {
+        id: String(tx.id),
+        recipientName: formattedAddress,
+        amountNGN: `N${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        amountUSD: `$${amountInUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        date: formattedDate.replace(',', ''),
+        status: statusMap[tx.status] || 'Pending',
+        paymentMethod: 'Bank Transfer', // Default for display
+        transferAmount: `${tx.amount} ${tx.currency}`,
+        fee: tx.fee ? `$${parseFloat(tx.fee).toFixed(2)}` : '$0.00',
+        paymentAmount: `${tx.amount} ${tx.currency}`,
+        cryptoType: cryptoType,
+        network: tx.metadata?.blockchain || cryptoType,
+        quantity: `${tx.amount} ${tx.currency}`,
+        amountUSDValue: `$${amountInUSD.toFixed(2)}`,
+        feeCrypto: tx.metadata?.networkFee ? `${tx.metadata.networkFee} ${tx.currency}` : '0',
+        feeUSD: tx.fee ? `$${parseFloat(tx.fee).toFixed(2)}` : '$0.00',
+        receivingAddress: tx.metadata?.toAddress || '',
+        sendingAddress: tx.metadata?.fromAddress || '',
+        txHash: tx.metadata?.txHash || '',
+        transactionId: tx.reference || String(tx.id),
+        dateTime: tx.completedAt 
+          ? new Date(tx.completedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : 'N/A',
+      };
+    });
+  }, [cryptoDeposits]);
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest crypto deposit transactions
-        // - Fetch updated summary data
-        // - Update any other data that needs refreshing
-        console.log('Refreshing crypto deposit data...');
-        resolve();
-      }, 1000);
-    });
+    await refetchHistory();
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -84,141 +203,21 @@ const CryptoDepositScreen = () => {
     refreshDelay: 2000,
   });
 
-  // Mock data - Replace with API calls later
-  const cryptoDepositTransactions: CryptoDepositTransaction[] = [
-    {
-      id: '1',
-      recipientName: '0x123...fcj2ifk3edw',
-      amountNGN: 'N2,550.50',
-      amountUSD: '$2,550.50',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      transferAmount: '0.25 ETH',
-      fee: '$2.50',
-      paymentAmount: '0.25 ETH',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.25 ETH',
-      amountUSDValue: '$2,550.50',
-      feeCrypto: '0.000001 ETH',
-      feeUSD: '$2.50',
-      receivingAddress: '0x123edfgtrwe457kslwltkwflelwlvld',
-      sendingAddress: '0x123edfgtrwe457kslwltkwflelwlvld',
-      txHash: '13ijksm219ef23e9fi3295h2nfi923rf9n92f9',
-      transactionId: '12dwerkxywurcksc',
-      dateTime: 'Oct 16, 2025 - 07:22 AM',
-    },
-    {
-      id: '2',
-      recipientName: '0x456...abc123def456',
-      amountNGN: 'N1,200.00',
-      amountUSD: '$1,200.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      cryptoType: 'Bitcoin',
-      network: 'Bitcoin',
-      quantity: '0.05 BTC',
-      amountUSDValue: '$1,200.00',
-      receivingAddress: '0x456edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '3',
-      recipientName: '0x789...xyz789ghi012',
-      amountNGN: 'N500.00',
-      amountUSD: '$500.00',
-      date: 'Oct 15,2025',
-      status: 'Pending',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'USDT',
-      network: 'Ethereum',
-      quantity: '500 USDT',
-      amountUSDValue: '$500.00',
-      receivingAddress: '0x789edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '4',
-      recipientName: '0x012...def456ghi789',
-      amountNGN: 'N3,000.00',
-      amountUSD: '$3,000.00',
-      date: 'Oct 15,2025',
-      status: 'Failed',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.3 ETH',
-      amountUSDValue: '$3,000.00',
-      receivingAddress: '0x012edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '5',
-      recipientName: '0x345...ghi789jkl012',
-      amountNGN: 'N800.00',
-      amountUSD: '$800.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.1 ETH',
-      amountUSDValue: '$800.00',
-      receivingAddress: '0x345edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '6',
-      recipientName: '0x678...jkl012mno345',
-      amountNGN: 'N1,500.00',
-      amountUSD: '$1,500.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'Bitcoin',
-      network: 'Bitcoin',
-      quantity: '0.03 BTC',
-      amountUSDValue: '$1,500.00',
-      receivingAddress: '0x678edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '7',
-      recipientName: '0x901...mno345pqr678',
-      amountNGN: 'N2,200.00',
-      amountUSD: '$2,200.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      cryptoType: 'USDT',
-      network: 'Ethereum',
-      quantity: '2,200 USDT',
-      amountUSDValue: '$2,200.00',
-      receivingAddress: '0x901edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '8',
-      recipientName: '0x234...pqr678stu901',
-      amountNGN: 'N950.00',
-      amountUSD: '$950.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.12 ETH',
-      amountUSDValue: '$950.00',
-      receivingAddress: '0x234edfgtrwe457kslwltkwflelwlvld',
-    },
-  ];
-
-  const summaryData = {
-    incoming: {
-      ngn: '2,000,000.00',
-      usd: '$20,000',
-    },
-    outgoing: {
-      ngn: '500.00',
-      usd: '$0.001',
-    },
-  };
+  // Update transaction details when details are fetched
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransaction) {
+      const details = transactionDetailsData.data;
+      // Update selected transaction with full details
+      const updatedTransaction = {
+        ...selectedTransaction,
+        receivingAddress: details.metadata?.toAddress || selectedTransaction.receivingAddress,
+        sendingAddress: details.metadata?.fromAddress || selectedTransaction.sendingAddress,
+        txHash: details.metadata?.txHash || selectedTransaction.txHash,
+        feeCrypto: details.metadata?.networkFee ? `${details.metadata.networkFee} ${details.currency}` : selectedTransaction.feeCrypto,
+      };
+      setSelectedTransaction(updatedTransaction);
+    }
+  }, [transactionDetailsData?.data, selectedTransaction]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -243,16 +242,29 @@ const CryptoDepositScreen = () => {
     }
   };
 
-  const filteredTransactions = cryptoDepositTransactions.filter((transaction) => {
-    if (selectedStatus !== 'All' && transaction.status !== selectedStatus) {
-      return false;
-    }
-    if (selectedType !== 'All' && transaction.cryptoType !== selectedType) {
-      return false;
-    }
-    // Add more filters as needed
-    return true;
-  });
+  const filteredTransactions = useMemo(() => {
+    return cryptoDepositTransactions.filter((transaction) => {
+      if (selectedStatus !== 'All' && transaction.status !== selectedStatus) {
+        return false;
+      }
+      if (selectedType !== 'All' && transaction.cryptoType !== selectedType) {
+        return false;
+      }
+      if (selectedCurrency !== 'All') {
+        // Check currency based on crypto type
+        const currencyMap: Record<string, string[]> = {
+          'ETH': ['ETH', 'Ethereum'],
+          'BTC': ['BTC', 'Bitcoin'],
+          'USDT': ['USDT'],
+        };
+        const matchCurrency = Object.entries(currencyMap).some(([curr, values]) => 
+          curr === selectedCurrency && values.some(v => transaction.cryptoType?.includes(v))
+        );
+        if (!matchCurrency) return false;
+      }
+      return true;
+    });
+  }, [cryptoDepositTransactions, selectedStatus, selectedType, selectedCurrency]);
 
   return (
     <View style={styles.container}>
@@ -296,7 +308,9 @@ const CryptoDepositScreen = () => {
                 setShowTypeDropdown(false);
               }}
             >
-              <ThemedText style={styles.filterButtonText}>Status</ThemedText>
+              <ThemedText style={styles.filterButtonText}>
+                {selectedStatus !== 'All' ? selectedStatus : 'Status'}
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
             <View style={styles.filterDivider} />
@@ -308,7 +322,9 @@ const CryptoDepositScreen = () => {
                 setShowStatusDropdown(false);
               }}
             >
-              <ThemedText style={styles.filterButtonText}>Currency</ThemedText>
+              <ThemedText style={styles.filterButtonText}>
+                {selectedCurrency !== 'All' ? selectedCurrency : 'Currency'}
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
             <View style={styles.filterDivider} />
@@ -320,63 +336,78 @@ const CryptoDepositScreen = () => {
                 setShowStatusDropdown(false);
               }}
             >
+              <ThemedText style={styles.filterButtonText}>
+                {selectedType !== 'All' ? selectedType : 'Type'}
+              </ThemedText>
+              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Summary Cards */}
-        <View style={styles.summaryContainer}>
-          <LinearGradient
-            colors={['#4880C0', '#1B589E']}
-            start={{ x: 1, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.summaryCardGradient}
-          >
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryIconCircle}>
-                <Image
-                  source={require('../../assets/ArrowLineDownLeft (1).png')}
-                  style={styles.summaryIconImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
+        {isLoadingHistory ? (
+          <View style={styles.summaryContainer}>
+            <View style={[styles.summaryCardGradient, styles.loadingCard]}>
+              <ActivityIndicator size="small" color="#A9EF45" />
             </View>
-            <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
-              </View>
+            <View style={[styles.summaryCardWhite, styles.loadingCard]}>
+              <ActivityIndicator size="small" color="#A9EF45" />
             </View>
-            <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
-          </LinearGradient>
-
-          <View style={styles.summaryCardWhite}>
-            <View style={styles.summaryHeader}>
-              <View style={styles.summaryIconCircleWhite}>
-                <Image
-                  source={require('../../assets/Vector (31).png')}
-                  style={styles.summaryIconImage}
-                  resizeMode="cover"
-                />
-              </View>
-              <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
-            </View>
-            <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
-              </View>
-            </View>
-            <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
           </View>
-        </View>
+        ) : (
+          <View style={styles.summaryContainer}>
+            <LinearGradient
+              colors={['#4880C0', '#1B589E']}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={styles.summaryCardGradient}
+            >
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryIconCircle}>
+                  <Image
+                    source={require('../../assets/ArrowLineDownLeft (1).png')}
+                    style={styles.summaryIconImage}
+                    resizeMode="cover"
+                  />
+                </View>
+                <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
+              </View>
+              <View style={styles.summaryAmountContainer}>
+                <View style={styles.summaryAmountRow}>
+                  <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
+                  <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
+                </View>
+              </View>
+              <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
+            </LinearGradient>
+
+            <View style={styles.summaryCardWhite}>
+              <View style={styles.summaryHeader}>
+                <View style={styles.summaryIconCircleWhite}>
+                  <Image
+                    source={require('../../assets/Vector (31).png')}
+                    style={styles.summaryIconImage}
+                    resizeMode="cover"
+                  />
+                </View>
+                <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
+              </View>
+              <View style={styles.summaryAmountContainer}>
+                <View style={styles.summaryAmountRow}>
+                  <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
+                  <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
+                </View>
+              </View>
+              <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
+            </View>
+          </View>
+        )}
 
         {/* Dropdowns */}
         {showStatusDropdown && (
           <View style={[styles.dropdownContainer, { left: SCREEN_WIDTH * 0.047 }]}>
             <View style={styles.dropdown}>
-              {['All', 'Completed', 'Pending', 'Failed'].map((status) => (
+              {['All', 'Successful', 'Pending', 'Failed'].map((status) => (
                 <TouchableOpacity
                   key={status}
                   style={styles.dropdownItem}
@@ -432,9 +463,33 @@ const CryptoDepositScreen = () => {
 
         {/* Transaction List Card */}
         <View style={styles.transactionCard}>
-          <ThemedText style={styles.cardTitle}>Today</ThemedText>
-          <View style={styles.transactionList}>
-            {filteredTransactions.map((transaction) => (
+          <ThemedText style={styles.cardTitle}>Crypto Deposits</ThemedText>
+          {isLoadingHistory ? (
+            <View style={styles.transactionLoadingContainer}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={styles.loadingText}>Loading transactions...</ThemedText>
+            </View>
+          ) : isHistoryError ? (
+            <View style={styles.transactionErrorContainer}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={styles.errorText}>
+                {historyError?.message || 'Failed to load transactions'}
+              </ThemedText>
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={() => refetchHistory()}
+              >
+                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : filteredTransactions.length === 0 ? (
+            <View style={styles.transactionEmptyContainer}>
+              <MaterialCommunityIcons name="wallet-outline" size={40 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+              <ThemedText style={styles.emptyText}>No crypto deposits found</ThemedText>
+            </View>
+          ) : (
+            <View style={styles.transactionList}>
+              {filteredTransactions.map((transaction) => (
               <TouchableOpacity
                 key={transaction.id}
                 style={styles.transactionItem}
@@ -469,8 +524,9 @@ const CryptoDepositScreen = () => {
                   <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
                 </View>
               </TouchableOpacity>
-            ))}
-          </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -791,6 +847,56 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100 * SCALE,
+  },
+  loadingCard: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 87 * SCALE,
+  },
+  transactionLoadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  loadingText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10 * SCALE,
+  },
+  transactionErrorContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+  },
+  errorText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#ff0000',
+    marginTop: 10 * SCALE,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingHorizontal: 30 * SCALE,
+    paddingVertical: 12 * SCALE,
+    marginTop: 20 * SCALE,
+  },
+  retryButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  transactionEmptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  emptyText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10 * SCALE,
+    textAlign: 'center',
   },
 });
 

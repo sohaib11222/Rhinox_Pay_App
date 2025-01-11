@@ -429,17 +429,17 @@ const Support = () => {
                             style={styles.modalContent}
                             onStartShouldSetResponder={() => true}
                         >
-                            {/* Modal Header */}
-                            <View style={styles.modalHeader}>
-                                <ThemedText style={styles.modalTitle}>Details</ThemedText>
-                                <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
-                                    <View style={styles.closeButtonCircle}>
-                                        <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
-                                    </View>
-                                </TouchableOpacity>
-                            </View>
+                        {/* Modal Header */}
+                        <View style={styles.modalHeader}>
+                            <ThemedText style={styles.modalTitle}>Details</ThemedText>
+                            <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
+                                <View style={styles.closeButtonCircle}>
+                                    <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
+                                </View>
+                            </TouchableOpacity>
+                        </View>
 
-                            {/* Form Fields */}
+                        {/* Form Fields */}
                             <ScrollView
                                 style={styles.modalScrollView}
                                 contentContainerStyle={styles.modalScrollContent}
@@ -447,66 +447,66 @@ const Support = () => {
                                 showsVerticalScrollIndicator={false}
                                 nestedScrollEnabled={true}
                             >
-                                <View style={styles.formContainer}>
-                                    <View style={styles.formField}>
-                                        <ThemedText style={styles.fieldLabel}>Name</ThemedText>
-                                        <View style={styles.inputContainer}>
-                                            <TextInput
-                                                style={styles.input}
-                                                placeholder="Qamardeen Abdul Malik"
-                                                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                                                value={chatName}
-                                                onChangeText={setChatName}
-                                            />
-                                        </View>
-                                    </View>
-
-                                    <View style={styles.formField}>
-                                        <ThemedText style={styles.fieldLabel}>Email</ThemedText>
-                                        <View style={styles.inputContainer}>
-                                            <TextInput
-                                                style={styles.input}
-                                                placeholder="abcdfgett@gmail.com"
-                                                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                                                value={chatEmail}
-                                                onChangeText={setChatEmail}
-                                                keyboardType="email-address"
-                                                autoCapitalize="none"
-                                            />
-                                        </View>
-                                    </View>
-
-                                    <View style={styles.formField}>
-                                        <ThemedText style={styles.fieldLabel}>Reason</ThemedText>
-                                        <TouchableOpacity
-                                            style={styles.inputContainer}
-                                            onPress={handleSelectReason}
-                                        >
-                                            <ThemedText style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
-                                                {selectedReason ? reasonOptions.find((r) => r.id === selectedReason)?.label : 'Select reason'}
-                                            </ThemedText>
-                                            <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="rgba(255, 255, 255, 0.5)" />
-                                        </TouchableOpacity>
-                                    </View>
+                        <View style={styles.formContainer}>
+                            <View style={styles.formField}>
+                                <ThemedText style={styles.fieldLabel}>Name</ThemedText>
+                                <View style={styles.inputContainer}>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Qamardeen Abdul Malik"
+                                        placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                        value={chatName}
+                                        onChangeText={setChatName}
+                                    />
                                 </View>
+                            </View>
+
+                            <View style={styles.formField}>
+                                <ThemedText style={styles.fieldLabel}>Email</ThemedText>
+                                <View style={styles.inputContainer}>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="abcdfgett@gmail.com"
+                                        placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                        value={chatEmail}
+                                        onChangeText={setChatEmail}
+                                        keyboardType="email-address"
+                                        autoCapitalize="none"
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.formField}>
+                                <ThemedText style={styles.fieldLabel}>Reason</ThemedText>
+                                <TouchableOpacity
+                                    style={styles.inputContainer}
+                                    onPress={handleSelectReason}
+                                >
+                                    <ThemedText style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
+                                        {selectedReason ? reasonOptions.find((r) => r.id === selectedReason)?.label : 'Select reason'}
+                                    </ThemedText>
+                                    <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                             </ScrollView>
 
-                            {/* Save Button */}
-                            <TouchableOpacity
-                                style={[
-                                    styles.saveButton, 
-                                    (!chatName || !chatEmail || !selectedReason || createChatMutation.isPending) && styles.saveButtonDisabled
-                                ]}
-                                onPress={handleSaveDetails}
-                                disabled={!chatName || !chatEmail || !selectedReason || createChatMutation.isPending}
-                            >
-                                {createChatMutation.isPending ? (
-                                    <ActivityIndicator size="small" color="#000000" />
-                                ) : (
-                                    <ThemedText style={styles.saveButtonText}>Save</ThemedText>
-                                )}
-                            </TouchableOpacity>
-                        </View>
+                        {/* Save Button */}
+                        <TouchableOpacity
+                            style={[
+                                styles.saveButton, 
+                                (!chatName || !chatEmail || !selectedReason || createChatMutation.isPending) && styles.saveButtonDisabled
+                            ]}
+                            onPress={handleSaveDetails}
+                            disabled={!chatName || !chatEmail || !selectedReason || createChatMutation.isPending}
+                        >
+                            {createChatMutation.isPending ? (
+                                <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                                <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+                            )}
+                        </TouchableOpacity>
+                    </View>
                     </TouchableOpacity>
                 </KeyboardAvoidingView>
             </Modal>

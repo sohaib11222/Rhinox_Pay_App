@@ -16,6 +16,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import * as LocalAuthentication from 'expo-local-authentication';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
@@ -23,7 +25,7 @@ import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mu
 import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
-import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -79,6 +81,11 @@ const BuyOrder = () => {
   // PIN states
   const [pin, setPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
+  
+  // Biometric states
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>('Fingerprint');
+  const [isScanning, setIsScanning] = useState(false);
 
   // Security verification states
   const [emailCode, setEmailCode] = useState('');
@@ -490,6 +497,124 @@ const BuyOrder = () => {
       if (createOrderMutation.isPending) console.log('  - Mutation pending');
     }
   }, [amount, isValidAmount, selectedPaymentMethod, adId, createOrderMutation.isPending, isButtonEnabled]);
+
+  // Check biometric availability on mount
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  // Reset PIN when PIN modal opens
+  useEffect(() => {
+    if (showPinModal) {
+      setPin('');
+    }
+  }, [showPinModal]);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      if (!hasHardware) {
+        setIsBiometricAvailable(false);
+        return;
+      }
+
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!isEnrolled) {
+        setIsBiometricAvailable(false);
+        return;
+      }
+
+      const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      setIsBiometricAvailable(true);
+
+      // Determine biometric type
+      if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+        setBiometricType('Face ID');
+      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+        setBiometricType('Fingerprint');
+      } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+        setBiometricType('Iris');
+      } else {
+        setBiometricType('Biometric');
+      }
+    } catch (error) {
+      console.error('Error checking biometric availability:', error);
+      setIsBiometricAvailable(false);
+    }
+  };
+
+  // Get stored PIN from secure storage
+  const getStoredPin = async (): Promise<string | null> => {
+    try {
+      const storedPin = await AsyncStorage.getItem('user_pin');
+      return storedPin;
+    } catch (error) {
+      console.error('Error retrieving stored PIN:', error);
+      return null;
+    }
+  };
+
+  // Handle biometric authentication
+  const handleBiometricAuth = async () => {
+    if (!isBiometricAvailable) {
+      showWarningAlert(
+        'Biometrics Not Available',
+        'Your device does not support biometrics or it is not set up. Please enter your PIN manually.'
+      );
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Authenticate with ${biometricType} to verify transaction`,
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+        fallbackLabel: 'Use PIN',
+      });
+
+      setIsScanning(false);
+
+      if (result.success) {
+        // Try to get stored PIN
+        const storedPin = await getStoredPin();
+        
+        if (storedPin) {
+          // Auto-fill PIN and proceed
+          setPin(storedPin);
+          // Auto proceed to security verification when PIN is set
+          if (storedPin.length >= 4) {
+            setTimeout(() => {
+              setShowPinModal(false);
+              setShowSecurityModal(true);
+            }, 300);
+          }
+        } else {
+          // If no stored PIN, show message that PIN is still required
+          showWarningAlert(
+            'PIN Required',
+            'Biometric authentication successful. Please enter your PIN to complete the transaction.'
+          );
+        }
+      } else {
+        if (result.error === 'user_cancel') {
+          // User cancelled - do nothing
+        } else {
+          showErrorAlert(
+            'Authentication Failed',
+            'Biometric authentication failed. Please try again or enter your PIN manually.'
+          );
+        }
+      }
+    } catch (error: any) {
+      setIsScanning(false);
+      console.error('Biometric authentication error:', error);
+      showErrorAlert(
+        'Authentication Error',
+        'An error occurred during biometric authentication. Please enter your PIN manually.'
+      );
+    }
+  };
 
   const handleBuy = () => {
     if (!isValidAmount) {
@@ -1398,7 +1523,33 @@ const BuyOrder = () => {
 
             <View style={styles.pinModalTextContainer}>
               <ThemedText style={styles.pinInstruction}>Input Pin to Complete p2p Transaction</ThemedText>
-              <ThemedText style={styles.pinAmount}>N2,000,000</ThemedText>
+              <ThemedText style={styles.pinAmount}>
+                {(() => {
+                  // If we have order details, use that amount
+                  if (orderDetailsData?.data?.fiatAmount) {
+                    return `${orderDetailsData.data.fiatCurrency || 'NGN'}${orderDetailsData.data.fiatAmount}`;
+                  }
+                  // If we have orderData amountToPay, use that
+                  if (orderData.amountToPay && orderData.amountToPay !== 'N0') {
+                    return orderData.amountToPay;
+                  }
+                  // Otherwise, calculate from entered amount and currency type
+                  if (amount) {
+                    const numericAmount = amount.replace(/,/g, '').replace(/\s/g, '');
+                    if (currencyType === 'Fiat') {
+                      return `NGN${numericAmount}`;
+                    } else {
+                      // If crypto, calculate fiat equivalent
+                      const adPrice = parseFloat(adDetailsData?.data?.price || '0');
+                      if (adPrice > 0) {
+                        const fiatAmount = parseFloat(numericAmount) * adPrice;
+                        return `${adDetailsData?.data?.fiatCurrency || 'NGN'}${fiatAmount.toFixed(2)}`;
+                      }
+                    }
+                  }
+                  return 'N0';
+                })()}
+              </ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -1496,11 +1647,26 @@ const BuyOrder = () => {
                 ))}
               </View>
               <View style={styles.numpadRow}>
-                <View style={styles.numpadButton}>
-                  <View style={styles.ghostCircle}>
-                    <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
+                <TouchableOpacity 
+                  style={styles.numpadButton}
+                  onPress={handleBiometricAuth}
+                  disabled={!isBiometricAvailable || isScanning}
+                >
+                  <View style={[
+                    styles.ghostCircle,
+                    isScanning && styles.ghostCircleScanning
+                  ]}>
+                    {isScanning ? (
+                      <ActivityIndicator size="small" color="#A9EF45" />
+                    ) : (
+                      <MaterialCommunityIcons 
+                        name="fingerprint" 
+                        size={24 * SCALE} 
+                        color={isBiometricAvailable ? "#A9EF45" : "rgba(169, 239, 69, 0.3)"} 
+                      />
+                    )}
                   </View>
-                </View>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.numpadButton}
                   onPress={() => handlePinPress('0')}
@@ -2685,6 +2851,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#000914',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  ghostCircleScanning: {
+    backgroundColor: 'rgba(169, 239, 69, 0.1)',
   },
   backspaceSquare: {
     width: 53 * SCALE,

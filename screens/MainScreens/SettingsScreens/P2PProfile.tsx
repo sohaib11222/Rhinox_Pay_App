@@ -360,14 +360,9 @@ const P2PProfile = () => {
                     <TouchableOpacity
                         style={[styles.toggleButton, styles.toggleButtonRight]}
                         onPress={() => {
-                            (navigation as any).navigate('Tabs', {
-                                screen: 'SendFund',
-                                params: {
-                                    screen: 'P2PFund',
-                                    params: {
-                                        initialTab: 'Sell',
-                                    },
-                                },
+                            (navigation as any).navigate('Settings', {
+                                screen: 'P2PFund',
+                                params: { initialTab: 'Sell' },
                             });
                         }}
                     >

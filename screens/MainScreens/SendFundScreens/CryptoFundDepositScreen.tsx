@@ -88,6 +88,15 @@ const CryptoFundDepositScreen = () => {
     refetch: refetchTokens,
   } = useGetUSDTTokens();
 
+  // Fetch virtual accounts first (includes balances and deposit addresses)
+  const {
+    data: virtualAccountsData,
+    isLoading: isLoadingVirtualAccounts,
+    isError: isVirtualAccountsError,
+    error: virtualAccountsError,
+    refetch: refetchVirtualAccounts,
+  } = useGetVirtualAccounts();
+
   // Transform tokens
   const availableTokens = useMemo(() => {
     if (!tokensData?.data || !Array.isArray(tokensData.data)) {
@@ -116,7 +125,36 @@ const CryptoFundDepositScreen = () => {
     }
   }, [availableTokens, selectedToken]);
 
-  // Fetch deposit address when token is selected
+  // Get deposit address from virtual accounts first, then fetch if not available
+  const depositAddressFromVirtualAccount = useMemo(() => {
+    if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data) || !selectedToken) {
+      return null;
+    }
+    const account = virtualAccountsData.data.find(
+      (va: any) =>
+        va.currency === selectedToken.currency &&
+        va.blockchain === selectedToken.blockchain
+    );
+    
+    // Check if depositAddresses array exists and has addresses
+    if (account?.depositAddresses && Array.isArray(account.depositAddresses) && account.depositAddresses.length > 0) {
+      // Get the first (most recent) deposit address
+      const depositAddr = account.depositAddresses[0];
+      return depositAddr?.address || null;
+    }
+    return null;
+  }, [virtualAccountsData?.data, selectedToken]);
+
+  // Fetch deposit address from API only if not found in virtual accounts
+  const shouldFetchDepositAddress = useMemo(() => {
+    return (
+      !!selectedToken?.currency &&
+      !!selectedToken?.blockchain &&
+      !depositAddressFromVirtualAccount &&
+      !isLoadingVirtualAccounts
+    );
+  }, [selectedToken, depositAddressFromVirtualAccount, isLoadingVirtualAccounts]);
+
   const {
     data: depositAddressData,
     isLoading: isLoadingDepositAddress,
@@ -127,25 +165,27 @@ const CryptoFundDepositScreen = () => {
     selectedToken?.currency || '',
     selectedToken?.blockchain || '',
     {
-      enabled: !!selectedToken?.currency && !!selectedToken?.blockchain,
-      onSuccess: (data: any) => {
-        if (data?.data?.address) {
-          setDepositAddress(data.data.address);
-        }
-      },
-    }
+      enabled: shouldFetchDepositAddress,
+      queryKey: ['crypto', 'deposit-address', selectedToken?.currency || '', selectedToken?.blockchain || ''],
+    } as any
   );
 
-  // Fetch virtual accounts (optional - for checking balances)
-  const {
-    data: virtualAccountsData,
-    isLoading: isLoadingVirtualAccounts,
-  } = useGetVirtualAccounts();
+  // Set deposit address from virtual account or API
+  useEffect(() => {
+    if (depositAddressFromVirtualAccount) {
+      setDepositAddress(depositAddressFromVirtualAccount);
+    } else if (depositAddressData?.data?.address) {
+      setDepositAddress(depositAddressData.data.address);
+    } else if (selectedToken && !shouldFetchDepositAddress && !isLoadingDepositAddress) {
+      // Clear address when token changes and no address available
+      setDepositAddress(null);
+    }
+  }, [depositAddressFromVirtualAccount, depositAddressData?.data?.address, selectedToken, shouldFetchDepositAddress, isLoadingDepositAddress]);
 
   // Get balance for selected token
   const tokenBalance = useMemo(() => {
     if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data) || !selectedToken) {
-      return '0.00';
+      return null; // Return null to indicate loading/unknown
     }
     const account = virtualAccountsData.data.find(
       (va: any) =>
@@ -154,6 +194,13 @@ const CryptoFundDepositScreen = () => {
     );
     return account?.availableBalance || account?.accountBalance || '0.00';
   }, [virtualAccountsData?.data, selectedToken]);
+
+  // Determine if deposit address is loading
+  const isDepositAddressLoading = useMemo(() => {
+    if (isLoadingVirtualAccounts) return true;
+    if (depositAddressFromVirtualAccount) return false;
+    return isLoadingDepositAddress;
+  }, [isLoadingVirtualAccounts, depositAddressFromVirtualAccount, isLoadingDepositAddress]);
 
   // Handle copy address
   const handleCopyAddress = async () => {
@@ -171,7 +218,8 @@ const CryptoFundDepositScreen = () => {
     try {
       await Promise.all([
         refetchTokens(),
-        refetchDepositAddress(),
+        refetchVirtualAccounts(),
+        ...(shouldFetchDepositAddress ? [refetchDepositAddress()] : []),
       ]);
       console.log('[Crypto Deposit] Data refreshed successfully');
     } catch (error) {
@@ -233,9 +281,16 @@ const CryptoFundDepositScreen = () => {
                 />
                 <View style={styles.tokenInfo}>
                   <ThemedText style={styles.tokenName}>{selectedToken.displayName}</ThemedText>
-                  <ThemedText style={styles.tokenBalance}>
-                    Balance: {tokenBalance} {selectedToken.currency}
-                  </ThemedText>
+                  {isLoadingVirtualAccounts ? (
+                    <View style={styles.balanceLoadingContainer}>
+                      <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.7)" />
+                      <ThemedText style={styles.tokenBalanceLoading}>Loading balance...</ThemedText>
+                    </View>
+                  ) : (
+                    <ThemedText style={styles.tokenBalance}>
+                      Balance: {tokenBalance !== null ? `${tokenBalance} ${selectedToken.currency}` : `0.00 ${selectedToken.currency}`}
+                    </ThemedText>
+                  )}
                 </View>
               </>
             ) : (
@@ -249,20 +304,26 @@ const CryptoFundDepositScreen = () => {
         {selectedToken && (
           <View style={styles.section}>
             <ThemedText style={styles.sectionTitle}>Deposit Address</ThemedText>
-            {isLoadingDepositAddress ? (
+            {isDepositAddressLoading ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="small" color="#A9EF45" />
                 <ThemedText style={styles.loadingText}>Generating deposit address...</ThemedText>
               </View>
-            ) : isDepositAddressError ? (
+            ) : (isDepositAddressError || (isVirtualAccountsError && !depositAddressFromVirtualAccount)) ? (
               <View style={styles.errorContainer}>
                 <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
                 <ThemedText style={styles.errorText}>
-                  {depositAddressError?.message || 'Failed to get deposit address'}
+                  {depositAddressError?.message || virtualAccountsError?.message || 'Failed to get deposit address'}
                 </ThemedText>
                 <TouchableOpacity
                   style={styles.retryButton}
-                  onPress={() => refetchDepositAddress()}
+                  onPress={() => {
+                    if (isDepositAddressError && shouldFetchDepositAddress) {
+                      refetchDepositAddress();
+                    } else {
+                      refetchVirtualAccounts();
+                    }
+                  }}
                 >
                   <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
                 </TouchableOpacity>
@@ -307,6 +368,23 @@ const CryptoFundDepositScreen = () => {
                   </ThemedText>
                 </View>
               </LinearGradient>
+            ) : !isDepositAddressLoading && !isDepositAddressError ? (
+              <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="wallet-outline" size={40 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+                <ThemedText style={styles.emptyText}>No deposit address available</ThemedText>
+                <TouchableOpacity
+                  style={styles.retryButton}
+                  onPress={() => {
+                    if (shouldFetchDepositAddress) {
+                      refetchDepositAddress();
+                    } else {
+                      refetchVirtualAccounts();
+                    }
+                  }}
+                >
+                  <ThemedText style={styles.retryButtonText}>Refresh</ThemedText>
+                </TouchableOpacity>
+              </View>
             ) : null}
           </View>
         )}
@@ -394,8 +472,8 @@ const CryptoFundDepositScreen = () => {
                     style={styles.tokenItem}
                     onPress={() => {
                       setSelectedToken(token);
-                      setDepositAddress(null); // Reset address when token changes
                       setShowTokenModal(false);
+                      // Address will be updated automatically via useEffect when token changes
                     }}
                   >
                     <Image
@@ -500,6 +578,28 @@ const styles = StyleSheet.create({
     fontSize: 12 * SCALE,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.7)',
+  },
+  balanceLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6 * SCALE,
+  },
+  tokenBalanceLoading: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginLeft: 6 * SCALE,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  emptyText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10 * SCALE,
+    textAlign: 'center',
   },
   tokenSelectorPlaceholder: {
     flex: 1,

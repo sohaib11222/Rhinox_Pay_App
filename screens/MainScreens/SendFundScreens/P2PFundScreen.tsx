@@ -57,6 +57,9 @@ interface Asset {
   name: string;
   balance: string;
   icon: any;
+  symbol?: string;
+  blockchain?: string;
+  rawData?: any;
 }
 
 interface Bank {
@@ -230,10 +233,10 @@ const P2PFundScreen = () => {
   // For Sell: Use PUBLIC endpoint - GET /api/p2p/ads/browse with type=sell
   const browseBuyParams = useMemo(() => {
     const params: any = {
-      cryptoCurrency: selectedAsset?.symbol || 'USDT',
-      fiatCurrency: fiatCurrency,
-      countryCode: selectedCountryCode,
-      limit: 50,
+    cryptoCurrency: selectedAsset?.symbol || 'USDT',
+    fiatCurrency: fiatCurrency,
+    countryCode: selectedCountryCode,
+    limit: 50,
     };
     
     // Only include minPrice and maxPrice if they have valid values
@@ -273,9 +276,7 @@ const P2PFundScreen = () => {
     isError: isBuyAdsError,
     error: buyAdsError,
     refetch: refetchBuyAds,
-  } = useBrowseBuyAds(activeTab === 'Buy' ? browseBuyParams : undefined, {
-    enabled: activeTab === 'Buy',
-  });
+  } = useBrowseBuyAds(activeTab === 'Buy' ? browseBuyParams : undefined);
 
   const {
     data: sellAdsData,
@@ -283,9 +284,7 @@ const P2PFundScreen = () => {
     isError: isSellAdsError,
     error: sellAdsError,
     refetch: refetchSellAds,
-  } = useBrowseSellAds(activeTab === 'Sell' ? browseSellParams : undefined, {
-    enabled: activeTab === 'Sell',
-  });
+  } = useBrowseSellAds(activeTab === 'Sell' ? browseSellParams : undefined);
 
   // Combine data based on active tab
   const adsData = activeTab === 'Buy' ? buyAdsData : sellAdsData;
@@ -343,9 +342,7 @@ const P2PFundScreen = () => {
   const {
     data: adDetailsData,
     isLoading: isLoadingAdDetails,
-  } = useGetP2PAdDetails(selectedAd?.id || '', {
-    enabled: !!selectedAd?.id,
-  });
+  } = useGetP2PAdDetails(selectedAd?.id || '');
 
   // Create order mutation
   const createOrderMutation = useCreateP2POrder({
@@ -385,9 +382,7 @@ const P2PFundScreen = () => {
     data: orderDetailsData,
     isLoading: isLoadingOrderDetails,
     refetch: refetchOrderDetails,
-  } = useGetP2POrderDetails(selectedOrder?.id || '', {
-    enabled: !!selectedOrder?.id && showOrderDetailsModal,
-  });
+  } = useGetP2POrderDetails(showOrderDetailsModal && selectedOrder?.id ? selectedOrder.id : '');
 
   // Update selected order when details are fetched
   useEffect(() => {
@@ -694,24 +689,30 @@ const P2PFundScreen = () => {
             style={styles.filterAssetIcon}
             resizeMode="cover"
           />
-          <ThemedText style={styles.filterItemText}>{selectedAsset?.name || 'USDT'}</ThemedText>
-          <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+          <ThemedText style={styles.filterItemText} numberOfLines={1} ellipsizeMode="tail">
+            {selectedAsset?.name || 'USDT'}
+          </ThemedText>
+          <MaterialCommunityIcons name="chevron-down" size={10 * SCALE} color="#FFFFFF" style={{ flexShrink: 0 }} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.filterItem}
           onPress={() => setShowAmountModal(true)}
         >
-          <ThemedText style={styles.filterItemText}>Amount</ThemedText>
-          <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+          <ThemedText style={styles.filterItemText} numberOfLines={1} ellipsizeMode="tail">
+            Amount
+          </ThemedText>
+          <MaterialCommunityIcons name="chevron-down" size={10 * SCALE} color="#FFFFFF" style={{ flexShrink: 0 }} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.filterItem}
           onPress={() => setShowPaymentMethodModal(true)}
         >
-          <ThemedText style={styles.filterItemText}>Payment Method</ThemedText>
-          <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+          <ThemedText style={styles.filterItemText} numberOfLines={1} ellipsizeMode="tail">
+            Payment
+          </ThemedText>
+          <MaterialCommunityIcons name="chevron-down" size={10 * SCALE} color="#FFFFFF" style={{ flexShrink: 0 }} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -1304,9 +1305,6 @@ const P2PFundScreen = () => {
         animationType="slide"
         transparent={true}
         onRequestClose={() => setShowCountryModal(false)}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowCountryModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -1802,42 +1800,49 @@ const styles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20 * SCALE,
+    paddingHorizontal: 8 * SCALE,
     marginBottom: 20 * SCALE,
-    paddingVertical: 5,
-    gap: 8 * SCALE,
+    paddingVertical: 6 * SCALE,
+    gap: 4 * SCALE,
     borderRadius: 100,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    justifyContent: 'center',
-    textAlign: 'center',
-    marginHorizontal: 20,
-
+    marginHorizontal: 20 * SCALE,
+    flexWrap: 'nowrap',
   },
   filterItem: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 100,
-    paddingHorizontal: 12 * SCALE,
-    // paddingVertical: 8 * SCALE,
-    gap: 6 * SCALE,
+    paddingHorizontal: 6 * SCALE,
+    paddingVertical: 4 * SCALE,
+    gap: 3 * SCALE,
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    maxWidth: '30%',
   },
   filterItemText: {
-    fontSize: 12 * 1,
+    fontSize: 9 * SCALE,
     fontWeight: '300',
     color: '#FFFFFF',
+    flexShrink: 1,
+    maxWidth: '75%',
   },
   filterAssetIcon: {
-    width: 14 * SCALE,
-    height: 14 * SCALE,
-    borderRadius: 7 * SCALE,
+    width: 12 * SCALE,
+    height: 12 * SCALE,
+    borderRadius: 6 * SCALE,
+    flexShrink: 0,
   },
   filterIconButton: {
-    width: 36 * SCALE,
-    height: 36 * SCALE,
-    borderRadius: 18 * SCALE,
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+    marginLeft: 2 * SCALE,
   },
   scrollView: {
     flex: 1,

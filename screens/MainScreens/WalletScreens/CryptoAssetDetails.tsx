@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,6 +8,8 @@ import {
   Dimensions,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,6 +17,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import TransactionErrorModal from '../../components/TransactionErrorModal';
+import { useGetTransactionHistory, useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -45,6 +49,7 @@ interface RecentActivity {
   amount: string;
   date: string;
   icon: any;
+  rawData?: any; // Store raw API data for details
 }
 
 const CryptoAssetDetails = () => {
@@ -66,19 +71,76 @@ const CryptoAssetDetails = () => {
     graphData: [150, 155, 160, 158, 165, 162, 170, 168, 175, 172, 180, 178, 185, 183, 187.4],
   };
 
-  const [selectedTimeRange, setSelectedTimeRange] = useState<string>('1H');
+  const [selectedTimeRange, setSelectedTimeRange] = useState<string>('1D');
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<RecentActivity | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+
+  // Map UI time range to API period
+  const getApiPeriod = (timeRange: string): { period: 'D' | 'W' | 'M' | 'Custom'; startDate?: string; endDate?: string } => {
+    const now = new Date();
+    switch (timeRange) {
+      case '1H':
+      case '1D':
+        return { period: 'D' };
+      case '1W':
+        return { period: 'W' };
+      case '1M':
+        return { period: 'M' };
+      case '1Y':
+        // Custom: last 12 months
+        const oneYearAgo = new Date(now);
+        oneYearAgo.setFullYear(now.getFullYear() - 1);
+        return {
+          period: 'Custom',
+          startDate: oneYearAgo.toISOString().split('T')[0],
+          endDate: now.toISOString().split('T')[0],
+        };
+      default:
+        return { period: 'M' };
+    }
+  };
+
+  // Build query params for transaction history
+  const queryParams = useMemo(() => {
+    const apiPeriod = getApiPeriod(selectedTimeRange);
+    return {
+      currency: assetData.ticker, // Use ticker as currency symbol
+      period: apiPeriod.period,
+      startDate: apiPeriod.startDate,
+      endDate: apiPeriod.endDate,
+    };
+  }, [selectedTimeRange, assetData.ticker]);
+
+  // Fetch transaction history from API
+  const {
+    data: transactionHistoryData,
+    isLoading: isLoadingHistory,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useGetTransactionHistory(queryParams);
+
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+    error: detailsError,
+  } = useGetTransactionDetails(selectedTransactionId || 0, {
+    enabled: !!selectedTransactionId,
+    queryKey: ['transaction-history', 'details', selectedTransactionId],
+  });
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing crypto asset details data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[CryptoAssetDetails] Refreshing data...');
+    try {
+      await refetchHistory();
+      console.log('[CryptoAssetDetails] Data refreshed successfully');
+    } catch (error) {
+      console.error('[CryptoAssetDetails] Error refreshing data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -86,10 +148,136 @@ const CryptoAssetDetails = () => {
     refreshDelay: 2000,
   });
 
-  const handleActivityPress = (activity: RecentActivity) => {
-    setSelectedActivity(activity);
-    setShowReceiptModal(true);
+  // Helper function to normalize status
+  const normalizeStatus = (status: string): 'Successful' | 'Pending' | 'Failed' => {
+    const statusLower = status?.toLowerCase() || '';
+    if (statusLower === 'completed' || statusLower === 'successful') return 'Successful';
+    if (statusLower === 'pending') return 'Pending';
+    if (statusLower === 'failed') return 'Failed';
+    return 'Successful'; // Default
   };
+
+  // Transform chartData from API to graph data format (array of numbers)
+  const graphData = useMemo(() => {
+    const chartData = transactionHistoryData?.data?.chartData || [];
+    if (chartData.length === 0) {
+      // Return default empty data for 24 hours
+      return Array(24).fill(0);
+    }
+    
+    // Extract amounts from chartData and convert to numbers
+    return chartData.map((item: any) => parseFloat(item.amount || '0'));
+  }, [transactionHistoryData?.data?.chartData]);
+
+  // Transform crypto transactions to RecentActivity format
+  const recentActivity: RecentActivity[] = useMemo(() => {
+    if (!transactionHistoryData?.data?.crypto || !Array.isArray(transactionHistoryData.data.crypto)) {
+      return [];
+    }
+
+    // Get all crypto transactions (deposits and withdrawals)
+    const transactions = transactionHistoryData.data.crypto;
+
+    // Transform to UI format
+    return transactions.slice(0, 10).map((tx: any) => {
+      const amount = parseFloat(tx.amount || '0');
+      const currency = tx.currency || assetData.ticker;
+      
+      // Determine transaction type
+      let type: 'Deposit' | 'Withdraw' | 'Send' | 'Receive' = 'Deposit';
+      if (tx.type === 'withdrawal' || tx.normalizedType === 'Crypto Withdrawals') {
+        type = 'Withdraw';
+      } else if (tx.type === 'deposit' || tx.normalizedType === 'Crypto Deposit') {
+        type = 'Deposit';
+      }
+
+      // Format date
+      const date = tx.createdAt || tx.completedAt || '';
+      let formattedDate = 'N/A';
+      if (date) {
+        try {
+          const dateObj = new Date(date);
+          formattedDate = dateObj.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            year: 'numeric'
+          });
+        } catch (e) {
+          formattedDate = date;
+        }
+      }
+
+      // Choose icon based on type
+      const icon = type === 'Deposit' 
+        ? require('../../../assets/send-up-white.png')
+        : require('../../../assets/send-2-white.png');
+
+      return {
+        id: String(tx.id),
+        type,
+        status: normalizeStatus(tx.status),
+        amount: `${amount} ${currency}`,
+        date: formattedDate,
+        icon,
+        rawData: tx,
+      };
+    });
+  }, [transactionHistoryData?.data?.crypto, assetData.ticker]);
+
+  // Update transaction details when details data is fetched
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedActivity) {
+      const details = transactionDetailsData.data;
+      
+      // Update selected activity with details
+      const updatedActivity: RecentActivity = {
+        ...selectedActivity,
+        rawData: {
+          ...selectedActivity.rawData,
+          ...details,
+        },
+      };
+
+      setSelectedActivity(updatedActivity);
+    }
+  }, [transactionDetailsData, selectedActivity]);
+
+  const handleActivityPress = (activity: RecentActivity) => {
+    const rawData = activity.rawData;
+    const transactionId = rawData?.id;
+    
+    if (transactionId) {
+      setSelectedTransactionId(transactionId);
+    }
+    
+    setSelectedActivity(activity);
+    
+    // Show modal after details are loaded (or immediately if no ID)
+    if (!transactionId) {
+      if (activity.status === 'Failed') {
+        setShowErrorModal(true);
+      } else {
+        setShowReceiptModal(true);
+      }
+    }
+  };
+
+  // Show modal when details are loaded
+  useEffect(() => {
+    if (selectedActivity && selectedTransactionId) {
+      if (isLoadingDetails) {
+        // Still loading details, don't show modal yet
+        return;
+      }
+      
+      // Details loaded, show appropriate modal
+      if (selectedActivity.status === 'Failed') {
+        setShowErrorModal(true);
+      } else {
+        setShowReceiptModal(true);
+      }
+    }
+  }, [selectedActivity, selectedTransactionId, isLoadingDetails]);
 
   const timeRanges: TimeRange[] = [
     { id: '1H', label: '1H' },
@@ -97,34 +285,6 @@ const CryptoAssetDetails = () => {
     { id: '1W', label: '1W' },
     { id: '1M', label: '1M' },
     { id: '1Y', label: '1Y' },
-  ];
-
-  // Mock recent activity data - Replace with API call
-  const recentActivity: RecentActivity[] = [
-    {
-      id: '1',
-      type: 'Deposit',
-      status: 'Successful',
-      amount: '0.002 SOL',
-      date: 'Oct 15,2025',
-      icon: require('../../../assets/send-up-white.png'),
-    },
-    {
-      id: '2',
-      type: 'Deposit',
-      status: 'Successful',
-      amount: '0.002 SOL',
-      date: 'Oct 15,2025',
-      icon: require('../../../assets/send-up-white.png'),
-    },
-    {
-      id: '3',
-      type: 'Deposit',
-      status: 'Successful',
-      amount: '0.002 SOL',
-      date: 'Oct 15,2025',
-      icon: require('../../../assets/send-up-white.png'),
-    },
   ];
 
   // Enhanced line graph component matching Figma design
@@ -345,7 +505,16 @@ const CryptoAssetDetails = () => {
             </View>
 
             {/* Price Graph */}
-            <PriceGraph data={assetData.graphData} />
+            {isLoadingHistory ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading chart data...
+                </ThemedText>
+              </View>
+            ) : (
+              <PriceGraph data={graphData.length > 0 ? graphData : assetData.graphData} />
+            )}
 
             {/* Time Range Selectors */}
             <View style={styles.timeRangeContainer}>
@@ -356,12 +525,17 @@ const CryptoAssetDetails = () => {
                     styles.timeRangeButton,
                     selectedTimeRange === range.id && styles.timeRangeButtonActive,
                   ]}
-                  onPress={() => setSelectedTimeRange(range.id)}
+                  onPress={() => {
+                    setSelectedTimeRange(range.id);
+                    // Time range change will trigger API refetch via useMemo
+                  }}
+                  disabled={isLoadingHistory}
                 >
                   <ThemedText
                     style={[
                       styles.timeRangeText,
                       selectedTimeRange === range.id && styles.timeRangeTextActive,
+                      isLoadingHistory && { opacity: 0.5 },
                     ]}
                   >
                     {range.label}
@@ -438,55 +612,81 @@ const CryptoAssetDetails = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.activityList}>
-            {recentActivity.map((activity) => (
-              <TouchableOpacity
-                key={activity.id}
-                style={styles.activityItem}
-                onPress={() => handleActivityPress(activity)}
-              >
-                <View style={styles.activityIconContainer}>
-                  <View style={styles.activityIconCircle}>
-                    <Image
-                      source={activity.icon}
-                      style={{ width: 14 * SCALE, height: 14 * SCALE, tintColor: '#A9EF45' }}
-                      resizeMode="contain"
-                    />
+          {isLoadingHistory ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading transactions...
+              </ThemedText>
+            </View>
+          ) : historyError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center' }}>
+                {(historyError as any)?.message || 'Failed to load transactions'}
+              </ThemedText>
+              <TouchableOpacity style={styles.retryButton} onPress={() => refetchHistory()}>
+                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : recentActivity.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="wallet-outline" size={40 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                No transactions found
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.activityList}>
+              {recentActivity.map((activity) => (
+                <TouchableOpacity
+                  key={activity.id}
+                  style={styles.activityItem}
+                  onPress={() => handleActivityPress(activity)}
+                >
+                  <View style={styles.activityIconContainer}>
+                    <View style={styles.activityIconCircle}>
+                      <Image
+                        source={activity.icon}
+                        style={{ width: 14 * SCALE, height: 14 * SCALE, tintColor: '#A9EF45' }}
+                        resizeMode="contain"
+                      />
+                    </View>
                   </View>
-                </View>
-                <View style={styles.activityDetails}>
-                  <ThemedText style={styles.activityType}>{activity.type}</ThemedText>
-                  <View style={styles.activityStatusRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: activity.status === 'Successful' ? '#008000' : activity.status === 'Pending' ? '#ffa500' : '#ff0000' },
-                      ]}
-                    />
+                  <View style={styles.activityDetails}>
+                    <ThemedText style={styles.activityType}>{activity.type}</ThemedText>
+                    <View style={styles.activityStatusRow}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: activity.status === 'Successful' ? '#008000' : activity.status === 'Pending' ? '#ffa500' : '#ff0000' },
+                        ]}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.activityStatus,
+                          { color: activity.status === 'Successful' ? '#008000' : activity.status === 'Pending' ? '#ffa500' : '#ff0000' },
+                        ]}
+                      >
+                        {activity.status}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.activityAmountContainer}>
                     <ThemedText
                       style={[
-                        styles.activityStatus,
-                        { color: activity.status === 'Successful' ? '#008000' : activity.status === 'Pending' ? '#ffa500' : '#ff0000' },
+                        styles.activityAmount,
+                        activity.status === 'Successful' && styles.activityAmountGreen,
                       ]}
                     >
-                      {activity.status}
+                      {activity.amount}
                     </ThemedText>
+                    <ThemedText style={styles.activityDate}>{activity.date}</ThemedText>
                   </View>
-                </View>
-                <View style={styles.activityAmountContainer}>
-                  <ThemedText
-                    style={[
-                      styles.activityAmount,
-                      activity.status === 'Successful' && styles.activityAmountGreen,
-                    ]}
-                  >
-                    {activity.amount}
-                  </ThemedText>
-                  <ThemedText style={styles.activityDate}>{activity.date}</ThemedText>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing */}
@@ -496,7 +696,7 @@ const CryptoAssetDetails = () => {
       {/* Transaction Receipt Modal */}
       {selectedActivity && (
         <TransactionReceiptModal
-          visible={showReceiptModal}
+          visible={showReceiptModal && !isLoadingDetails}
           transaction={{
             transactionType: selectedActivity.type === 'Deposit' 
               ? 'cryptoDeposit' 
@@ -504,15 +704,53 @@ const CryptoAssetDetails = () => {
               ? 'cryptoWithdrawal'
               : 'send',
             cryptoType: assetData.name,
-            network: assetData.name,
+            network: selectedActivity.rawData?.metadata?.blockchain || assetData.name,
             quantity: selectedActivity.amount,
             dateTime: selectedActivity.date,
-            transactionId: `TXN-${selectedActivity.id}-${Date.now()}`,
+            transactionId: selectedActivity.rawData?.reference || `TXN-${selectedActivity.id}`,
             amountNGN: selectedActivity.amount,
+            receivingAddress: selectedActivity.rawData?.metadata?.toAddress,
+            sendingAddress: selectedActivity.rawData?.metadata?.fromAddress,
+            txHash: selectedActivity.rawData?.metadata?.txHash,
+            status: selectedActivity.status,
           }}
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedActivity(null);
+            setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Loading Modal for Transaction Details */}
+      {selectedActivity && isLoadingDetails && (
+        <Modal visible={true} transparent={true} animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.loadingModalContent}>
+              <ActivityIndicator size="large" color="#A9EF45" />
+              <ThemedText style={styles.loadingModalText}>Loading transaction details...</ThemedText>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* Transaction Error Modal */}
+      {selectedActivity && (
+        <TransactionErrorModal
+          visible={showErrorModal && !isLoadingDetails}
+          transaction={selectedActivity.rawData || selectedActivity}
+          onRetry={() => {
+            if (selectedTransactionId) {
+              refetchHistory();
+            }
+            setShowErrorModal(false);
+            setSelectedActivity(null);
+            setSelectedTransactionId(null);
+          }}
+          onCancel={() => {
+            setShowErrorModal(false);
+            setSelectedActivity(null);
+            setSelectedTransactionId(null);
           }}
         />
       )}
@@ -797,6 +1035,36 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100 * SCALE,
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingHorizontal: 30 * SCALE,
+    paddingVertical: 12 * SCALE,
+    marginTop: 20 * SCALE,
+  },
+  retryButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingModalContent: {
+    backgroundColor: '#020c19',
+    borderRadius: 15 * SCALE,
+    padding: 30 * SCALE,
+    alignItems: 'center',
+    gap: 15 * SCALE,
+  },
+  loadingModalText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
   },
 });
 
