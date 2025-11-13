@@ -1,0 +1,2704 @@
+import React, { useState, useEffect, useLayoutEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Dimensions,
+  StatusBar,
+  Modal,
+  TextInput,
+  Alert,
+} from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Clipboard from 'expo-clipboard';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SCALE = 1;
+
+// Types for API integration
+interface PaymentMethod {
+  id: string;
+  name: string;
+  type: string;
+}
+
+interface OrderStep {
+  step: 1 | 2 | 3 | 4;
+  status: 'Order Placed' | 'Awaiting Payment' | 'Awaiting Coin Release' | 'Order Completed';
+}
+
+const BuyOrder = () => {
+  const navigation = useNavigation();
+  const route = useRoute();
+  const routeParams = route.params as { skipInitialScreen?: boolean; paymentMethod?: string; orderId?: string; amount?: string; assetAmount?: string } | undefined;
+  
+  // If skipInitialScreen is true, start at step 1, otherwise start at step 0
+  const [currentStep, setCurrentStep] = useState<0 | 1 | 2 | 3 | 4>(
+    routeParams?.skipInitialScreen ? 1 : 0
+  );
+  const [currencyType, setCurrencyType] = useState<'Fiat' | 'Crypto'>('Fiat');
+  const [amount, setAmount] = useState('');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [tempSelectedPaymentMethod, setTempSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [countdown, setCountdown] = useState(30); // 30 seconds countdown
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [reviewRating, setReviewRating] = useState<'positive' | 'negative' | null>(null);
+  const [reviewText, setReviewText] = useState('He is fast and reliable.');
+
+  // PIN states
+  const [pin, setPin] = useState('');
+  const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
+
+  // Security verification states
+  const [emailCode, setEmailCode] = useState('');
+  const [authenticatorCode, setAuthenticatorCode] = useState('');
+
+  // RhinoxPay ID states
+  const [showRhinoxPayModal, setShowRhinoxPayModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState('NGN');
+  const [rhinoxPayAmount, setRhinoxPayAmount] = useState('20,000');
+  const [showCountryModal, setShowCountryModal] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState<number | null>(1);
+  const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
+
+  // Hide bottom tab bar when focused
+  useFocusEffect(
+    React.useCallback(() => {
+      // BuyOrder -> SettingsStack -> TabNavigator
+      // Go up 2 levels to reach the Tab Navigator
+      const settingsStack = navigation.getParent();
+      const tabNavigator = settingsStack?.getParent();
+
+      if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+        tabNavigator.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+
+      return () => {
+        // Restore tab bar when leaving this screen
+        if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+          tabNavigator.setOptions({
+            tabBarStyle: {
+              backgroundColor: 'rgba(0, 0, 0, 0.2)',
+              borderTopWidth: 0,
+              height: 75 * SCALE,
+              paddingBottom: 10,
+              paddingTop: 0,
+              position: 'absolute',
+              bottom: 26 * SCALE,
+              borderRadius: 100,
+              overflow: 'hidden',
+              elevation: 0,
+              width: SCREEN_WIDTH * 0.86,
+              marginLeft: 30,
+              shadowOpacity: 0,
+            },
+          });
+        }
+      };
+    }, [navigation])
+  );
+
+  // Also hide on mount to ensure it's hidden immediately
+  useLayoutEffect(() => {
+    const settingsStack = navigation.getParent();
+    const tabNavigator = settingsStack?.getParent();
+
+    if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+      tabNavigator.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+    }
+  }, [navigation]);
+
+  // Countdown timer for Step 1
+  useEffect(() => {
+    if (currentStep === 1 && countdown > 0) {
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [currentStep, countdown]);
+
+  // Mock payment methods - TODO: Replace with API call
+  const paymentMethods: PaymentMethod[] = [
+    { id: '1', name: 'All', type: 'all' },
+    { id: '2', name: 'RhinoxPay ID', type: 'rhinoxpay' },
+    { id: '3', name: 'Bank Transfer', type: 'bank' },
+    { id: '4', name: 'Mobile Money', type: 'mobile' },
+    { id: '5', name: 'Opay', type: 'bank' },
+    { id: '6', name: 'Palmpay', type: 'bank' },
+    { id: '7', name: 'Kuda Bank', type: 'bank' },
+    { id: '8', name: 'Access Bank', type: 'bank' },
+    { id: '9', name: 'Ec Bank', type: 'bank' },
+  ];
+
+  // Set default payment method if coming from AdDetails (after paymentMethods is defined)
+  useEffect(() => {
+    if (routeParams?.skipInitialScreen && routeParams?.paymentMethod && !selectedPaymentMethod) {
+      const method = paymentMethods.find(m => m.name === routeParams.paymentMethod);
+      if (method) {
+        setSelectedPaymentMethod(method);
+      }
+    }
+  }, [routeParams?.skipInitialScreen, routeParams?.paymentMethod]);
+
+  // Mock order data - TODO: Replace with API call
+  // Use route params if available (from AdDetails), otherwise use default values
+  const orderData = {
+    vendorName: 'Qamar Malik',
+    vendorAvatar: require('../../../assets/login/memoji.png'),
+    vendorStatus: 'Online',
+    vendorRating: '98%',
+    rate: 'N1,520',
+    buyerName: 'Lawal Afeez',
+    amountToBePaid: '25,000',
+    paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
+    price: '1,500 NGN',
+    txId: '128DJ2I3I1DJKQKCM',
+    orderTime: 'Oct 16, 2025 - 07:22AM',
+    amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
+    bankName: 'Opay',
+    accountNumber: '1234567890',
+    accountName: 'Qamardeen Abdul Malik',
+    usdtAmount: routeParams?.assetAmount || '15 USDT',
+  };
+
+  const handleBuy = () => {
+    if (!amount || !selectedPaymentMethod) {
+      Alert.alert('Error', 'Please enter amount and select payment method');
+      return;
+    }
+    // Navigate to order flow screen
+    setCurrentStep(1);
+  };
+
+  const handlePaymentMethodSelect = (method: PaymentMethod) => {
+    setTempSelectedPaymentMethod(method);
+  };
+
+  const handleApplyPaymentMethod = () => {
+    if (tempSelectedPaymentMethod) {
+      setSelectedPaymentMethod(tempSelectedPaymentMethod);
+      setShowPaymentMethodModal(false);
+      setTempSelectedPaymentMethod(null);
+    }
+  };
+
+  const handleAwaitingButton = () => {
+    // Move to step 2
+    setCurrentStep(2);
+  };
+
+  const handleAcceptOrder = () => {
+    // Move to step 2 (Awaiting Payment)
+    setCurrentStep(2);
+  };
+
+  const handlePaymentMade = () => {
+    setShowWarningModal(true);
+  };
+
+  const handleWarningComplete = () => {
+    setShowWarningModal(false);
+    // If RhinoxPay ID is selected, skip verification modals and open payment modal
+    if (selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') {
+      setShowRhinoxPayModal(true);
+    } else {
+      setShowPinModal(true);
+    }
+  };
+
+  const handlePayNow = () => {
+    setShowRhinoxPayModal(true);
+  };
+
+  const handleRhinoxPayProceed = () => {
+    setShowRhinoxPayModal(false);
+    setShowSuccessModal(true);
+  };
+
+  const handleSuccessModalClose = () => {
+    setShowSuccessModal(false);
+    setPaymentConfirmed(true);
+    setCurrentStep(3); // Move to Awaiting Coin Release
+    // After some time, move to step 4
+    setTimeout(() => {
+      setCurrentStep(4);
+    }, 2000);
+  };
+
+  const handlePinPress = (num: string) => {
+    setLastPressedButton(num);
+    setTimeout(() => {
+      setLastPressedButton(null);
+    }, 200);
+
+    if (pin.length < 5) {
+      const newPin = pin + num;
+      setPin(newPin);
+
+      if (newPin.length === 5) {
+        // Auto proceed to security verification
+        setTimeout(() => {
+          setShowPinModal(false);
+          setShowSecurityModal(true);
+        }, 300);
+      }
+    }
+  };
+
+  const handlePinBackspace = () => {
+    if (pin.length > 0) {
+      setPin(pin.slice(0, -1));
+    }
+  };
+
+  const handleSecurityProceed = () => {
+    if (emailCode && authenticatorCode) {
+      setShowSecurityModal(false);
+      setPaymentConfirmed(true);
+      setCurrentStep(3); // Move to Awaiting Coin Release
+      // After some time, move to step 4
+      setTimeout(() => {
+        setCurrentStep(4);
+      }, 2000);
+    }
+  };
+
+  const handleCopyAccountNumber = async () => {
+    await Clipboard.setStringAsync(orderData.accountNumber);
+    // TODO: Show toast notification
+  };
+
+  const handleCopyTxId = async () => {
+    await Clipboard.setStringAsync(orderData.txId);
+    // TODO: Show toast notification
+  };
+
+  const handleSendReview = () => {
+    // TODO: Implement API call to submit review
+    console.log('Review submitted:', { rating: reviewRating, text: reviewText });
+    Alert.alert('Success', 'Review submitted successfully');
+  };
+
+  const formatCountdown = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getStepStatus = () => {
+    switch (currentStep) {
+      case 1:
+        // If coming from AdDetails, show "Order Received", otherwise "Order Placed"
+        return routeParams?.skipInitialScreen ? 'Order Received' : 'Order Placed';
+      case 2:
+        return 'Awaiting Payment';
+      case 3:
+        return 'Awaiting Coin Release';
+      case 4:
+        return 'Order Completed';
+      default:
+        return '';
+    }
+  };
+
+  // Render progress indicator
+  const renderProgressIndicator = () => {
+    return (
+      <View style={styles.progressContainer}>
+        {[1, 2, 3, 4].map((step) => (
+          <View
+            key={step}
+            style={[
+              styles.progressBar,
+              step <= currentStep && styles.progressBarActive,
+            ]}
+          />
+        ))}
+      </View>
+    );
+  };
+
+  // Initial Buy Order Screen
+  if (currentStep === 0) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#020c19" />
+
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <View style={styles.iconCircle}>
+              <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Buy Order</Text>
+          </View>
+          <TouchableOpacity style={styles.backButton}>
+            <View style={styles.iconCircle}>
+              <MaterialCommunityIcons name="headset" size={24 * SCALE} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Vendor Info Card */}
+          <View style={styles.vendorCard}>
+            <Image
+              source={orderData.vendorAvatar}
+              style={styles.vendorAvatar}
+              resizeMode="cover"
+            />
+            <View style={styles.vendorInfo}>
+              <Text style={styles.vendorName}>{orderData.vendorName}</Text>
+              <Text style={styles.vendorStatus}>{orderData.vendorStatus}</Text>
+            </View>
+            <Text style={styles.vendorRating}>{orderData.vendorRating}</Text>
+          </View>
+
+          {/* Vendor Rate */}
+          <Text style={styles.rateTitle}>Vendor Rate</Text>
+          <LinearGradient
+            colors={['#FFFFFF0D', '#A9EF4533']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.rateCard}
+          >
+            <View style={styles.rateContent}>
+              <View>
+                <Text style={styles.rateLabel}>Rate</Text>
+                <Text style={styles.rateRefresh}>Refreshes in 1 min</Text>
+              </View>
+              <Text style={styles.rateValue}>{orderData.rate}</Text>
+            </View>
+          </LinearGradient>
+
+          {/* Order Details Card */}
+          <View style={styles.orderCard}>
+            <Text style={styles.orderCardTitle}>Order Details</Text>
+
+            {/* Currency Selectors */}
+            <View style={styles.currencySelectors}>
+              <TouchableOpacity
+                style={[styles.currencySelector, currencyType === 'Fiat' && styles.currencySelectorActive]}
+                onPress={() => setCurrencyType('Fiat')}
+              >
+                <Text style={[styles.currencySelectorText, currencyType === 'Fiat' && styles.currencySelectorTextActive]}>
+                  Fiat
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.currencySelector, currencyType === 'Crypto' && styles.currencySelectorActive]}
+                onPress={() => setCurrencyType('Crypto')}
+              >
+                <Text style={[styles.currencySelectorText, currencyType === 'Crypto' && styles.currencySelectorTextActive]}>
+                  Crypto
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Amount Input - Different for Fiat vs Crypto */}
+            {currencyType === 'Fiat' ? (
+              <>
+                <View style={styles.amountSection}>
+                  <Text style={styles.amountLabel}>Amount to buy</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={amount}
+                    onChangeText={(text) => {
+                      const numericValue = text.replace(/,/g, '');
+                      if (numericValue === '' || /^\d+$/.test(numericValue)) {
+                        setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+                      }
+                    }}
+                    keyboardType="numeric"
+                    placeholder="Input amount"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  />
+                  <View style={styles.balanceRow}>
+                    <Text style={styles.balanceLabel}>Balance</Text>
+                    <Text style={styles.balanceValue}>NGN 0.00</Text>
+                  </View>
+                </View>
+
+                {/* You will Receive */}
+                <View style={styles.receiveSection}>
+                  <Text style={styles.receiveLabel}>You will Receive</Text>
+                  <View style={styles.receiveValueContainer}>
+                    <Text style={styles.receiveValue}>0.00 USDT</Text>
+                  </View>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.amountSection}>
+                  <Text style={styles.amountLabel}>Enter USDT Amount</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    value={amount}
+                    onChangeText={(text) => {
+                      const numericValue = text.replace(/,/g, '');
+                      if (numericValue === '' || /^\d+$/.test(numericValue)) {
+                        setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+                      }
+                    }}
+                    keyboardType="numeric"
+                    placeholder="Input amount"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  />
+                  <View style={styles.balanceRow}>
+                    <Text style={styles.balanceLabel}>Balance</Text>
+                    <Text style={styles.balanceValue}>USDT 0.00</Text>
+                  </View>
+                </View>
+
+                {/* You will Pay */}
+                <View style={styles.receiveSection}>
+                  <Text style={styles.receiveLabel}>You will Pay</Text>
+                  <Text style={styles.payValue}>N10,000</Text>
+                </View>
+              </>
+            )}
+
+            {/* Payment Method */}
+            <TouchableOpacity
+              style={styles.paymentMethodField}
+              onPress={() => setShowPaymentMethodModal(true)}
+            >
+              <Text style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
+                {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select payment method'}
+              </Text>
+              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+
+        {/* Buy Button */}
+        <TouchableOpacity
+          style={[styles.buyButton, (!amount || !selectedPaymentMethod) && styles.buyButtonDisabled]}
+          onPress={handleBuy}
+          disabled={!amount || !selectedPaymentMethod}
+        >
+          <Text style={styles.buyButtonText}>Buy</Text>
+        </TouchableOpacity>
+
+        {/* Select Payment Method Modal */}
+        <Modal
+          visible={showPaymentMethodModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowPaymentMethodModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.paymentModalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Bank</Text>
+                <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.searchContainer}>
+                <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search Bank"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                />
+              </View>
+
+              <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
+                {paymentMethods.map((method) => (
+                  <TouchableOpacity
+                    key={method.id}
+                    style={styles.paymentMethodItem}
+                    onPress={() => handlePaymentMethodSelect(method)}
+                  >
+                    <Text style={styles.paymentMethodItemText}>{method.name}</Text>
+                    {tempSelectedPaymentMethod?.id === method.id ? (
+                      <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
+                    ) : (
+                      <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <View style={styles.applyButtonContainer}>
+                <TouchableOpacity
+                  style={[styles.applyButton, !tempSelectedPaymentMethod && styles.applyButtonDisabled]}
+                  onPress={handleApplyPaymentMethod}
+                  disabled={!tempSelectedPaymentMethod}
+                >
+                  <Text style={styles.applyButtonText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </View>
+    );
+  }
+
+  // Order Flow Screen (Steps 1-4)
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#020c19" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => {
+            if (currentStep > 1) {
+              setCurrentStep((prev) => (prev - 1) as typeof currentStep);
+            } else if (currentStep === 1 && routeParams?.skipInitialScreen) {
+              // If coming from AdDetails and on step 1, go back to AdDetails
+              navigation.goBack();
+            } else if (currentStep > 0) {
+              setCurrentStep((prev) => (prev - 1) as typeof currentStep);
+            } else {
+              navigation.goBack();
+            }
+          }}
+        >
+          <View style={styles.iconCircle}>
+            <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle}>
+            USDT Buy Ad
+          </Text>
+        </View>
+        <View style={styles.backButton} />
+      </View>
+
+      {/* Progress Indicator - Only show in order flow */}
+      {currentStep > 0 && renderProgressIndicator()}
+
+      {/* Status and Amount - Only show in order flow */}
+      {currentStep > 0 && (
+        <View style={styles.statusSection}>
+          <Text style={styles.statusText}>{getStepStatus()}</Text>
+          <View style={styles.amountSectionHeader}>
+            <Text style={styles.amountText}>{orderData.usdtAmount}</Text>
+            <TouchableOpacity style={styles.openChatButton}>
+              <Text style={styles.openChatText}>Open Chat</Text>
+              {currentStep === 2 && <View style={styles.chatNotificationDot} />}
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Order Details Card - Only show in order flow */}
+        {currentStep > 0 && (
+          <View style={styles.orderDetailsCard}>
+            <Text style={styles.orderDetailsTitle}>Order Details</Text>
+            <View style={styles.orderDetailsContent}>
+              <View style={[styles.detailRow, { borderTopRightRadius: 10, borderTopLeftRadius: 10, borderBottomWidth: 1, }]}>
+                <Text style={styles.detailLabel}>Buyer name</Text>
+                <Text style={styles.detailValue}>{orderData.buyerName}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Amount to be paid</Text>
+                <Text style={styles.detailValue}>{orderData.amountToBePaid}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Payment Account</Text>
+                <Text style={styles.detailValue}>{orderData.paymentAccount}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Price</Text>
+                <Text style={styles.detailValue}>{orderData.price}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Tx id</Text>
+                <View style={styles.txIdRow}>
+                  <Text style={styles.detailValue}>{orderData.txId}</Text>
+                  <TouchableOpacity onPress={handleCopyTxId} style={styles.copyButton}>
+                    <MaterialCommunityIcons name="content-copy" size={14 * SCALE} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={[styles.detailRow, styles.detailRowLast]}>
+                <Text style={styles.detailLabel}>Order time</Text>
+                <Text style={styles.detailValue}>{orderData.orderTime}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Payment Account Card (All Steps) */}
+        {currentStep >= 1 && (
+          <View style={styles.paymentAccountCard}>
+            <View style={styles.paymentAccountHeader}>
+              <View style={styles.paymentAccountHeaderLeft}>
+                <Text style={styles.paymentAccountTitle}>Payment Account</Text>
+                <Text style={styles.paymentAccountSubtitle}>
+                  {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2')
+                    ? 'Pay via Rhinoxpay id'
+                    : 'Pay to the account below'}
+                </Text>
+              </View>
+              {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') && (
+                <TouchableOpacity style={styles.payNowButton} onPress={handlePayNow}>
+                  <Text style={styles.payNowButtonText}>Pay Now</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {/* RhinoxPay ID Payment Method */}
+            {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') ? (
+              <View style={styles.rhinoxPayCard}>
+                <Text style={styles.rhinoxPayLabel}>Rhinoxpay ID</Text>
+                <Text style={styles.rhinoxPayValue}>NGN1234</Text>
+              </View>
+            ) : (
+              <>
+                <View style={styles.amountToPaySection}>
+                  <Text style={styles.amountToPayLabel}>Amount to pay</Text>
+                  <Text style={styles.amountToPayValue}>{orderData.amountToPay}</Text>
+                </View>
+                <View style={styles.paymentAccountDetails}>
+                  <View style={[styles.detailRow, { borderTopRightRadius: 10, borderTopLeftRadius: 10, borderBottomWidth: 1, }]}>
+                    <Text style={styles.detailLabel}>Bank Name</Text>
+                    <Text style={styles.detailValue}>{orderData.bankName}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Account Number</Text>
+                    <View style={styles.accountNumberRow}>
+                      <Text style={styles.detailValue}>{orderData.accountNumber}</Text>
+                      <TouchableOpacity onPress={handleCopyAccountNumber} style={styles.copyButton}>
+                        <MaterialCommunityIcons name="content-copy" size={14 * SCALE} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  <View style={[styles.detailRow, styles.detailRowLast]}>
+                    <Text style={styles.detailLabel}>Account Name</Text>
+                    <Text style={styles.detailValue}>{orderData.accountName}</Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Review Section (Step 4 only) */}
+        {currentStep === 4 && (
+          <View style={styles.reviewCard}>
+            <Text style={styles.reviewTitle}>Leave a review</Text>
+            <Text style={styles.reviewSubtitle}>How was your order</Text>
+            <View style={styles.reviewRatingButtons}>
+              <TouchableOpacity
+                style={[styles.ratingButton, reviewRating === 'positive' && styles.ratingButtonActive, { borderWidth: 0.5, borderColor: '#A9EF45' }]}
+                onPress={() => setReviewRating('positive')}
+              >
+                <View style={styles.ratingButtonInner}>
+                  <Image
+                    source={require('../../../assets/Group 41.png')}
+                    style={styles.ratingIcon}
+                    resizeMode="contain"
+                  />
+                  {reviewRating === 'positive' && <View style={styles.ratingBorder} />}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ratingButton, reviewRating === 'negative' && styles.ratingButtonActiveNegative, { borderWidth: 0.5, borderColor: '#FF0000' }]}
+                onPress={() => setReviewRating('negative')}
+              >
+                <View style={styles.ratingButtonInner}>
+                  <Image
+                    source={require('../../../assets/Group 41 (1).png')}
+                    style={styles.ratingIcon}
+                    resizeMode="contain"
+                  />
+                  {reviewRating === 'negative' && <View style={styles.ratingBorderNegative} />}
+                </View>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.reviewInputContainer}>
+              <TextInput
+                style={styles.reviewInput}
+                value={reviewText}
+                onChangeText={setReviewText}
+                multiline
+                placeholder="Enter your review"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+              />
+              <View style={styles.reviewActions}>
+                <TouchableOpacity style={styles.editButton}>
+                  <Image
+                    source={require('../../../assets/PencilSimpleLine (1).png')}
+                    style={styles.actionIcon}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.deleteButton}>
+                  <Image
+                    source={require('../../../assets/TrashSimple.png')}
+                    style={styles.actionIcon}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.sendButton} onPress={handleSendReview}>
+              <Text style={styles.sendButtonText}>Send</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Action Buttons */}
+      {currentStep === 1 && (
+        <View style={styles.actionButtonsContainer}>
+          {routeParams?.skipInitialScreen ? (
+            // If coming from AdDetails, show "Accept Order" button
+            <>
+              <TouchableOpacity
+                style={styles.awaitingButton}
+                onPress={handleAcceptOrder}
+              >
+                <Text style={styles.awaitingButtonText}>Accept Order</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelButton}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            // Otherwise, show countdown button
+            <>
+              <TouchableOpacity
+                style={styles.awaitingButton}
+                onPress={handleAwaitingButton}
+              >
+                <Text style={styles.awaitingButtonText}>
+                  Awaiting {formatCountdown(countdown)} min
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelButton}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
+
+      {currentStep === 2 && (
+        <View style={styles.actionButtonsContainer}>
+          <TouchableOpacity style={styles.paymentMadeButton} onPress={handlePaymentMade}>
+            <Text style={styles.paymentMadeButtonText}>Payment Made</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.appealButton}>
+            <Text style={styles.appealButtonText}>Appeal</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {currentStep === 3 && (
+        <TouchableOpacity style={styles.appealOrderButton}>
+          <Text style={styles.appealOrderButtonText}>Appeal Order</Text>
+        </TouchableOpacity>
+      )}
+
+      {currentStep === 4 && (
+        <TouchableOpacity style={styles.closeButton}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Warning Modal */}
+      <Modal
+        visible={showWarningModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowWarningModal(false)}
+      >
+        <View style={styles.warningModalOverlay}>
+          <View style={styles.warningModalContent}>
+            <View style={styles.warningIconContainer}>
+              <View style={styles.warningIconCircle}>
+                <MaterialCommunityIcons name="check" size={40 * SCALE} color="#FFFFFF" />
+              </View>
+            </View>
+            <Text style={styles.warningTitle}>Warning</Text>
+            <TouchableOpacity style={styles.confirmationCheckbox}>
+              <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
+              <Text style={styles.confirmationText}>I confirm that i have made payment for this order</Text>
+            </TouchableOpacity>
+            <View style={styles.warningModalButtons}>
+              <TouchableOpacity
+                style={styles.completeButton}
+                onPress={handleWarningComplete}
+              >
+                <Text style={styles.completeButtonText}>Complete</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelModalButton}
+                onPress={() => setShowWarningModal(false)}
+              >
+                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PIN Verification Modal */}
+      <Modal
+        visible={showPinModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowPinModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
+            <View style={styles.pinModalHeader}>
+              <Text style={styles.pinModalTitle}>Verification</Text>
+              <TouchableOpacity onPress={() => setShowPinModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pinIconContainer}>
+              <View style={styles.pinIconCircle}>
+                <Image
+                  source={require('../../../assets/Group 49.png')}
+                  style={styles.pinIcon}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+
+            <View style={styles.pinModalTextContainer}>
+              <Text style={styles.pinInstruction}>Input Pin to Complete p2p Transaction</Text>
+              <Text style={styles.pinAmount}>N2,000,000</Text>
+            </View>
+
+            <View style={styles.pinBar}>
+              <View style={styles.pinBarInner}>
+                {[0, 1, 2, 3, 4].map((index) => {
+                  const hasValue = index < pin.length;
+                  const digit = hasValue ? pin[index] : null;
+                  return (
+                    <View key={index} style={styles.pinSlot}>
+                      {hasValue ? (
+                        <Text style={styles.pinSlotText}>{digit}</Text>
+                      ) : (
+                        <Text style={styles.pinSlotAsterisk}>*</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.numpad}>
+              <View style={styles.numpadRow}>
+                {[1, 2, 3].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                {[4, 5, 6].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                {[7, 8, 9].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                <View style={styles.numpadButton}>
+                  <View style={styles.ghostCircle}>
+                    <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={() => handlePinPress('0')}
+                >
+                  <View
+                    style={[
+                      styles.numpadCircle,
+                      lastPressedButton === '0' && styles.numpadCirclePressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.numpadText,
+                        lastPressedButton === '0' && styles.numpadTextPressed,
+                      ]}
+                    >
+                      0
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={handlePinBackspace}
+                >
+                  <View style={styles.backspaceSquare}>
+                    <MaterialCommunityIcons name="backspace-outline" size={18 * SCALE} color="#FFFFFF" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Security Verification Modal */}
+      <Modal
+        visible={showSecurityModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSecurityModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.securityModalContentBottom}>
+            <View style={styles.securityModalHeader}>
+              <Text style={styles.securityModalTitle}>Security Verification</Text>
+              <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.securityIconContainer}>
+              <View style={styles.securityIconCircle}>
+                <Image
+                  source={require('../../../assets/Group 49.png')}
+                  style={styles.securityIcon}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.securityTitle}>Security Verification</Text>
+            <Text style={styles.securitySubtitle}>Verify via email and your authenticator app</Text>
+
+            <View style={styles.securityInputWrapper}>
+              <Text style={styles.securityInputLabel}>Email Code</Text>
+              <View style={styles.securityInputField}>
+                <TextInput
+                  style={styles.securityInput}
+                  placeholder="Input Code sent to your email"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={emailCode}
+                  onChangeText={setEmailCode}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <View style={styles.securityInputWrapper}>
+              <Text style={styles.securityInputLabel}>Authenticator App Code</Text>
+              <View style={styles.securityInputField}>
+                <TextInput
+                  style={styles.securityInput}
+                  placeholder="Input Code from your authenticator app"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={authenticatorCode}
+                  onChangeText={setAuthenticatorCode}
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.proceedButton, (!emailCode || !authenticatorCode) && styles.proceedButtonDisabled]}
+              onPress={handleSecurityProceed}
+              disabled={!emailCode || !authenticatorCode}
+            >
+              <Text style={styles.proceedButtonText}>Proceed</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* RhinoxPay Payment Modal */}
+      <Modal
+        visible={showRhinoxPayModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowRhinoxPayModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.rhinoxPayModalContent}>
+            <View style={styles.rhinoxPayModalHeader}>
+              <Text style={styles.rhinoxPayModalTitle}>Pay via rhinoxpay</Text>
+              <TouchableOpacity onPress={() => setShowRhinoxPayModal(false)}>
+                <View style={styles.closeIconCircle}>
+                  <MaterialCommunityIcons name="close" size={20 * SCALE} color="#FFFFFF" />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.rhinoxPayModalScroll} showsVerticalScrollIndicator={false}>
+              {/* Select Currency Section */}
+              <View style={styles.selectCurrencySection}>
+                <Text style={styles.selectCurrencyLabel}>Select Currency</Text>
+                <LinearGradient
+                  colors={['#FFFFFF0D', '#A9EF4533']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.balanceCard}
+                >
+                  <View style={styles.balanceCardLeft}>
+                    <Text style={styles.myBalanceLabel}>My Balance</Text>
+                    <View style={styles.balanceAmountRow}>
+                      <Image
+                        source={require('../../../assets/Vector (34).png')}
+                        style={[{ marginBottom: -1, width: 18, height: 16 }]}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.balanceAmount}>N200,000</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.currencySelectorButton}
+                    onPress={() => setShowCountryModal(true)}
+                  >
+                    {(() => {
+                      const countries = [
+                        { id: 1, flag: require('../../../assets/login/nigeria-flag.png') },
+                        { id: 2, flag: require('../../../assets/login/south-africa-flag.png') },
+                        { id: 3, flag: require('../../../assets/login/nigeria-flag.png') },
+                        { id: 4, flag: require('../../../assets/login/south-africa-flag.png') },
+                        { id: 5, flag: require('../../../assets/login/south-africa-flag.png') },
+                        { id: 6, flag: require('../../../assets/login/nigeria-flag.png') },
+                        { id: 7, flag: require('../../../assets/login/south-africa-flag.png') },
+                      ];
+                      const selectedCountryData = countries.find(c => c.id === selectedCountry) || countries[0];
+                      return (
+                        <Image
+                          source={selectedCountryData.flag}
+                          style={styles.currencyFlag}
+                          resizeMode="contain"
+                        />
+                      );
+                    })()}
+                    <Text style={styles.currencySelectorTextModal}>{selectedCountryName}</Text>
+                    <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </LinearGradient>
+              </View>
+
+              {/* Rhinox Pay ID Section */}
+              <View style={styles.rhinoxPayIdSection}>
+                <Text style={styles.rhinoxPayIdLabel}>Rhinox Pay ID</Text>
+                <View style={styles.rhinoxPayIdInput}>
+                  <Text style={styles.rhinoxPayIdPlaceholder}>Rhinoxpay ID</Text>
+                  <Text style={styles.rhinoxPayIdValue}>NGN1234</Text>
+                </View>
+                <View style={styles.amountToPaySectionModal}>
+                <Text style={styles.amountToPayLabelModal}>Amount to Pay</Text>
+                <View style={styles.amountToPayInput}>
+                  <Text style={styles.amountToPayValueModal}>{rhinoxPayAmount}</Text>
+                </View>
+              </View>
+              </View>
+
+              {/* Amount to Pay Section */}
+            
+            </ScrollView>
+
+            <View style={styles.rhinoxPayModalFooter}>
+              <TouchableOpacity style={styles.proceedButtonRhinoxPay} onPress={handleRhinoxPayProceed}>
+                <Text style={styles.proceedButtonRhinoxPayText}>Proceed</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={handleSuccessModalClose}
+      >
+        <View style={styles.successModalOverlay}>
+          <View style={styles.successModalContent}>
+            <View style={styles.successIconCircle}>
+              <MaterialCommunityIcons name="check" size={60 * SCALE} color="#FFFFFF" />
+            </View>
+            <Text style={styles.successTitle}>Complete</Text>
+            <Text style={styles.successMessage}>
+              You have successfully sent N10,000 from your Rhinoxpay NGN wallet
+            </Text>
+            <View style={styles.successModalButtons}>
+              <TouchableOpacity style={styles.viewTransactionButton} onPress={handleSuccessModalClose}>
+                <Text style={styles.viewTransactionButtonText}>View Transaction</Text>
+              </TouchableOpacity>
+              <View style={styles.successModalButtonDivider} />
+              <TouchableOpacity style={styles.cancelSuccessButton} onPress={handleSuccessModalClose}>
+                <Text style={styles.cancelSuccessButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Country Selection Modal */}
+      <Modal
+        visible={showCountryModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCountryModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.countryModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Country</Text>
+              <TouchableOpacity onPress={() => setShowCountryModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.countryModalList} showsVerticalScrollIndicator={false}>
+              {[
+                { id: 1, name: 'Nigeria', flag: require('../../../assets/login/nigeria-flag.png') },
+                { id: 2, name: 'Botswana', flag: require('../../../assets/login/south-africa-flag.png') },
+                { id: 3, name: 'Ghana', flag: require('../../../assets/login/nigeria-flag.png') },
+                { id: 4, name: 'Kenya', flag: require('../../../assets/login/south-africa-flag.png') },
+                { id: 5, name: 'South Africa', flag: require('../../../assets/login/south-africa-flag.png') },
+                { id: 6, name: 'Tanzania', flag: require('../../../assets/login/nigeria-flag.png') },
+                { id: 7, name: 'Uganda', flag: require('../../../assets/login/south-africa-flag.png') },
+              ].map((country) => {
+                const isSelected = selectedCountry === country.id;
+                return (
+                  <TouchableOpacity
+                    key={country.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(country.id);
+                      setSelectedCountryName(country.name);
+                      setShowCountryModal(false);
+                    }}
+                  >
+                    <Image
+                      source={country.flag}
+                      style={styles.countryFlagModal}
+                      resizeMode="contain"
+                    />
+                    <Text style={styles.countryName}>{country.name}</Text>
+                    <MaterialCommunityIcons
+                      name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.countryModalFooter}>
+              <TouchableOpacity
+                style={styles.applyButton}
+                onPress={() => setShowCountryModal(false)}
+              >
+                <Text style={styles.applyButtonText}>Apply</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+};
+
+export default BuyOrder;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#020c19',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 15 * SCALE,
+    paddingBottom: 20 * SCALE,
+  },
+  backButton: {
+    width: 40 * SCALE,
+    height: 40 * SCALE,
+  },
+  iconCircle: {
+    width: 40 * SCALE,
+    height: 40 * SCALE,
+    borderRadius: 20 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 20 * SCALE,
+    paddingBottom: 100 * SCALE,
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20 * SCALE,
+    marginBottom: 10 * SCALE,
+    gap: 10 * SCALE,
+  },
+  progressBar: {
+    flex: 1,
+    height: 7 * SCALE,
+    borderRadius: 3.5 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  progressBarActive: {
+    backgroundColor: '#A9EF45',
+  },
+  statusSection: {
+    paddingHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  statusText: {
+    fontSize: 16 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+  },
+  amountSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  amountText: {
+    fontSize: 40 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  openChatButton: {
+    borderWidth: 1,
+    borderColor: '#A9EF45',
+    borderRadius: 17.5 * SCALE,
+    paddingHorizontal: 12 * SCALE,
+    paddingVertical: 6.5 * SCALE,
+    position: 'relative',
+  },
+  openChatText: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  chatNotificationDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 9 * SCALE,
+    height: 9 * SCALE,
+    borderRadius: 4.5 * SCALE,
+    backgroundColor: '#FF0000',
+  },
+  vendorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  vendorAvatar: {
+    width: 35 * SCALE,
+    height: 35 * SCALE,
+    borderRadius: 17.5 * SCALE,
+    marginRight: 12 * SCALE,
+  },
+  vendorInfo: {
+    flex: 1,
+  },
+  vendorName: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  vendorStatus: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  vendorRating: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  rateCard: {
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    overflow: 'hidden',
+  },
+  rateTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+  },
+  rateContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rateLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  rateRefresh: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  rateValue: {
+    fontSize: 24 * SCALE,
+    fontWeight: '600',
+    color: '#A9EF45',
+  },
+  orderCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 14 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  orderCardTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 20 * SCALE,
+  },
+  currencySelectors: {
+    flexDirection: 'row',
+    gap: 10 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  currencySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 100 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 8 * SCALE,
+    gap: 4 * SCALE,
+  },
+  currencySelectorActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  currencySelectorText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  currencySelectorTextActive: {
+    color: '#000000',
+  },
+  amountSection: {
+    marginBottom: 20 * SCALE,
+    backgroundColor: '#FFFFFF08',
+    // padding: 10 * SCALE,
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  amountLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginBottom: 6 * SCALE,
+    textAlign: 'center',
+    marginTop: 10 * SCALE,
+  },
+  amountInput: {
+    fontSize: 24 * SCALE,
+    fontWeight: '600',
+    textAlign: 'center',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+    minHeight: 30 * SCALE,
+  },
+  balanceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF08',
+    padding: 10 * SCALE,
+    borderBottomRightRadius: 10 * SCALE,
+    borderBottomLeftRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  balanceLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  balanceValue: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#A9EF45',
+  },
+  receiveSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20 * SCALE,
+    backgroundColor: '#FFFFFF08',
+    padding: 10 * SCALE,
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+
+  receiveLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  receiveValueContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 100 * SCALE,
+    paddingHorizontal: 12 * SCALE,
+    paddingVertical: 6 * SCALE,
+  },
+  receiveValue: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  payValue: {
+    fontSize: 12 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  paymentMethodField: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 11 * SCALE,
+    height: 60 * SCALE,
+  },
+  paymentMethodText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  placeholder: {
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  buyButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100 * SCALE,
+    paddingVertical: 17 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buyButtonDisabled: {
+    opacity: 0.5,
+  },
+  buyButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#000000',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  paymentModalContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    maxHeight: '90%',
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 15 * SCALE,
+    paddingBottom: 18 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: '#484848',
+  },
+  modalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF0D',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: '#FFFFFF33',
+    paddingHorizontal: 17 * SCALE,
+    height: 60 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginTop: 20 * SCALE,
+    marginBottom: 6 * SCALE,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    marginLeft: 12 * SCALE,
+  },
+  paymentMethodList: {
+    flex: 1,
+    paddingHorizontal: 20 * SCALE,
+    marginTop: 6 * SCALE,
+  },
+  paymentMethodItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF0D',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: '#FFFFFF33',
+    paddingHorizontal: 18 * SCALE,
+    height: 60 * SCALE,
+    marginBottom: 6 * SCALE,
+  },
+  paymentMethodItemText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  applyButtonContainer: {
+    paddingHorizontal: 20 * SCALE,
+    paddingBottom: 22 * SCALE,
+    paddingTop: 20 * SCALE,
+  },
+  applyButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100 * SCALE,
+    paddingVertical: 17 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButtonDisabled: {
+    opacity: 0.5,
+  },
+  applyButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#000000',
+  },
+  // Order Details Styles
+  orderDetailsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 14 * SCALE,
+    paddingTop: 14 * SCALE,
+    paddingBottom: 0,
+    marginBottom: 20 * SCALE,
+  },
+  orderDetailsTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 18 * SCALE,
+  },
+  orderDetailsContent: {
+    gap: 0,
+    paddingBottom: 10 * SCALE,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16 * SCALE,
+    borderBottomWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#FFFFFF0D',
+    paddingHorizontal: 14 * SCALE,
+  },
+  detailRowLast: {
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+    borderBottomRightRadius: 10 * SCALE,
+    borderBottomLeftRadius: 10 * SCALE,
+  },
+  detailLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  detailValue: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    textAlign: 'right',
+  },
+  txIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+  },
+  accountNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+  },
+  copyButton: {
+    padding: 2 * SCALE,
+  },
+  // Payment Account Card Styles
+  paymentAccountCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 14 * SCALE,
+    paddingTop: 14 * SCALE,
+    paddingBottom: 14 * SCALE,
+    // paddingBottom: 0,
+    marginBottom: 20 * SCALE,
+  },
+  paymentAccountHeader: {
+    marginBottom: 20 * SCALE,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  paymentAccountHeaderLeft: {
+    flex: 1,
+  },
+  paymentAccountTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  paymentAccountSubtitle: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  payNowButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 20 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 10 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  payNowButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  amountToPaySection: {
+    alignItems: 'center',
+    marginBottom: 20 * SCALE,
+    paddingVertical: 15 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    // marginHorizontal: 5 * SCALE,
+    marginTop: 6 * SCALE,
+  },
+  amountToPayLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginBottom: 8 * SCALE,
+  },
+  amountToPayValue: {
+    fontSize: 32 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  paymentAccountDetails: {
+    gap: 0,
+    paddingTop: 20 * SCALE,
+  },
+  // RhinoxPay ID Card Styles
+  rhinoxPayCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 14 * SCALE,
+    paddingVertical: 16 * SCALE,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20 * SCALE,
+  },
+  rhinoxPayLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  rhinoxPayValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  // Action Buttons
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    gap: 10 * SCALE,
+  },
+  awaitingButton: {
+    flex: 1,
+    backgroundColor: '#A9EF45',
+    borderRadius: 25 * SCALE,
+    paddingVertical: 17 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  awaitingButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#000000',
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 25 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 17 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  paymentMadeButton: {
+    flex: 1,
+    backgroundColor: '#A9EF45',
+    borderRadius: 25 * SCALE,
+    paddingVertical: 17 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paymentMadeButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#000000',
+  },
+  appealButton: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderRadius: 25 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 17 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appealButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  appealOrderButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 25 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 17 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appealOrderButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 25 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingVertical: 17 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  // Warning Modal Styles
+  warningModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  warningModalContent: {
+    backgroundColor: '#020c19',
+    borderRadius: 20 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 20 * SCALE,
+    paddingBottom: 30 * SCALE,
+    alignItems: 'center',
+    marginHorizontal: 20 * SCALE,
+    maxWidth: SCREEN_WIDTH * 0.9,
+  },
+  warningIconContainer: {
+    marginBottom: 20 * SCALE,
+  },
+  warningIconCircle: {
+    width: 84 * SCALE,
+    height: 84 * SCALE,
+    borderRadius: 42 * SCALE,
+    backgroundColor: '#FFA500',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warningTitle: {
+    fontSize: 20 * SCALE,
+    fontWeight: '600',
+    color: '#FFA500',
+    marginBottom: 20 * SCALE,
+  },
+  confirmationCheckbox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 30 * SCALE,
+    gap: 12 * SCALE,
+  },
+  confirmationText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  warningModalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    // paddingTop: 20 * SCALE,
+    alignItems: 'center',
+  },
+  completeButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12 * SCALE,
+    borderRightWidth: 0.3,
+    borderRightColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  completeButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#A9EF45',
+  },
+  cancelModalButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12 * SCALE,
+  },
+  cancelModalButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  // PIN Modal Styles
+  pinModalContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingBottom: 20 * SCALE,
+    maxHeight: '90%',
+  },
+  pinModalContentFull: {
+    maxHeight: '95%',
+  },
+  pinModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10 * SCALE,
+    paddingTop: 15 * SCALE,
+    paddingBottom: 18 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  pinModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  pinIconContainer: {
+    alignItems: 'center',
+    marginTop: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  pinIconCircle: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinIcon: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+  },
+  pinModalTextContainer: {
+    alignItems: 'center',
+    marginBottom: 22 * SCALE,
+  },
+  pinInstruction: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  pinAmount: {
+    fontSize: 36 * SCALE,
+    fontWeight: '600',
+    color: '#A9EF45',
+    textAlign: 'center',
+  },
+  pinBar: {
+    alignItems: 'center',
+    marginTop: 22 * SCALE,
+    marginBottom: 35 * SCALE,
+  },
+  pinBarInner: {
+    height: 60 * SCALE,
+    width: 248 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 100 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24 * SCALE,
+  },
+  pinSlot: {
+    width: 28 * SCALE,
+    height: 28 * SCALE,
+    borderRadius: 18 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinSlotText: {
+    fontSize: 20 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  pinSlotAsterisk: {
+    fontSize: 19.2 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  numpad: {
+    marginTop: 0,
+    paddingHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  numpadRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20 * SCALE,
+  },
+  numpadButton: {
+    width: 117 * SCALE,
+    alignItems: 'center',
+  },
+  numpadCircle: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numpadCirclePressed: {
+    backgroundColor: '#A9EF45',
+  },
+  numpadText: {
+    fontSize: 19.2 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  numpadTextPressed: {
+    color: '#000000',
+  },
+  ghostCircle: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backspaceSquare: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Security Verification Modal Styles
+  securityModalContent: {
+    backgroundColor: '#020c19',
+    borderRadius: 20 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 30 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    alignItems: 'center',
+    maxHeight: '90%',
+  },
+  securityModalContentBottom: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 20 * SCALE,
+    paddingBottom: 30 * SCALE,
+    alignItems: 'center',
+    maxHeight: '90%',
+  },
+  securityModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: 10 * SCALE,
+    paddingVertical: 10 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: 20 * SCALE,
+  },
+  securityModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  securityIconContainer: {
+    alignItems: 'center',
+    marginTop: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  securityIconCircle: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  securityIcon: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+  },
+  securityTitle: {
+    fontSize: 20 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 8 * SCALE,
+    textAlign: 'center',
+  },
+  securitySubtitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    marginBottom: 30 * SCALE,
+  },
+  securityInputWrapper: {
+    width: '100%',
+    marginBottom: 20 * SCALE,
+    paddingHorizontal: 10 * SCALE,
+  },
+  securityInputLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    marginBottom: 8 * SCALE,
+  },
+  securityInputField: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 11 * SCALE,
+    minHeight: 60 * SCALE,
+    justifyContent: 'center',
+  },
+  securityInput: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    paddingVertical: 0,
+  },
+  proceedButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100 * SCALE,
+    paddingVertical: 17 * SCALE,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20 * SCALE,
+    minHeight: 60 * SCALE,
+    marginHorizontal: 10 * SCALE,
+  },
+  proceedButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+  },
+  proceedButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  // Review Section Styles
+  reviewCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 14 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  reviewTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 20 * SCALE,
+  },
+  reviewSubtitle: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    marginBottom: 20 * SCALE,
+  },
+  reviewRatingButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 23 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  ratingButton: {
+    width: 48 * SCALE,
+    height: 48 * SCALE,
+    borderRadius: 24 * SCALE,
+    // backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  ratingButtonInner: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  ratingIcon: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+  },
+  ratingBorder: {
+    position: 'absolute',
+    width: 48 * SCALE,
+    height: 48 * SCALE,
+    borderRadius: 24 * SCALE,
+    borderWidth: 2 * SCALE,
+    borderColor: '#A9EF45',
+  },
+  ratingBorderNegative: {
+    position: 'absolute',
+    width: 48 * SCALE,
+    height: 48 * SCALE,
+    borderRadius: 24 * SCALE,
+    borderWidth: 2 * SCALE,
+    borderColor: '#FF0000',
+  },
+  ratingButtonActive: {
+    backgroundColor: '#A9EF45',
+  },
+  ratingButtonActiveNegative: {
+    backgroundColor: '#FF0000',
+  },
+  reviewInputContainer: {
+    marginBottom: 20 * SCALE,
+    position: 'relative',
+  },
+  reviewInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 14 * SCALE,
+    minHeight: 118 * SCALE,
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    textAlignVertical: 'top',
+  },
+  reviewActions: {
+    position: 'absolute',
+    bottom: 14 * SCALE,
+    right: 14 * SCALE,
+    flexDirection: 'row',
+    gap: 15 * SCALE,
+  },
+  editButton: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+  },
+  deleteButton: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+  },
+  actionIcon: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+  },
+  sendButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 17.5 * SCALE,
+    paddingHorizontal: 27 * SCALE,
+    paddingVertical: 12 * SCALE,
+    alignSelf: 'flex-start',
+  },
+  sendButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#000000',
+  },
+  // RhinoxPay Modal Styles
+  rhinoxPayModalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingTop: 20 * SCALE,
+    paddingBottom: 30 * SCALE,
+    maxHeight: '60%',
+    flex: 1,
+  },
+  rhinoxPayModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  rhinoxPayModalTitle: {
+    fontSize: 18 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  closeIconCircle: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+    backgroundColor: '#000000',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rhinoxPayModalScroll: {
+    flex: 1,
+    paddingHorizontal: 20 * SCALE,
+  },
+  selectCurrencySection: {
+    marginTop: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  selectCurrencyLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+  },
+  balanceCard: {
+    borderRadius: 15 * SCALE,
+    padding: 15 * SCALE,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  balanceCardLeft: {
+    flex: 1,
+  },
+  myBalanceLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 8 * SCALE,
+  },
+  balanceAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+  },
+  balanceAmount: {
+    fontSize: 20 * SCALE,
+    fontWeight: '600',
+    color: '#A9EF45',
+  },
+  currencySelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 100,
+    paddingHorizontal: 12 * SCALE,
+    paddingVertical: 9 * SCALE,
+  },
+  currencyFlag: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+    borderRadius: 12 * SCALE,
+  },
+  currencySelectorTextModal: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  rhinoxPayIdSection: {
+    marginBottom: 20 * SCALE,
+    backgroundColor: '#FFFFFF08',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 15 * SCALE,
+  },
+  rhinoxPayIdLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+  },
+  rhinoxPayIdInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 1,
+    borderColor: '#A9EF45',
+    paddingHorizontal: 14 * SCALE,
+    paddingVertical: 16 * SCALE,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  rhinoxPayIdPlaceholder: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  rhinoxPayIdValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  amountToPaySectionModal: {
+    marginBottom: 20 * SCALE,
+    marginTop: 20 * SCALE,
+  },
+  amountToPayLabelModal: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+  },
+  amountToPayInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 14 * SCALE,
+    paddingVertical: 16 * SCALE,
+  },
+  amountToPayValueModal: {
+    fontSize: 16 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  rhinoxPayModalFooter: {
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 20 * SCALE,
+  },
+  proceedButtonRhinoxPay: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 25 * SCALE,
+    paddingVertical: 17 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  proceedButtonRhinoxPayText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  // Success Modal Styles
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  successModalContent: {
+    backgroundColor: '#020c19',
+    borderRadius: 20 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 30 * SCALE,
+    paddingBottom: 20 * SCALE,
+    alignItems: 'center',
+    marginHorizontal: 20 * SCALE,
+    maxWidth: SCREEN_WIDTH * 0.9,
+  },
+  successIconCircle: {
+    width: 100 * SCALE,
+    height: 100 * SCALE,
+    borderRadius: 50 * SCALE,
+    backgroundColor: '#A9EF45',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20 * SCALE,
+  },
+  successTitle: {
+    fontSize: 24 * SCALE,
+    fontWeight: '600',
+    color: '#A9EF45',
+    marginBottom: 15 * SCALE,
+  },
+  successMessage: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 30 * SCALE,
+    paddingHorizontal: 10 * SCALE,
+  },
+  successModalButtons: {
+    flexDirection: 'row',
+    width: '100%',
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  viewTransactionButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 15 * SCALE,
+    borderRightWidth: 0.3,
+    borderRightColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  viewTransactionButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#A9EF45',
+  },
+  successModalButtonDivider: {
+    width: 0.3,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  cancelSuccessButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 15 * SCALE,
+  },
+  cancelSuccessButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  // Country Modal Styles
+  countryModalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    padding: 10 * SCALE,
+    maxHeight: '80%',
+  },
+  countryModalList: {
+    maxHeight: 390 * SCALE,
+    padding: 10 * SCALE,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20 * SCALE,
+    marginTop: 10 * SCALE,
+    borderBottomWidth: 0.3,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10 * SCALE,
+  },
+  countryFlagModal: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+    borderRadius: 12 * SCALE,
+    marginRight: 15 * SCALE,
+  },
+  countryName: {
+    flex: 1,
+    fontSize: 11.2 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  countryModalFooter: {
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 20 * SCALE,
+  },
+});
+

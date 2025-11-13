@@ -1,0 +1,726 @@
+import React, { useState } from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    ScrollView,
+    TouchableOpacity,
+    Image,
+    StatusBar,
+    Modal,
+    Dimensions,
+    TextInput,
+} from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SCALE = 0.9;
+
+interface Chat {
+    id: string;
+    agentName: string;
+    agentAvatar: any;
+    lastMessage: string;
+    date: string;
+    unreadCount: number;
+    status: 'active' | 'resolved' | 'appealed';
+}
+
+const Support = () => {
+    const navigation = useNavigation();
+    const [activeTab, setActiveTab] = useState<'active' | 'resolved' | 'appealed'>('active');
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [showReasonModal, setShowReasonModal] = useState(false);
+    const [chatName, setChatName] = useState('Qamardeen Abdul Malik');
+    const [chatEmail, setChatEmail] = useState('abcdfgett@gmail.com');
+    const [selectedReason, setSelectedReason] = useState<string>('');
+    const [reasonOptions] = useState([
+        { id: 'payment-issue', label: 'Payment Issue' },
+        { id: 'account-issue', label: 'Account issue' },
+        { id: 'p2p-issue', label: 'P2P Issue' },
+    ]);
+
+    // Sample chat data - TODO: Replace with API call
+    const [chats] = useState<Chat[]>([
+        {
+            id: '1',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '2',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '3',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '4',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '5',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '6',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '7',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '8',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+        {
+            id: '9',
+            agentName: 'RhinoX Agent',
+            agentAvatar: require('../../../assets/Frame 2398.png'),
+            lastMessage: 'I need assistance with..',
+            date: '20 Oct, 2025',
+            unreadCount: 1,
+            status: 'active',
+        },
+    ]);
+
+    // Hide bottom tab bar when focused
+    useFocusEffect(
+        React.useCallback(() => {
+            const parent = navigation.getParent();
+            if (parent) {
+                parent.setOptions({
+                    tabBarStyle: { display: 'none' },
+                });
+            }
+            return () => {
+                if (parent) {
+                    parent.setOptions({
+                        tabBarStyle: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
+                            borderTopWidth: 0,
+                            height: 75 * SCALE,
+                            paddingBottom: 10,
+                            paddingTop: 0,
+                            position: 'absolute',
+                            bottom: 26 * SCALE,
+                            borderRadius: 100,
+                            overflow: 'hidden',
+                            elevation: 0,
+                            width: SCREEN_WIDTH * 0.86,
+                            marginLeft: 30,
+                            shadowOpacity: 0,
+                        },
+                    });
+                }
+            };
+        }, [navigation])
+    );
+
+    const filteredChats = chats.filter((chat) => chat.status === activeTab);
+
+    const handleNewChat = () => {
+        setChatName('Qamardeen Abdul Malik');
+        setChatEmail('abcdfgett@gmail.com');
+        setSelectedReason('');
+        setShowDetailsModal(true);
+    };
+
+    const handleSaveDetails = () => {
+        if (chatName && chatEmail && selectedReason) {
+            setShowDetailsModal(false);
+            // Navigate to chat screen with details
+            (navigation as any).navigate('Settings', {
+                screen: 'ChatScreen',
+                params: {
+                    chatName,
+                    chatEmail,
+                    reason: reasonOptions.find((r) => r.id === selectedReason)?.label || 'Payment Support',
+                },
+            });
+            // Reset form
+            setSelectedReason('');
+        } else if (chatName && chatEmail) {
+            // If name and email are filled but no reason, open reason modal
+            setShowDetailsModal(false);
+            setShowReasonModal(true);
+        }
+    };
+
+    const handleSelectReason = () => {
+        setShowDetailsModal(false);
+        setShowReasonModal(true);
+    };
+
+    const handleApplyReason = () => {
+        if (selectedReason) {
+            setShowReasonModal(false);
+            setShowDetailsModal(true);
+        }
+    };
+
+    const handleChatPress = (chat: Chat) => {
+        (navigation as any).navigate('Settings', {
+            screen: 'ChatScreen',
+            params: {
+                chatId: chat.id,
+                chatName: chat.agentName,
+                chatEmail: 'abcdefgh@gmail.com',
+                reason: 'Payment Support',
+            },
+        });
+    };
+
+    return (
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" backgroundColor="#020c19" />
+
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity
+                    style={styles.backButton}
+                    onPress={() => navigation.goBack()}
+                >
+                    <View style={[styles.iconCircle, {width: 40, height: 40, backgroundColor:'#FFFFFF08'}]}>
+                        <MaterialCommunityIcons name="chevron-left" size={24 * 1} color="#FFFFFF" />
+                    </View>
+                </TouchableOpacity>
+                <Text style={[styles.headerTitle]}>Support</Text>
+                <TouchableOpacity style={styles.newChatButton} onPress={handleNewChat}>
+                    <View style={{ backgroundColor: '#A9EF45', borderRadius: 100, padding: 10, width: 50 * SCALE, height: 50 * SCALE, alignItems: 'center', justifyContent: 'center' }}>
+                        <View style={styles.iconCircle}>
+                            <MaterialCommunityIcons name="plus" size={22 * SCALE} color="#A9EF45" />
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabsContainer}>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'active' && styles.tabActive]}
+                    onPress={() => setActiveTab('active')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'active' && styles.tabTextActive]}>
+                        Active
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'resolved' && styles.tabActive]}
+                    onPress={() => setActiveTab('resolved')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'resolved' && styles.tabTextActive]}>
+                        Resolved
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.tab, activeTab === 'appealed' && styles.tabActive]}
+                    onPress={() => setActiveTab('appealed')}
+                >
+                    <Text style={[styles.tabText, activeTab === 'appealed' && styles.tabTextActive]}>
+                        Appealed
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Chat List */}
+            {filteredChats.length > 0 ? (
+                <ScrollView style={styles.chatList} showsVerticalScrollIndicator={false}>
+                    <Text style={styles.sectionTitle}>Active Chats</Text>
+                    {filteredChats.map((chat) => (
+                        <TouchableOpacity
+                            key={chat.id}
+                            style={styles.chatItem}
+                            onPress={() => handleChatPress(chat)}
+                        >
+                            <Image source={chat.agentAvatar} style={styles.agentAvatar} />
+                            <View style={styles.chatInfo}>
+                                <Text style={styles.agentName}>{chat.agentName}</Text>
+                                <Text style={styles.lastMessage}>{chat.lastMessage}</Text>
+                            </View>
+                            <View style={styles.chatMeta}>
+                                {chat.unreadCount > 0 && (
+                                    <View style={styles.unreadBadge}>
+                                        <Text style={styles.unreadText}>{chat.unreadCount}</Text>
+                                    </View>
+                                )}
+                                <Text style={styles.chatDate}>{chat.date}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+            ) : (
+                <View style={styles.emptyState}>
+                    <View style={styles.emptyIcon}>
+                        <Image
+                            source={require('../../../assets/Vector (37).png')}
+                            style={[{ marginBottom: -1, width: 111, height: 111 }]}
+                            resizeMode="cover"
+                        />
+                    </View>
+                    <Text style={styles.emptyText}>You have not started any chat</Text>
+                    <TouchableOpacity style={styles.newChatButtonLarge} onPress={handleNewChat}>
+                        <Text style={styles.newChatButtonText}>New Chat</Text>
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* Details Modal */}
+            <Modal
+                visible={showDetailsModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowDetailsModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        {/* Modal Header */}
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Details</Text>
+                            <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
+                                <View style={styles.closeButtonCircle}>
+                                    <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Form Fields */}
+                        <View style={styles.formContainer}>
+                            <View style={styles.formField}>
+                                <Text style={styles.fieldLabel}>Name</Text>
+                                <View style={styles.inputContainer}>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="Qamardeen Abdul Malik"
+                                        placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                        value={chatName}
+                                        onChangeText={setChatName}
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.formField}>
+                                <Text style={styles.fieldLabel}>Email</Text>
+                                <View style={styles.inputContainer}>
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="abcdfgett@gmail.com"
+                                        placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                        value={chatEmail}
+                                        onChangeText={setChatEmail}
+                                        keyboardType="email-address"
+                                        autoCapitalize="none"
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={styles.formField}>
+                                <Text style={styles.fieldLabel}>Reason</Text>
+                                <TouchableOpacity
+                                    style={styles.inputContainer}
+                                    onPress={handleSelectReason}
+                                >
+                                    <Text style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
+                                        {selectedReason ? reasonOptions.find((r) => r.id === selectedReason)?.label : 'Select reason'}
+                                    </Text>
+                                    <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
+                        {/* Save Button */}
+                        <TouchableOpacity
+                            style={[styles.saveButton, (!chatName || !chatEmail) && styles.saveButtonDisabled]}
+                            onPress={handleSaveDetails}
+                            disabled={!chatName || !chatEmail}
+                        >
+                            <Text style={styles.saveButtonText}>Save</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Select Reason Modal */}
+            <Modal
+                visible={showReasonModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowReasonModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        {/* Modal Header */}
+                        <View style={styles.modalHeader}>
+                            <Text style={styles.modalTitle}>Select reason</Text>
+                            <TouchableOpacity onPress={() => setShowReasonModal(false)}>
+                                <View style={styles.closeButtonCircle}>
+                                    <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Reason Options */}
+                        <View style={styles.reasonList}>
+                            {reasonOptions.map((option) => (
+                                <TouchableOpacity
+                                    key={option.id}
+                                    style={styles.reasonItem}
+                                    onPress={() => setSelectedReason(option.id)}
+                                >
+                                    <Text style={styles.reasonText}>{option.label}</Text>
+                                    <View style={[
+                                        styles.radioButton,
+                                        selectedReason === option.id && styles.radioButtonActive
+                                    ]}>
+                                        {selectedReason === option.id && <View style={styles.radioButtonSelected} />}
+                                    </View>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {/* Apply Button */}
+                        <TouchableOpacity
+                            style={[styles.saveButton, !selectedReason && styles.saveButtonDisabled]}
+                            onPress={handleApplyReason}
+                            disabled={!selectedReason}
+                        >
+                            <Text style={styles.saveButtonText}>Apply</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+        </View>
+    );
+};
+
+export default Support;
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#020c19',
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20 * SCALE,
+        paddingTop: 15 * 1,
+        paddingBottom: 20 * SCALE,
+    },
+    backButton: {
+        width: 40 * SCALE,
+        height: 40 * SCALE,
+    },
+    newChatButton: {
+        width: 40 * SCALE,
+        height: 40 * SCALE,
+    },
+    iconCircle: {
+        width: 25 * 1,
+        height: 25 * 1,
+        borderRadius: 100 * SCALE,
+        backgroundColor: '#000',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    headerTitle: {
+        fontSize: 16 * 1,
+        fontWeight: '500',
+        color: '#FFFFFF',
+    },
+    tabsContainer: {
+        flexDirection: 'row',
+        marginHorizontal: 22 * SCALE,
+        marginTop: 20 * SCALE,
+        marginBottom: 20 * SCALE,
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 100 * SCALE,
+        padding: 4 * SCALE,
+    },
+    tab: {
+        flex: 1,
+        paddingVertical: 12 * SCALE,
+        alignItems: 'center',
+        borderRadius: 100 * SCALE,
+    },
+    tabActive: {
+        backgroundColor: '#A9EF45',
+    },
+    tabText: {
+        fontSize: 12 * 1,
+        fontWeight: '400',
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+    tabTextActive: {
+        color: '#000000',
+    },
+    chatList: {
+        flex: 1,
+        paddingHorizontal: 20 * SCALE,
+        backgroundColor: '#FFFFFF08',
+        borderWidth: 0.3,
+        borderColor: '#FFFFFF33',
+        borderRadius: 15 * 1,
+        marginHorizontal: 20,
+        marginBottom: 20,
+
+    },
+    sectionTitle: {
+        fontSize: 14 * SCALE,
+        fontWeight: '400',
+        color: '#FFFFFF',
+        marginBottom: 10 * SCALE,
+        marginTop: 10
+    },
+    chatItem: {
+        flexDirection: 'row',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 10 * SCALE,
+        padding: 14 * SCALE,
+        marginBottom: 12 * SCALE,
+        alignItems: 'center',
+    },
+    agentAvatar: {
+        width: 45 * SCALE,
+        height: 45 * SCALE,
+        borderRadius: 22.5 * SCALE,
+        marginRight: 12 * SCALE,
+    },
+    chatInfo: {
+        flex: 1,
+    },
+    agentName: {
+        fontSize: 14 * 1,
+        fontWeight: '400',
+        color: '#FFFFFF',
+        marginBottom: 4 * SCALE,
+    },
+    lastMessage: {
+        fontSize: 10 * 1,
+        fontWeight: '300',
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+    chatMeta: {
+        alignItems: 'flex-end',
+    },
+    unreadBadge: {
+        width: 16 * SCALE,
+        height: 16 * SCALE,
+        borderRadius: 8 * SCALE,
+        backgroundColor: '#A9EF45',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 4 * SCALE,
+    },
+    unreadText: {
+        fontSize: 10 * SCALE,
+        fontWeight: '400',
+        color: '#000000',
+    },
+    chatDate: {
+        fontSize: 8 * SCALE,
+        marginTop: 5,
+        fontWeight: '300',
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+    emptyState: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 20 * SCALE,
+    },
+    emptyIcon: {
+        marginBottom: 20 * SCALE,
+    },
+    emptyText: {
+        fontSize: 14 * SCALE,
+        fontWeight: '400',
+        color: 'rgba(255, 255, 255, 0.5)',
+        marginBottom: 40 * SCALE,
+    },
+    newChatButtonLarge: {
+        backgroundColor: '#A9EF45',
+        paddingHorizontal: 75 * SCALE,
+        paddingVertical: 17 * SCALE,
+        borderRadius: 100 * SCALE,
+    },
+    newChatButtonText: {
+        fontSize: 14 * SCALE,
+        fontWeight: '400',
+        color: '#000000',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#020c19',
+        borderTopLeftRadius: 20 * SCALE,
+        borderTopRightRadius: 20 * SCALE,
+        paddingBottom: 40 * SCALE,
+        maxHeight: '90%',
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 10 * SCALE,
+        borderBottomWidth: 0.3,
+        paddingHorizontal:20,
+        borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+        marginBottom: 10 * SCALE,
+        paddingVertical:12,
+      },
+      modalTitle: {
+        fontSize: 16 * 1,
+        fontWeight: '500',
+        color: '#FFFFFF',
+        flex: 1,
+      },
+    closeButtonCircle: {
+        width: 24 * SCALE,
+        height: 24 * SCALE,
+        borderRadius: 100 * SCALE,
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    formContainer: {
+        paddingHorizontal: 20 * SCALE,
+    },
+    formField: {
+        marginBottom: 20 * SCALE,
+    },
+    fieldLabel: {
+        fontSize: 14 * 1,
+        fontWeight: '400',
+        color: '#FFFFFF',
+        marginBottom: 8 * SCALE,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 10 * SCALE,
+        paddingHorizontal: 11 * SCALE,
+        paddingVertical: 21 * SCALE,
+        borderWidth: 0.3,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+        minHeight: 60 * SCALE,
+    },
+    input: {
+        flex: 1,
+        fontSize: 14 * 1,
+        fontWeight: '400',
+        color: '#FFFFFF',
+        padding: 0,
+    },
+    inputPlaceholder: {
+        color: 'rgba(255, 255, 255, 0.5)',
+    },
+    saveButton: {
+        backgroundColor: '#A9EF45',
+        marginHorizontal: 20 * SCALE,
+        marginTop: 20 * SCALE,
+        paddingVertical: 17 * SCALE,
+        borderRadius: 100 * SCALE,
+        alignItems: 'center',
+    },
+    saveButtonDisabled: {
+        opacity: 0.5,
+    },
+    saveButtonText: {
+        fontSize: 14 * 1,
+        fontWeight: '400',
+        color: '#000000',
+    },
+    reasonList: {
+        paddingHorizontal: 20 * SCALE,
+        // paddingTop: 20 * SCALE,
+        // padding: 10 * SCALE,
+    },
+    reasonItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 22 * SCALE,
+        borderBottomWidth: 0.3,
+        backgroundColor: '#FFFFFF0D',
+        padding: 15 * SCALE,
+        borderRadius: 10 * SCALE,
+        marginTop: 10 * SCALE,
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        minHeight: 60 * SCALE,
+    },
+    reasonText: {
+        fontSize: 14 * 1,
+        fontWeight: '400',
+        color: '#FFFFFF',
+    },
+    radioButton: {
+        width: 24 * SCALE,
+        height: 24 * SCALE,
+        borderRadius: 12 * SCALE,
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'transparent',
+    },
+    radioButtonActive: {
+        borderColor: '#A9EF45',
+        backgroundColor: 'rgba(169, 239, 69, 0.1)',
+    },
+    radioButtonSelected: {
+        width: 12 * SCALE,
+        height: 12 * SCALE,
+        borderRadius: 6 * SCALE,
+        backgroundColor: '#A9EF45',
+    },
+});
+
