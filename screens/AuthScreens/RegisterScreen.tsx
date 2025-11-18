@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   TextInput,
   TouchableOpacity,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const COUNTRIES = [
   { id: 1, name: 'Nigeria', flag: '🇳🇬', selected: false },
@@ -133,29 +133,29 @@ const RegisterScreen = () => {
         {/* Main Content */}
         <View style={styles.mainContent}>
           <View style={styles.titleSection}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Create a free account today</Text>
+            <ThemedText style={styles.title}>Create Account</ThemedText>
+            <ThemedText style={styles.subtitle}>Create a free account today</ThemedText>
           </View>
 
           <View style={styles.formContainer}>
             <View style={styles.formInner}>
               {/* Country Selector */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Country</Text>
+                <ThemedText style={styles.inputLabel}>Country</ThemedText>
                 <TouchableOpacity
                   style={styles.inputWrapper}
                   onPress={() => setShowCountryModal(true)}
                 >
-                  <Text style={[styles.input, !country && styles.placeholderStyle]}>
+                  <ThemedText style={[styles.input, !country && styles.placeholderStyle]}>
                     {country || 'Select your country'}
-                  </Text>
+                  </ThemedText>
                   <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
                 </TouchableOpacity>
               </View>
 
               {/* First Name */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>First Name</Text>
+                <ThemedText style={styles.inputLabel}>First Name</ThemedText>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
@@ -169,7 +169,7 @@ const RegisterScreen = () => {
 
               {/* Last Name */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Last Name</Text>
+                <ThemedText style={styles.inputLabel}>Last Name</ThemedText>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
@@ -183,7 +183,7 @@ const RegisterScreen = () => {
 
               {/* Email */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email</Text>
+                <ThemedText style={styles.inputLabel}>Email</ThemedText>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
@@ -195,14 +195,14 @@ const RegisterScreen = () => {
                     autoCapitalize="none"
                   />
                   <TouchableOpacity onPress={() => setShowEmailVerifyModal(true)}>
-                    <Text style={styles.verifyText}>Verify</Text>
+                    <ThemedText style={styles.verifyText}>Verify</ThemedText>
                   </TouchableOpacity>
                 </View>
               </View>
 
               {/* Phone */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Phone number</Text>
+                <ThemedText style={styles.inputLabel}>Phone number</ThemedText>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
@@ -213,14 +213,14 @@ const RegisterScreen = () => {
                     keyboardType="phone-pad"
                   />
                   <TouchableOpacity onPress={() => setShowPhoneVerifyModal(true)}>
-                    <Text style={styles.verifyText}>Verify</Text>
+                    <ThemedText style={styles.verifyText}>Verify</ThemedText>
                   </TouchableOpacity>
                 </View>
               </View>
 
               {/* Password */}
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Password</Text>
+                <ThemedText style={styles.inputLabel}>Password</ThemedText>
                 <View style={styles.inputWrapper}>
                   <TextInput
                     style={styles.input}
@@ -251,7 +251,7 @@ const RegisterScreen = () => {
                     size={11.2}
                     color={passwordValid.noNameEmail ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                   />
-                  <Text style={styles.requirementText}>Must not contain your name or email</Text>
+                  <ThemedText style={styles.requirementText}>Must not contain your name or email</ThemedText>
                 </View>
                 <View style={styles.requirementRow}>
                   <MaterialCommunityIcons
@@ -259,7 +259,7 @@ const RegisterScreen = () => {
                     size={11.2}
                     color={passwordValid.minLength ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                   />
-                  <Text style={styles.requirementText}>Must be at least 8 characters</Text>
+                  <ThemedText style={styles.requirementText}>Must be at least 8 characters</ThemedText>
                 </View>
                 <View style={styles.requirementRow}>
                   <MaterialCommunityIcons
@@ -267,7 +267,7 @@ const RegisterScreen = () => {
                     size={11.2}
                     color={passwordValid.hasLetterOrSymbol ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                   />
-                  <Text style={styles.requirementText}>Must have a letter or symbol</Text>
+                  <ThemedText style={styles.requirementText}>Must have a letter or symbol</ThemedText>
                 </View>
               </View>
             )}
@@ -282,15 +282,15 @@ const RegisterScreen = () => {
                   <MaterialCommunityIcons name="check" size={16} color="#000" />
                 )}
               </View>
-              <Text style={styles.termsText}>
+              <ThemedText style={styles.termsText}>
                 By checking this box you agree to our Terms & Conditions of service and Privacy
                 Policy including verification of your identity through a third party
-              </Text>
+              </ThemedText>
             </TouchableOpacity>
 
             {/* Register Button */}
             <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-              <Text style={styles.registerButtonText}>Register</Text>
+              <ThemedText style={styles.registerButtonText}>Register</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -299,10 +299,10 @@ const RegisterScreen = () => {
             style={styles.loginContainer}
             onPress={() => navigation.navigate('Login' as never)}
           >
-            <Text style={styles.loginText}>
+            <ThemedText style={styles.loginText}>
               Already have an account ?{' '}
-              <Text style={styles.loginLink}>Login</Text>
-            </Text>
+              <ThemedText style={styles.loginLink}>Login</ThemedText>
+            </ThemedText>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -317,7 +317,7 @@ const RegisterScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -329,8 +329,8 @@ const RegisterScreen = () => {
                   style={styles.countryItem}
                   onPress={() => handleCountrySelect(c.id, c.name)}
                 >
-                  <Text style={styles.countryFlag}>{c.flag}</Text>
-                  <Text style={styles.countryName}>{c.name}</Text>
+                  <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -340,7 +340,7 @@ const RegisterScreen = () => {
               ))}
             </ScrollView>
             <TouchableOpacity style={styles.applyButton} onPress={handleApplyCountry}>
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -356,7 +356,7 @@ const RegisterScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.verifyModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Email Verification</Text>
+              <ThemedText style={styles.modalTitle}>Email Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowEmailVerifyModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -368,11 +368,11 @@ const RegisterScreen = () => {
                 resizeMode="contain"
               />
             </View>
-            <Text style={styles.verifyTitle}>Verify your email address</Text>
-            <Text style={styles.verifySubtitle}>
+            <ThemedText style={styles.verifyTitle}>Verify your email address</ThemedText>
+            <ThemedText style={styles.verifySubtitle}>
               A 5 digit code has been sent to your registered email address{' '}
-              <Text style={styles.resendText}>Resend</Text>
-            </Text>
+              <ThemedText style={styles.resendText}>Resend</ThemedText>
+            </ThemedText>
             <View style={styles.codeContainer}>
               {[0, 1, 2, 3, 4].map((index) => (
                 <View key={index} style={styles.codeInput}>
@@ -391,7 +391,7 @@ const RegisterScreen = () => {
               ))}
             </View>
             <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyEmail}>
-              <Text style={styles.verifyButtonText}>Proceed</Text>
+              <ThemedText style={styles.verifyButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -407,7 +407,7 @@ const RegisterScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.verifyModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Phone number Verification</Text>
+              <ThemedText style={styles.modalTitle}>Phone number Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowPhoneVerifyModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -419,11 +419,11 @@ const RegisterScreen = () => {
                 resizeMode="contain"
               /> 
             </View>
-            <Text style={styles.verifyTitle}>Verify your phone number</Text>
-            <Text style={styles.verifySubtitle}>
+            <ThemedText style={styles.verifyTitle}>Verify your phone number</ThemedText>
+            <ThemedText style={styles.verifySubtitle}>
               A 5 digit code has been sent to your registered phone number{' '}
-              <Text style={styles.resendText}>Resend</Text>
-            </Text>
+              <ThemedText style={styles.resendText}>Resend</ThemedText>
+            </ThemedText>
             <View style={styles.codeContainer}>
               {[0, 1, 2, 3, 4].map((index) => (
                 <View key={index} style={styles.codeInput}>
@@ -442,7 +442,7 @@ const RegisterScreen = () => {
               ))}
             </View>
             <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyPhone}>
-              <Text style={styles.verifyButtonText}>Login</Text>
+              <ThemedText style={styles.verifyButtonText}>Login</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -135,7 +135,7 @@ const AdDetails = () => {
             <MaterialCommunityIcons name="chevron-left" size={20 * SCALE} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{adAsset} {adType} Ad</Text>
+        <ThemedText style={styles.headerTitle}>{adAsset} {adType} Ad</ThemedText>
         <View style={styles.headerRight} />
       </View>
 
@@ -160,15 +160,15 @@ const AdDetails = () => {
                   resizeMode="cover"
                 />
               </View>
-              <Text style={styles.summaryLabel}>Orders</Text>
+              <ThemedText style={styles.summaryLabel}>Orders</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <Text style={styles.summaryAmountMain}>2,000,000.00</Text>
-                <Text style={styles.summaryAmountCurrency}>NGN</Text>
+                <ThemedText style={styles.summaryAmountMain}>2,000,000.00</ThemedText>
+                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
               </View>
             </View>
-            <Text style={styles.summaryUSD}>$20,000</Text>
+            <ThemedText style={styles.summaryUSD}>$20,000</ThemedText>
           </LinearGradient>
 
           {/* Completion Rate Card - Same as Outgoing Card */}
@@ -181,22 +181,22 @@ const AdDetails = () => {
                   resizeMode="cover"
                 />
               </View>
-              <Text style={styles.summaryLabelWhite}>Completion Rate</Text>
+              <ThemedText style={styles.summaryLabelWhite}>Completion Rate</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <Text style={styles.summaryAmountMainWhite}>100</Text>
-                <Text style={styles.summaryAmountCurrencyWhite}>%</Text>
+                <ThemedText style={styles.summaryAmountMainWhite}>100</ThemedText>
+                <ThemedText style={styles.summaryAmountCurrencyWhite}>%</ThemedText>
               </View>
             </View>
-            <Text style={styles.summaryUSDWhite}>200 Orders</Text>
+            <ThemedText style={styles.summaryUSDWhite}>200 Orders</ThemedText>
           </View>
         </View>
 
         <View style={{ backgroundColor: '#FFFFFF08', marginHorizontal: 15 * SCALE, borderRadius: 15 * SCALE, borderWidth: 0.3, borderColor: '#FFFFFF33', paddingBottom: 10, marginBottom: 15 }}>
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{adAsset} {adType} Ad</Text>
+            <ThemedText style={styles.sectionTitle}>{adAsset} {adType} Ad</ThemedText>
           </View>
 
           {/* Ad Details Card */}
@@ -215,8 +215,8 @@ const AdDetails = () => {
                   resizeMode="cover"
                 />
                 <View style={styles.adHeaderText}>
-                  <Text style={styles.adType}>{adAsset} {adType} Order</Text>
-                  <Text style={styles.adStatus}>Active</Text>
+                  <ThemedText style={styles.adType}>{adAsset} {adType} Order</ThemedText>
+                  <ThemedText style={styles.adStatus}>Active</ThemedText>
                 </View>
               </View>
               <View style={styles.adStateTag}>
@@ -225,7 +225,7 @@ const AdDetails = () => {
                   style={[{ marginBottom: -1, width: 10, height: 10 }]}
                   resizeMode="cover"
                 />
-                <Text style={styles.adStateText}>Running</Text>
+                <ThemedText style={styles.adStateText}>Running</ThemedText>
               </View>
             </View>
 
@@ -237,7 +237,7 @@ const AdDetails = () => {
                   style={styles.metricIcon}
                   resizeMode="cover"
                 />
-                <Text style={styles.metricText}>Orders Received : 1,200</Text>
+                <ThemedText style={styles.metricText}>Orders Received : 1,200</ThemedText>
               </View>
               <View style={styles.metricRow}>
                 <Image
@@ -245,7 +245,7 @@ const AdDetails = () => {
                   style={styles.metricIcon}
                   resizeMode="cover"
                 />
-                <Text style={styles.metricText}>Response Time : 15min</Text>
+                <ThemedText style={styles.metricText}>Response Time : 15min</ThemedText>
               </View>
               <View style={styles.metricRow}>
                 <Image
@@ -253,48 +253,48 @@ const AdDetails = () => {
                   style={styles.metricIcon}
                   resizeMode="cover"
                 />
-                <Text style={styles.metricText}>Score : 98%</Text>
+                <ThemedText style={styles.metricText}>Score : 98%</ThemedText>
               </View>
             </View>
 
             {/* Ad Configuration Details */}
             <View style={styles.adConfig}>
               <View style={[styles.configRow, { borderTopRightRadius: 7 * SCALE, borderTopLeftRadius: 7, borderWidth: 0.5 }]}>
-                <Text style={styles.configLabel}>Completed Orders</Text>
-                <Text style={styles.configValue}>200</Text>
+                <ThemedText style={styles.configLabel}>Completed Orders</ThemedText>
+                <ThemedText style={styles.configValue}>200</ThemedText>
               </View>
               <View style={styles.configRow}>
-                <Text style={styles.configLabel}>Cancelled Orders</Text>
-                <Text style={styles.configValue}>200</Text>
+                <ThemedText style={styles.configLabel}>Cancelled Orders</ThemedText>
+                <ThemedText style={styles.configValue}>200</ThemedText>
               </View>
               <View style={styles.configRow}>
-                <Text style={styles.configLabel}>Available Quantity</Text>
-                <Text style={styles.configValue}>50 USDT</Text>
+                <ThemedText style={styles.configLabel}>Available Quantity</ThemedText>
+                <ThemedText style={styles.configValue}>50 USDT</ThemedText>
               </View>
               <View style={styles.configRow}>
-                <Text style={styles.configLabel}>Limits</Text>
-                <Text style={styles.configValue}>1,600 - 75,000 NGN</Text>
+                <ThemedText style={styles.configLabel}>Limits</ThemedText>
+                <ThemedText style={styles.configValue}>1,600 - 75,000 NGN</ThemedText>
               </View>
               <View style={[styles.configRow, { borderBottomRightRadius: 7 * SCALE, borderBottomLeftRadius: 7, borderWidth: 0.5 }]}>
-                <Text style={styles.configLabel}>Payment Methods</Text>
-                <Text style={styles.configValue}>
+                <ThemedText style={styles.configLabel}>Payment Methods</ThemedText>
+                <ThemedText style={styles.configValue}>
                   Opay , Palmpay , Moniepoint ,Kudabank , Chipper Cash
-                </Text>
+                </ThemedText>
               </View>
             </View>
 
             {/* Price and Action Buttons */}
             <View style={styles.adFooter}>
               <View style={styles.priceContainer}>
-                <Text style={styles.priceLabel}>Price / 1 USDT</Text>
-                <Text style={styles.priceValue}>1,550.70 NGN</Text>
+                <ThemedText style={styles.priceLabel}>Price / 1 USDT</ThemedText>
+                <ThemedText style={styles.priceValue}>1,550.70 NGN</ThemedText>
               </View>
               <View style={styles.actionButtons}>
                 <TouchableOpacity style={styles.deleteAdButton}>
-                  <Text style={styles.deleteAdButtonText}>Delete Ad</Text>
+                  <ThemedText style={styles.deleteAdButtonText}>Delete Ad</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.editAdButton}>
-                  <Text style={styles.editAdButtonText}>Edit AD</Text>
+                  <ThemedText style={styles.editAdButtonText}>Edit AD</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -313,14 +313,14 @@ const AdDetails = () => {
                 ]}
                 onPress={() => setActiveTab(tab)}
               >
-                <Text
+                <ThemedText
                   style={[
                     styles.tabText,
                     activeTab === tab && styles.tabTextActive,
                   ]}
                 >
                   {tab}
-                </Text>
+                </ThemedText>
               </TouchableOpacity>
             ))}
           </View>
@@ -331,13 +331,13 @@ const AdDetails = () => {
           <View style={{ backgroundColor: '#FFFFFF08', marginHorizontal: 15 * SCALE, borderRadius: 15 * SCALE, borderWidth: 0.3, borderColor: '#FFFFFF33', paddingBottom: 10, marginBottom: 15 }}>
             <View style={styles.ordersSection}>
               <View style={styles.ordersHeader}>
-                <Text style={styles.ordersTitle}>Received Orders</Text>
+                <ThemedText style={styles.ordersTitle}>Received Orders</ThemedText>
                 <View style={styles.ordersHeaderActions}>
                   <TouchableOpacity>
-                    <Text style={styles.acceptAllText}>Accept All</Text>
+                    <ThemedText style={styles.acceptAllText}>Accept All</ThemedText>
                   </TouchableOpacity>
                   <TouchableOpacity>
-                    <Text style={styles.declineAllText}>Decline All</Text>
+                    <ThemedText style={styles.declineAllText}>Decline All</ThemedText>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -352,17 +352,17 @@ const AdDetails = () => {
                         resizeMode="cover"
                       />
                       <View style={styles.orderInfo}>
-                        <Text style={styles.orderUserName}>{order.userName}</Text>
-                        <Text style={styles.orderType}>
+                        <ThemedText style={styles.orderUserName}>{order.userName}</ThemedText>
+                        <ThemedText style={styles.orderType}>
                           {order.type} {order.asset} {order.status}
-                        </Text>
+                        </ThemedText>
                       </View>
                     </View>
                     <View style={styles.orderAmountContainer}>
-                      <Text style={styles.orderAmount}>{order.amount}</Text>
-                      <Text style={styles.orderDate}>{order.date}</Text>
+                      <ThemedText style={styles.orderAmount}>{order.amount}</ThemedText>
+                      <ThemedText style={styles.orderDate}>{order.date}</ThemedText>
                     </View>
-                    <Text style={styles.orderAssetAmount}>({order.assetAmount})</Text>
+                    <ThemedText style={styles.orderAssetAmount}>({order.assetAmount})</ThemedText>
                   </View>
                   <View style={styles.orderActions}>
                     <TouchableOpacity
@@ -381,13 +381,13 @@ const AdDetails = () => {
                     </TouchableOpacity>
                     <View style={styles.orderActionButtons}>
                       <TouchableOpacity style={styles.cancelButton}>
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                        <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={styles.acceptButton}
                         onPress={() => handleAccept(order)}
                       >
-                        <Text style={styles.acceptButtonText}>Accept</Text>
+                        <ThemedText style={styles.acceptButtonText}>Accept</ThemedText>
                       </TouchableOpacity>
                     </View>
                   </View>

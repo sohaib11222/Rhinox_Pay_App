@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   TextInput,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const COUNTRIES = [
   { id: 1, name: 'Nigeria', flag: '🇳🇬' },
@@ -95,7 +95,7 @@ const KYC = () => {
             <MaterialCommunityIcons name="chevron-left" size={24} color="#FFF" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>KYC Registration</Text>
+        <ThemedText style={styles.headerTitle}>KYC Registration</ThemedText>
       </View>
 
       <ScrollView style={styles.scrollView}>
@@ -109,10 +109,10 @@ const KYC = () => {
         </View>
 
         {/* Title */}
-        <Text style={styles.title}>Complete KYC Registration</Text>
-        <Text style={styles.subtitle}>
+        <ThemedText style={styles.title}>Complete KYC Registration</ThemedText>
+        <ThemedText style={styles.subtitle}>
           Complete your KYC registration to unlock full access
-        </Text>
+        </ThemedText>
 
         {/* Progress Bar */}
         <View style={styles.progressContainer}>
@@ -125,21 +125,21 @@ const KYC = () => {
           <View style={styles.formInner}>
             {/* Country */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Country</Text>
+              <ThemedText style={styles.inputLabel}>Country</ThemedText>
               <TouchableOpacity
                 style={styles.inputWrapper}
                 onPress={() => setShowCountryModal(true)}
               >
-                <Text style={[styles.input, !country && styles.placeholderStyle]}>
+                <ThemedText style={[styles.input, !country && styles.placeholderStyle]}>
                   {country || 'Select your country'}
-                </Text>
+                </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
             </View>
 
             {/* First Name */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>First Name</Text>
+              <ThemedText style={styles.inputLabel}>First Name</ThemedText>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.input}
@@ -153,7 +153,7 @@ const KYC = () => {
 
             {/* Last Name */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Last Name</Text>
+              <ThemedText style={styles.inputLabel}>Last Name</ThemedText>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.input}
@@ -167,7 +167,7 @@ const KYC = () => {
 
             {/* Middle Name */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Middle Name</Text>
+              <ThemedText style={styles.inputLabel}>Middle Name</ThemedText>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.input}
@@ -181,35 +181,35 @@ const KYC = () => {
 
             {/* Date of Birth */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Date of birth</Text>
+              <ThemedText style={styles.inputLabel}>Date of birth</ThemedText>
               <TouchableOpacity
                 style={styles.inputWrapper}
                 onPress={() => setShowDOBModal(true)}
               >
-                <Text style={[styles.input, !dob && styles.placeholderStyle]}>
+                <ThemedText style={[styles.input, !dob && styles.placeholderStyle]}>
                   {dob || 'Enter your date of birth'}
-                </Text>
+                </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
             </View>
 
             {/* ID Type */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>ID Type</Text>
+              <ThemedText style={styles.inputLabel}>ID Type</ThemedText>
               <TouchableOpacity
                 style={styles.inputWrapper}
                 onPress={() => setShowIDTypeModal(true)}
               >
-                <Text style={[styles.input, !idType && styles.placeholderStyle]}>
+                <ThemedText style={[styles.input, !idType && styles.placeholderStyle]}>
                   {idType || 'Select id type'}
-                </Text>
+                </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
             </View>
 
             {/* ID Number */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>ID Number</Text>
+              <ThemedText style={styles.inputLabel}>ID Number</ThemedText>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.input}
@@ -227,11 +227,11 @@ const KYC = () => {
       {/* Buttons */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.proceedButton} onPress={handleProceed}>
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.continueButton} onPress={handleContinueLater}>
-          <Text style={styles.continueButtonText}>Continue Later</Text>
+          <ThemedText style={styles.continueButtonText}>Continue Later</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -245,7 +245,7 @@ const KYC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -257,8 +257,8 @@ const KYC = () => {
                   style={styles.countryItem}
                   onPress={() => handleCountrySelect(c.id, c.name)}
                 >
-                  <Text style={styles.countryFlag}>{c.flag}</Text>
-                  <Text style={styles.countryName}>{c.name}</Text>
+                  <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -268,7 +268,7 @@ const KYC = () => {
               ))}
             </ScrollView>
             <TouchableOpacity style={styles.applyButton} onPress={handleApplyCountry}>
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -284,7 +284,7 @@ const KYC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.idModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select ID Type</Text>
+              <ThemedText style={styles.modalTitle}>Select ID Type</ThemedText>
               <TouchableOpacity onPress={() => setShowIDTypeModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -296,7 +296,7 @@ const KYC = () => {
                   style={styles.idItem}
                   onPress={() => handleIDTypeSelect(type.id, type.name)}
                 >
-                  <Text style={styles.idName}>{type.name}</Text>
+                  <ThemedText style={styles.idName}>{type.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedIDType === type.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -306,7 +306,7 @@ const KYC = () => {
               ))}
             </View>
             <TouchableOpacity style={styles.applyButton} onPress={handleApplyIDType}>
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -322,28 +322,28 @@ const KYC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.dobModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Date of birth</Text>
+              <ThemedText style={styles.modalTitle}>Date of birth</ThemedText>
               <TouchableOpacity onPress={() => setShowDOBModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.dobSubtitle}>Select your date of birth</Text>
+            <ThemedText style={styles.dobSubtitle}>Select your date of birth</ThemedText>
             <View style={styles.dobInputs}>
               <TouchableOpacity style={styles.dobInput}>
-                <Text style={styles.dobText}>{day}</Text>
+                <ThemedText style={styles.dobText}>{day}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={16} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.dobInput}>
-                <Text style={styles.dobText}>{month}</Text>
+                <ThemedText style={styles.dobText}>{month}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={16} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.dobInputLarge}>
-                <Text style={styles.dobText}>{year}</Text>
+                <ThemedText style={styles.dobText}>{year}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={16} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
             </View>
             <TouchableOpacity style={styles.applyButton} onPress={handleApplyDOB}>
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

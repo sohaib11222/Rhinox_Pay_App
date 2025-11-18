@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     ScrollView,
     TouchableOpacity,
@@ -14,6 +13,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -228,7 +228,7 @@ const Support = () => {
                         <MaterialCommunityIcons name="chevron-left" size={24 * 1} color="#FFFFFF" />
                     </View>
                 </TouchableOpacity>
-                <Text style={[styles.headerTitle]}>Support</Text>
+                <ThemedText style={[styles.headerTitle]}>Support</ThemedText>
                 <TouchableOpacity style={styles.newChatButton} onPress={handleNewChat}>
                     <View style={{ backgroundColor: '#A9EF45', borderRadius: 100, padding: 10, width: 50 * SCALE, height: 50 * SCALE, alignItems: 'center', justifyContent: 'center' }}>
                         <View style={styles.iconCircle}>
@@ -244,32 +244,32 @@ const Support = () => {
                     style={[styles.tab, activeTab === 'active' && styles.tabActive]}
                     onPress={() => setActiveTab('active')}
                 >
-                    <Text style={[styles.tabText, activeTab === 'active' && styles.tabTextActive]}>
+                    <ThemedText style={[styles.tabText, activeTab === 'active' && styles.tabTextActive]}>
                         Active
-                    </Text>
+                    </ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'resolved' && styles.tabActive]}
                     onPress={() => setActiveTab('resolved')}
                 >
-                    <Text style={[styles.tabText, activeTab === 'resolved' && styles.tabTextActive]}>
+                    <ThemedText style={[styles.tabText, activeTab === 'resolved' && styles.tabTextActive]}>
                         Resolved
-                    </Text>
+                    </ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.tab, activeTab === 'appealed' && styles.tabActive]}
                     onPress={() => setActiveTab('appealed')}
                 >
-                    <Text style={[styles.tabText, activeTab === 'appealed' && styles.tabTextActive]}>
+                    <ThemedText style={[styles.tabText, activeTab === 'appealed' && styles.tabTextActive]}>
                         Appealed
-                    </Text>
+                    </ThemedText>
                 </TouchableOpacity>
             </View>
 
             {/* Chat List */}
             {filteredChats.length > 0 ? (
                 <ScrollView style={styles.chatList} showsVerticalScrollIndicator={false}>
-                    <Text style={styles.sectionTitle}>Active Chats</Text>
+                    <ThemedText style={styles.sectionTitle}>Active Chats</ThemedText>
                     {filteredChats.map((chat) => (
                         <TouchableOpacity
                             key={chat.id}
@@ -278,16 +278,16 @@ const Support = () => {
                         >
                             <Image source={chat.agentAvatar} style={styles.agentAvatar} />
                             <View style={styles.chatInfo}>
-                                <Text style={styles.agentName}>{chat.agentName}</Text>
-                                <Text style={styles.lastMessage}>{chat.lastMessage}</Text>
+                                <ThemedText style={styles.agentName}>{chat.agentName}</ThemedText>
+                                <ThemedText style={styles.lastMessage}>{chat.lastMessage}</ThemedText>
                             </View>
                             <View style={styles.chatMeta}>
                                 {chat.unreadCount > 0 && (
                                     <View style={styles.unreadBadge}>
-                                        <Text style={styles.unreadText}>{chat.unreadCount}</Text>
+                                        <ThemedText style={styles.unreadText}>{chat.unreadCount}</ThemedText>
                                     </View>
                                 )}
-                                <Text style={styles.chatDate}>{chat.date}</Text>
+                                <ThemedText style={styles.chatDate}>{chat.date}</ThemedText>
                             </View>
                         </TouchableOpacity>
                     ))}
@@ -301,9 +301,9 @@ const Support = () => {
                             resizeMode="cover"
                         />
                     </View>
-                    <Text style={styles.emptyText}>You have not started any chat</Text>
+                    <ThemedText style={styles.emptyText}>You have not started any chat</ThemedText>
                     <TouchableOpacity style={styles.newChatButtonLarge} onPress={handleNewChat}>
-                        <Text style={styles.newChatButtonText}>New Chat</Text>
+                        <ThemedText style={styles.newChatButtonText}>New Chat</ThemedText>
                     </TouchableOpacity>
                 </View>
             )}
@@ -319,7 +319,7 @@ const Support = () => {
                     <View style={styles.modalContent}>
                         {/* Modal Header */}
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Details</Text>
+                            <ThemedText style={styles.modalTitle}>Details</ThemedText>
                             <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
                                 <View style={styles.closeButtonCircle}>
                                     <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
@@ -330,7 +330,7 @@ const Support = () => {
                         {/* Form Fields */}
                         <View style={styles.formContainer}>
                             <View style={styles.formField}>
-                                <Text style={styles.fieldLabel}>Name</Text>
+                                <ThemedText style={styles.fieldLabel}>Name</ThemedText>
                                 <View style={styles.inputContainer}>
                                     <TextInput
                                         style={styles.input}
@@ -343,7 +343,7 @@ const Support = () => {
                             </View>
 
                             <View style={styles.formField}>
-                                <Text style={styles.fieldLabel}>Email</Text>
+                                <ThemedText style={styles.fieldLabel}>Email</ThemedText>
                                 <View style={styles.inputContainer}>
                                     <TextInput
                                         style={styles.input}
@@ -358,14 +358,14 @@ const Support = () => {
                             </View>
 
                             <View style={styles.formField}>
-                                <Text style={styles.fieldLabel}>Reason</Text>
+                                <ThemedText style={styles.fieldLabel}>Reason</ThemedText>
                                 <TouchableOpacity
                                     style={styles.inputContainer}
                                     onPress={handleSelectReason}
                                 >
-                                    <Text style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
+                                    <ThemedText style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
                                         {selectedReason ? reasonOptions.find((r) => r.id === selectedReason)?.label : 'Select reason'}
-                                    </Text>
+                                    </ThemedText>
                                     <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="rgba(255, 255, 255, 0.5)" />
                                 </TouchableOpacity>
                             </View>
@@ -377,7 +377,7 @@ const Support = () => {
                             onPress={handleSaveDetails}
                             disabled={!chatName || !chatEmail}
                         >
-                            <Text style={styles.saveButtonText}>Save</Text>
+                            <ThemedText style={styles.saveButtonText}>Save</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -394,7 +394,7 @@ const Support = () => {
                     <View style={styles.modalContent}>
                         {/* Modal Header */}
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select reason</Text>
+                            <ThemedText style={styles.modalTitle}>Select reason</ThemedText>
                             <TouchableOpacity onPress={() => setShowReasonModal(false)}>
                                 <View style={styles.closeButtonCircle}>
                                     <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
@@ -410,7 +410,7 @@ const Support = () => {
                                     style={styles.reasonItem}
                                     onPress={() => setSelectedReason(option.id)}
                                 >
-                                    <Text style={styles.reasonText}>{option.label}</Text>
+                                    <ThemedText style={styles.reasonText}>{option.label}</ThemedText>
                                     <View style={[
                                         styles.radioButton,
                                         selectedReason === option.id && styles.radioButtonActive
@@ -427,7 +427,7 @@ const Support = () => {
                             onPress={handleApplyReason}
                             disabled={!selectedReason}
                         >
-                            <Text style={styles.saveButtonText}>Apply</Text>
+                            <ThemedText style={styles.saveButtonText}>Apply</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -147,7 +147,7 @@ const Fund = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Fund Wallet</Text>
+            <ThemedText style={styles.headerTitle}>Fund Wallet</ThemedText>
           </View>
         </View>
 
@@ -160,7 +160,7 @@ const Fund = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -189,7 +189,7 @@ const Fund = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -222,11 +222,11 @@ const Fund = () => {
               style={styles.inputField}
               onPress={() => setShowProviderModal(true)}
             >
-              <Text style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
+              <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
                 {selectedProvider
                   ? PROVIDERS.find((p) => p.id === selectedProvider)?.name || 'Destination Provider'
                   : 'Destination Provider'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -245,8 +245,8 @@ const Fund = () => {
             {/* Account holder name (Auto-filled) */}
             {accountName && (
               <View style={styles.inputField}>
-                <Text style={styles.inputLabel}>Account holder name</Text>
-                <Text style={styles.accountNameValue}>{accountName}</Text>
+                <ThemedText style={styles.inputLabel}>Account holder name</ThemedText>
+                <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
               </View>
             )}
           </View>
@@ -256,17 +256,17 @@ const Fund = () => {
         <View style={styles.warningSection}>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <Text style={styles.warningText}>
+            <ThemedText style={styles.warningText}>
               You will receive a mobile money prompt to confirm your payment
-            </Text>
+            </ThemedText>
           </View>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <Text style={styles.warningText}>Payment will take a few minutes to reflect</Text>
+            <ThemedText style={styles.warningText}>Payment will take a few minutes to reflect</ThemedText>
           </View>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <Text style={styles.warningText}>Fees : 20{currencySymbol}</Text>
+            <ThemedText style={styles.warningText}>Fees : 20{currencySymbol}</ThemedText>
           </View>
         </View>
 
@@ -284,7 +284,7 @@ const Fund = () => {
           onPress={handleProceed}
           disabled={!selectedProvider || !momoNumber || !accountName || !amount}
         >
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -299,7 +299,7 @@ const Fund = () => {
           <View style={styles.providerModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Provider</Text>
+              <ThemedText style={styles.modalTitle}>Select Provider</ThemedText>
               <TouchableOpacity onPress={() => setShowProviderModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -326,7 +326,7 @@ const Fund = () => {
                   onPress={() => handleProviderSelect(provider.id)}
                 >
                   <Image source={provider.icon} style={styles.providerIcon} resizeMode="cover" />
-                  <Text style={styles.providerName}>{provider.name}</Text>
+                  <ThemedText style={styles.providerName}>{provider.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedProvider === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -341,7 +341,7 @@ const Fund = () => {
               style={styles.applyButton}
               onPress={() => setShowProviderModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -358,7 +358,7 @@ const Fund = () => {
           <View style={styles.summaryModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Summary</Text>
+              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -366,43 +366,43 @@ const Fund = () => {
 
             {/* Amount Section */}
             <View style={styles.summaryAmountSection}>
-              <Text style={styles.summaryAmountLabel}>You are Sending</Text>
-              <Text style={styles.summaryAmountValue}>{amount}{currencySymbol}</Text>
+              <ThemedText style={styles.summaryAmountLabel}>You are Sending</ThemedText>
+              <ThemedText style={styles.summaryAmountValue}>{amount}{currencySymbol}</ThemedText>
             </View>
 
             {/* Account Details */}
             <View style={styles.summaryDetailsCard}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>MOMO Number</Text>
-                <Text style={styles.summaryValue}>{momoNumber}</Text>
+                <ThemedText style={styles.summaryLabel}>MOMO Number</ThemedText>
+                <ThemedText style={styles.summaryValue}>{momoNumber}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Provider</Text>
-                <Text style={styles.summaryValue}>
+                <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
+                <ThemedText style={styles.summaryValue}>
                   {PROVIDERS.find((p) => p.id === selectedProvider)?.name || ''}
-                </Text>
+                </ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Account Name</Text>
-                <Text style={styles.summaryValue}>{accountName}</Text>
+                <ThemedText style={styles.summaryLabel}>Account Name</ThemedText>
+                <ThemedText style={styles.summaryValue}>{accountName}</ThemedText>
               </View>
             </View>
 
             {/* Transaction Details */}
             <View style={styles.summaryDetailsCard}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Transaction Fee</Text>
-                <Text style={styles.summaryValue}>20 {currencySymbol}</Text>
+                <ThemedText style={styles.summaryLabel}>Transaction Fee</ThemedText>
+                <ThemedText style={styles.summaryValue}>20 {currencySymbol}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Funding Route</Text>
-                <Text style={styles.summaryValue}>Mobile Money</Text>
+                <ThemedText style={styles.summaryLabel}>Funding Route</ThemedText>
+                <ThemedText style={styles.summaryValue}>Mobile Money</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Provider</Text>
-                <Text style={styles.summaryValue}>
+                <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
+                <ThemedText style={styles.summaryValue}>
                   {PROVIDERS.find((p) => p.id === selectedProvider)?.name || ''}
-                </Text>
+                </ThemedText>
               </View>
             </View>
 
@@ -410,13 +410,13 @@ const Fund = () => {
             <View style={styles.warningSectionModal}>
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <Text style={styles.warningText}>
+                <ThemedText style={styles.warningText}>
                   Ensure you are sending cash to the right mobile money account to prevent loss of funds
-                </Text>
+                </ThemedText>
               </View>
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <Text style={styles.warningText}>Payment will take a few minutes to reflect</Text>
+                <ThemedText style={styles.warningText}>Payment will take a few minutes to reflect</ThemedText>
               </View>
             </View>
 
@@ -425,7 +425,7 @@ const Fund = () => {
               style={styles.completeButton}
               onPress={handleCompleteFund}
             >
-              <Text style={styles.completeButtonText}>Complete Withdrawal</Text>
+              <ThemedText style={styles.completeButtonText}>Complete Withdrawal</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -486,7 +486,7 @@ const Fund = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.countryModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -503,7 +503,7 @@ const Fund = () => {
                   }}
                 >
                   <Image source={country.flag} style={styles.countryFlagImage} resizeMode="cover" />
-                  <Text style={styles.countryNameText}>{country.name}</Text>
+                  <ThemedText style={styles.countryNameText}>{country.name}</ThemedText>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -638,6 +638,7 @@ const styles = StyleSheet.create({
     paddingBottom: 90 * 1,
     padding: 0,
     margin: 0,
+    fontFamily: 'Agbalumo-Regular',
   },
   amountDivider: {
     height: 0.3,

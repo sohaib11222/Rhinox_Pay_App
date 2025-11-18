@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     ScrollView,
     TouchableOpacity,
@@ -18,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -165,12 +165,15 @@ const MobileFundScreen = () => {
             >
                 {/* Header */}
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                    <TouchableOpacity onPress={() => {
+                        // Navigate back to Home tab instead of Settings tab
+                        (navigation as any).navigate('Home', { screen: 'HomeMain' });
+                    }}>
                         <View style={styles.backButtonCircle}>
-                            <MaterialCommunityIcons name="arrow-left" size={20 * SCALE} color="#FFFFFF" />
+                            <MaterialCommunityIcons name="chevron-left" size={20 * SCALE} color="#FFFFFF" />
                         </View>
                     </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Fund Wallet</Text>
+                    <ThemedText style={styles.headerTitle}>Fund Wallet</ThemedText>
                     <View style={styles.placeholder} />
                 </View>
 
@@ -183,14 +186,14 @@ const MobileFundScreen = () => {
                         style={styles.balanceCard}
                     >
                         <View style={styles.balanceCardContent}>
-                            <Text style={styles.balanceLabel}>My Balance</Text>
+                            <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
                             <View style={styles.balanceRow}>
                                 <Image
                                     source={require('../../../assets/Vector (34).png')}
                                     style={styles.walletIcon}
                                     resizeMode="cover"
                                 />
-                                <Text style={styles.balanceAmount}>{getCurrencySymbol()}{balance}</Text>
+                                <ThemedText style={styles.balanceAmount}>{getCurrencySymbol()}{balance}</ThemedText>
                             </View>
                         </View>
                         <TouchableOpacity
@@ -202,7 +205,7 @@ const MobileFundScreen = () => {
                                 style={styles.countryFlagImage}
                                 resizeMode="cover"
                             />
-                            <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+                            <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
                             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
                     </LinearGradient>
@@ -212,7 +215,7 @@ const MobileFundScreen = () => {
                 <View style={styles.mainCard}>
                     {/* Amount Input Section */}
                     <View style={styles.amountSection}>
-                        <Text style={styles.amountLabel}>Enter Amount</Text>
+                        {/* <ThemedText style={styles.amountLabel}>Enter Amount</ThemedText> */}
                         <View style={styles.amountInputLabelContainer}>
                             <TextInput
                                 style={styles.amountInput}
@@ -228,50 +231,52 @@ const MobileFundScreen = () => {
                                 placeholder="0"
                                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
                             />
-                            <Text style={styles.amountInputLabel}>{getCurrencySymbol()}</Text>
+                            <ThemedText style={styles.amountInputLabel}>{getCurrencySymbol()}</ThemedText>
                         </View>
                     </View>
 
                     {/* Provider Section */}
                     <View style={styles.providerSection}>
-                        <Text style={styles.fieldLabel}>Provider</Text>
+                        {/* <ThemedText style={styles.fieldLabel}>Provider</ThemedText> */}
                         <TouchableOpacity
                             style={styles.providerField}
                             onPress={() => setShowProviderModal(true)}
                         >
-                            <Text style={[styles.providerFieldText, !selectedProvider && styles.providerFieldPlaceholder]}>
+                            <ThemedText style={[styles.providerFieldText, !selectedProvider && styles.providerFieldPlaceholder]}>
                                 {selectedProvider ? PROVIDERS.find(p => p.id === selectedProvider)?.name : 'Select Provider'}
-                            </Text>
+                            </ThemedText>
                             <MaterialCommunityIcons name="chevron-down" size={18 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
                     </View>
 
                     {/* Important Notes Section */}
+                </View>
                     <View style={styles.notesSection}>
                         <View style={styles.noteItem}>
                             <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#A9EF45" />
-                            <Text style={styles.noteText}>You will receive a mobile money prompt to confirm your payment</Text>
+                            <ThemedText style={styles.noteText}>You will receive a mobile money prompt to confirm your payment</ThemedText>
                         </View>
                         <View style={styles.noteItem}>
                             <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#A9EF45" />
-                            <Text style={styles.noteText}>Payment will take a few minutes to reflect</Text>
+                            <ThemedText style={styles.noteText}>Payment will take a few minutes to reflect</ThemedText>
                         </View>
                         <View style={styles.noteItem}>
                             <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#A9EF45" />
-                            <Text style={styles.noteText}>Fees : 20{getCurrencySymbol()}</Text>
+                            <ThemedText style={styles.noteText}>Fees : 20{getCurrencySymbol()}</ThemedText>
                         </View>
                     </View>
-                </View>
+            </ScrollView>
 
-                {/* Proceed Button */}
+            {/* Proceed Button - Fixed at Bottom */}
+            <View style={styles.proceedButtonContainer}>
                 <TouchableOpacity
                     style={[styles.proceedButton, !selectedProvider && styles.proceedButtonDisabled]}
                     onPress={() => setShowSummaryModal(true)}
                     disabled={!selectedProvider}
                 >
-                    <Text style={styles.proceedButtonText}>Proceed</Text>
+                    <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
                 </TouchableOpacity>
-            </ScrollView>
+            </View>
 
             {/* Country Selection Modal */}
             <Modal
@@ -283,7 +288,7 @@ const MobileFundScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select Country</Text>
+                            <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
                             <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
                             </TouchableOpacity>
@@ -298,8 +303,8 @@ const MobileFundScreen = () => {
                                         setSelectedCountryName(c.name);
                                     }}
                                 >
-                                    <Text style={styles.countryFlag}>{c.flag}</Text>
-                                    <Text style={styles.countryName}>{c.name}</Text>
+                                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                                     <MaterialCommunityIcons
                                         name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                                         size={24 * SCALE}
@@ -312,7 +317,7 @@ const MobileFundScreen = () => {
                             style={styles.applyButton}
                             onPress={() => setShowCountryModal(false)}
                         >
-                            <Text style={styles.applyButtonText}>Apply</Text>
+                            <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -327,12 +332,11 @@ const MobileFundScreen = () => {
             >
                 <View style={styles.modalOverlay}>
                     <View style={styles.providerModalContent}>
+                        {/* Modal Header */}
                         <View style={styles.providerModalHeader}>
-                            <Text style={styles.providerModalTitle}>Select Provider</Text>
+                            <ThemedText style={styles.providerModalTitle}>Select Provider</ThemedText>
                             <TouchableOpacity onPress={() => setShowProviderModal(false)}>
-                                <View style={styles.providerModalCloseCircle}>
-                                    <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
-                                </View>
+                                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                             </TouchableOpacity>
                         </View>
 
@@ -359,7 +363,7 @@ const MobileFundScreen = () => {
                                         style={styles.providerLogo}
                                         resizeMode="cover"
                                     />
-                                    <Text style={styles.providerItemName}>{provider.name}</Text>
+                                    <ThemedText style={styles.providerItemName}>{provider.name}</ThemedText>
                                     <MaterialCommunityIcons
                                         name={selectedProvider === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
                                         size={24 * SCALE}
@@ -369,14 +373,13 @@ const MobileFundScreen = () => {
                             ))}
                         </ScrollView>
 
-                        <View style={styles.applyButtonContainer}>
-                            <TouchableOpacity
-                                style={styles.applyButton}
-                                onPress={() => setShowProviderModal(false)}
-                            >
-                                <Text style={styles.applyButtonText}>Apply</Text>
-                            </TouchableOpacity>
-                        </View>
+                        {/* Apply Button */}
+                        <TouchableOpacity
+                            style={styles.applyButton}
+                            onPress={() => setShowProviderModal(false)}
+                        >
+                            <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+                        </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
@@ -391,7 +394,7 @@ const MobileFundScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.summaryModalContent}>
                         <View style={styles.summaryModalHeader}>
-                            <Text style={styles.summaryModalTitle}>Summary</Text>
+                            <ThemedText style={styles.summaryModalTitle}>Summary</ThemedText>
                             <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                                 <View style={styles.summaryCloseCircle}>
                                     <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -402,39 +405,39 @@ const MobileFundScreen = () => {
                         <ScrollView style={styles.summaryScrollContent} showsVerticalScrollIndicator={false}>
                             {/* Amount Section */}
                             <View style={styles.summaryAmountSection}>
-                                <Text style={styles.summaryAmountLabel}>You are paying</Text>
-                                <Text style={styles.summaryAmountValue}>{amount}{getCurrencySymbol()}</Text>
+                                <ThemedText style={styles.summaryAmountLabel}>You are paying</ThemedText>
+                                <ThemedText style={styles.summaryAmountValue}>{amount}{getCurrencySymbol()}</ThemedText>
                             </View>
 
                             {/* Transaction Details Card */}
                             <View style={styles.summaryDetailsCard}>
-                                <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Transaction Fee</Text>
-                                    <Text style={styles.summaryValue}>20 {getCurrencySymbol()}</Text>
+                                <View style={[styles.summaryRow, {borderWidth:0.5, borderTopRightRadius:10 * SCALE, borderTopLeftRadius:10 * SCALE}]}>
+                                    <ThemedText style={styles.summaryLabel}>Transaction Fee</ThemedText>
+                                    <ThemedText style={styles.summaryValue}>20 {getCurrencySymbol()}</ThemedText>
                                 </View>
                                 <View style={styles.summaryDivider} />
                                 <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Funding Route</Text>
-                                    <Text style={styles.summaryValue}>Mobile Money</Text>
+                                    <ThemedText style={styles.summaryLabel}>Funding Route</ThemedText>
+                                    <ThemedText style={styles.summaryValue}>Mobile Money</ThemedText>
                                 </View>
                                 <View style={styles.summaryDivider} />
-                                <View style={styles.summaryRow}>
-                                    <Text style={styles.summaryLabel}>Provider</Text>
-                                    <Text style={styles.summaryValue}>
+                                <View style={[styles.summaryRow, {borderWidth:0.5, borderBottomRightRadius:10 * SCALE, borderBottomLeftRadius:10 * SCALE}]}>
+                                    <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
+                                    <ThemedText style={styles.summaryValue}>
                                         {PROVIDERS.find(p => p.id === selectedProvider)?.name || ''}
-                                    </Text>
+                                    </ThemedText>
                                 </View>
                             </View>
 
                             {/* Information Section */}
                             <View style={styles.summaryInfoSection}>
                                 <View style={styles.summaryNoteItem}>
-                                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#FFD700" />
-                                    <Text style={styles.summaryNoteText}>You will receive a mobile money prompt to confirm your payment</Text>
+                                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#A9EF45" />
+                                    <ThemedText style={styles.summaryNoteText}>You will receive a mobile money prompt to confirm your payment</ThemedText>
                                 </View>
                                 <View style={styles.summaryNoteItem}>
-                                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#FFD700" />
-                                    <Text style={styles.summaryNoteText}>Payment will take a few minutes to reflect</Text>
+                                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#A9EF45" />
+                                    <ThemedText style={styles.summaryNoteText}>Payment will take a few minutes to reflect</ThemedText>
                                 </View>
                             </View>
                         </ScrollView>
@@ -444,7 +447,7 @@ const MobileFundScreen = () => {
                             style={styles.understandButton}
                             onPress={handleSummaryComplete}
                         >
-                            <Text style={styles.understandButtonText}>I understand</Text>
+                            <ThemedText style={styles.understandButtonText}>I understand</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -460,7 +463,7 @@ const MobileFundScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
                         <View style={styles.pinModalHeader}>
-                            <Text style={styles.pinModalTitle}>Verification</Text>
+                            <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
                             <TouchableOpacity onPress={() => setShowPinModal(false)}>
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                             </TouchableOpacity>
@@ -477,8 +480,8 @@ const MobileFundScreen = () => {
                         </View>
 
                         <View style={styles.pinModalTextContainer}>
-                            <Text style={styles.pinInstruction}>Input Pin to Fund</Text>
-                            <Text style={styles.pinAmount}>{getCurrencySymbol()}{amount}</Text>
+                            <ThemedText style={styles.pinInstruction}>Input Pin to Fund</ThemedText>
+                            <ThemedText style={styles.pinAmount}>{getCurrencySymbol()}{amount}</ThemedText>
                         </View>
 
                         <View style={styles.pinBar}>
@@ -489,9 +492,9 @@ const MobileFundScreen = () => {
                                     return (
                                         <View key={index} style={styles.pinSlot}>
                                             {hasValue ? (
-                                                <Text style={styles.pinSlotText}>{digit}</Text>
+                                                <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                                             ) : (
-                                                <Text style={styles.pinSlotAsterisk}>*</Text>
+                                                <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                                             )}
                                         </View>
                                     );
@@ -516,14 +519,14 @@ const MobileFundScreen = () => {
                                                 lastPressedButton === num.toString() && styles.numpadCirclePressed,
                                             ]}
                                         >
-                                            <Text
+                                            <ThemedText
                                                 style={[
                                                     styles.numpadText,
                                                     lastPressedButton === num.toString() && styles.numpadTextPressed,
                                                 ]}
                                             >
                                                 {num}
-                                            </Text>
+                                            </ThemedText>
                                         </View>
                                     </TouchableOpacity>
                                 ))}
@@ -541,14 +544,14 @@ const MobileFundScreen = () => {
                                                 lastPressedButton === num.toString() && styles.numpadCirclePressed,
                                             ]}
                                         >
-                                            <Text
+                                            <ThemedText
                                                 style={[
                                                     styles.numpadText,
                                                     lastPressedButton === num.toString() && styles.numpadTextPressed,
                                                 ]}
                                             >
                                                 {num}
-                                            </Text>
+                                            </ThemedText>
                                         </View>
                                     </TouchableOpacity>
                                 ))}
@@ -566,14 +569,14 @@ const MobileFundScreen = () => {
                                                 lastPressedButton === num.toString() && styles.numpadCirclePressed,
                                             ]}
                                         >
-                                            <Text
+                                            <ThemedText
                                                 style={[
                                                     styles.numpadText,
                                                     lastPressedButton === num.toString() && styles.numpadTextPressed,
                                                 ]}
                                             >
                                                 {num}
-                                            </Text>
+                                            </ThemedText>
                                         </View>
                                     </TouchableOpacity>
                                 ))}
@@ -589,14 +592,14 @@ const MobileFundScreen = () => {
                                             lastPressedButton === '.' && styles.numpadCirclePressed,
                                         ]}
                                     >
-                                        <Text
+                                        <ThemedText
                                             style={[
                                                 styles.numpadText,
                                                 lastPressedButton === '.' && styles.numpadTextPressed,
                                             ]}
                                         >
                                             .
-                                        </Text>
+                                        </ThemedText>
                                     </View>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -609,14 +612,14 @@ const MobileFundScreen = () => {
                                             lastPressedButton === '0' && styles.numpadCirclePressed,
                                         ]}
                                     >
-                                        <Text
+                                        <ThemedText
                                             style={[
                                                 styles.numpadText,
                                                 lastPressedButton === '0' && styles.numpadTextPressed,
                                             ]}
                                         >
                                             0
-                                        </Text>
+                                        </ThemedText>
                                     </View>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -641,38 +644,51 @@ const MobileFundScreen = () => {
                 onRequestClose={() => setShowSecurityModal(false)}
             >
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
-                        <View style={styles.pinModalHeader}>
-                            <Text style={styles.pinModalTitle}>Security Verification</Text>
+                    <View style={styles.securityModalContentBottom}>
+                        <View style={styles.securityModalHeader}>
+                            <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
                             <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                             </TouchableOpacity>
                         </View>
 
-                        <View style={styles.securityContent}>
-                            <Text style={styles.securityInstruction}>Enter the code sent to your email</Text>
-                            <View style={styles.securityCodeContainer}>
+                        <View style={styles.securityIconContainer}>
+                            <View style={styles.securityIconCircle}>
+                                <Image
+                                    source={require('../../../assets/Group 49.png')}
+                                    style={styles.securityIcon}
+                                    resizeMode="contain"
+                                />
+                            </View>
+                        </View>
+
+                        <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+                        <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
+
+                        <View style={styles.securityInputWrapper}>
+                            <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
+                            <View style={styles.securityInputField}>
                                 <TextInput
-                                    style={styles.securityCodeInput}
+                                    style={styles.securityInput}
+                                    placeholder="Input Code sent to your email"
+                                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
                                     value={emailCode}
                                     onChangeText={setEmailCode}
                                     keyboardType="numeric"
-                                    maxLength={6}
-                                    placeholder="000000"
-                                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
                                 />
                             </View>
+                        </View>
 
-                            <Text style={styles.securityInstruction}>Enter Authenticator App Code</Text>
-                            <View style={styles.securityCodeContainer}>
+                        <View style={styles.securityInputWrapper}>
+                            <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
+                            <View style={styles.securityInputField}>
                                 <TextInput
-                                    style={styles.securityCodeInput}
+                                    style={styles.securityInput}
+                                    placeholder="Input Code from your authenticator app"
+                                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
                                     value={authenticatorCode}
                                     onChangeText={setAuthenticatorCode}
                                     keyboardType="numeric"
-                                    maxLength={6}
-                                    placeholder="000000"
-                                    placeholderTextColor="rgba(255, 255, 255, 0.3)"
                                 />
                             </View>
                         </View>
@@ -682,7 +698,7 @@ const MobileFundScreen = () => {
                             onPress={handleSecurityComplete}
                             disabled={!emailCode || !authenticatorCode}
                         >
-                            <MaterialCommunityIcons name="check" size={40 * SCALE} color="#FFFFFF" />
+                            <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -736,12 +752,22 @@ const styles = StyleSheet.create({
     scrollContent: {
         paddingBottom: 100 * SCALE,
     },
+    proceedButtonContainer: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: '#020c19',
+        paddingTop: 10 * SCALE,
+        paddingBottom: 30 * SCALE,
+        paddingHorizontal: SCREEN_WIDTH * 0.047,
+    },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: SCREEN_WIDTH * 0.047,
-        paddingTop: 45 * SCALE,
+        paddingTop: 15 * SCALE,
         paddingBottom: 20 * SCALE,
     },
     backButtonCircle: {
@@ -753,7 +779,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     headerTitle: {
-        fontSize: 16 * SCALE,
+        fontSize: 16 * 1,
         fontWeight: '500',
         color: '#FFFFFF',
     },
@@ -778,7 +804,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     balanceLabel: {
-        fontSize: 10 * SCALE,
+        fontSize: 10 * 1,
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.5)',
         marginBottom: 8 * SCALE,
@@ -793,7 +819,7 @@ const styles = StyleSheet.create({
         height: 16 * SCALE,
     },
     balanceAmount: {
-        fontSize: 20 * SCALE,
+        fontSize: 20 * 1,
         fontWeight: '500',
         color: '#A9EF45',
     },
@@ -813,7 +839,7 @@ const styles = StyleSheet.create({
         borderRadius: 18 * SCALE,
     },
     countryNameText: {
-        fontSize: 14 * SCALE,
+        fontSize: 14 * 1,
         fontWeight: '400',
         color: '#FFFFFF',
     },
@@ -835,7 +861,7 @@ const styles = StyleSheet.create({
         padding: 14 * SCALE,
     },
     amountLabel: {
-        fontSize: 14 * SCALE,
+        fontSize: 14 * 1,
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.5)',
         marginBottom: 12 * SCALE,
@@ -847,24 +873,28 @@ const styles = StyleSheet.create({
         gap: 4 * SCALE,
     },
     amountInputLabel: {
-        fontSize: 50 * SCALE,
-        fontWeight: '500',
+        fontSize: 14 * 1,
+        fontWeight: '400',
         color: '#FFFFFF',
+        marginTop: 30,
+        textAlign: 'center',
     },
     amountInput: {
-        flex: 1,
-        fontSize: 50 * SCALE,
+        fontSize: 50 * 1,
         fontWeight: '500',
         color: '#FFFFFF',
+        fontFamily: 'Agbalumo-Regular',
         textAlign: 'center',
-        paddingTop: 80 * SCALE,
-        paddingBottom: 80 * SCALE,
+        paddingTop: 90,
+        paddingBottom: 90 * 1,
+        padding: 0,
+        margin: 0,
     },
     providerSection: {
         marginBottom: 20 * SCALE,
     },
     fieldLabel: {
-        fontSize: 14 * SCALE,
+        fontSize: 14 * 1,
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.5)',
         marginBottom: 12 * SCALE,
@@ -878,10 +908,10 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.2)',
         borderRadius: 10 * SCALE,
         paddingHorizontal: 15 * SCALE,
-        paddingVertical: 15 * SCALE,
+        paddingVertical: 20 * SCALE,
     },
     providerFieldText: {
-        fontSize: 14 * SCALE,
+        fontSize: 14 * 1,
         fontWeight: '400',
         color: '#FFFFFF',
     },
@@ -890,15 +920,20 @@ const styles = StyleSheet.create({
     },
     notesSection: {
         gap: 12 * SCALE,
+        backgroundColor: '#CE56001A',
+        borderRadius: 10 * SCALE,
+        padding: 10 * SCALE,
+        marginHorizontal: SCREEN_WIDTH * 0.047,
+        marginBottom:20,
     },
     noteItem: {
         flexDirection: 'row',
         alignItems: 'flex-start',
-        gap: 10 * SCALE,
+        gap: 7 * SCALE,
     },
     noteText: {
         flex: 1,
-        fontSize: 12 * SCALE,
+        fontSize: 10 * 1,
         fontWeight: '300',
         color: '#FFFFFF',
     },
@@ -906,7 +941,6 @@ const styles = StyleSheet.create({
         backgroundColor: '#A9EF45',
         borderRadius: 100,
         paddingVertical: 18 * SCALE,
-        marginHorizontal: SCREEN_WIDTH * 0.047,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -914,8 +948,8 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(169, 239, 69, 0.3)',
     },
     proceedButtonText: {
-        fontSize: 16 * SCALE,
-        fontWeight: '500',
+        fontSize: 14 * 1,
+        fontWeight: '400',
         color: '#000000',
     },
     // Modal Styles
@@ -972,99 +1006,84 @@ const styles = StyleSheet.create({
     },
     applyButton: {
         backgroundColor: '#A9EF45',
-        height: 60 * SCALE,
         borderRadius: 100,
+        paddingVertical: 22 * SCALE,
+        marginHorizontal: 20 * SCALE,
         alignItems: 'center',
         justifyContent: 'center',
-        marginHorizontal: 20 * SCALE,
-        marginTop: 20 * SCALE,
     },
     applyButtonText: {
-        fontSize: 11.2 * SCALE,
+        fontSize: 14 * 1,
         fontWeight: '400',
         color: '#000000',
     },
     // Provider Modal Styles
     providerModalContent: {
-        backgroundColor: '#020c19',
-        borderTopLeftRadius: 30 * SCALE,
-        borderTopRightRadius: 30 * SCALE,
-        paddingTop: 10 * SCALE,
-        paddingBottom: 30 * SCALE,
-        width: '100%',
+        backgroundColor: '#020C19',
+        borderTopLeftRadius: 20 * SCALE,
+        borderTopRightRadius: 20 * SCALE,
+        paddingBottom: 20 * SCALE,
         maxHeight: '80%',
     },
     providerModalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 5 * SCALE,
-        borderBottomWidth: 0.3,
-        borderBottomColor: 'rgba(255, 255, 255, 0.2)',
-        paddingHorizontal: 20 * SCALE,
-        paddingBottom: 10 * SCALE,
+        paddingHorizontal: 20 * 1,
+        paddingTop: 18 * SCALE,
+        paddingBottom: 15 * SCALE,
+        borderBottomWidth: 0.5,
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
     },
     providerModalTitle: {
-        fontSize: 16 * SCALE,
-        fontWeight: '500',
+        fontSize: 16 * 1,
+        fontWeight: '400',
         color: '#FFFFFF',
-    },
-    providerModalCloseCircle: {
-        width: 25 * SCALE,
-        height: 25 * SCALE,
-        borderRadius: 16 * SCALE,
-        backgroundColor: '#ffffff',
-        alignItems: 'center',
-        justifyContent: 'center',
     },
     searchContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        backgroundColor: '#FFFFFF0D',
         borderRadius: 10 * SCALE,
-        paddingHorizontal: 15 * SCALE,
-        paddingVertical: 12 * SCALE,
+        paddingHorizontal: 17 * SCALE,
+        paddingVertical: 7 * SCALE,
         marginHorizontal: 20 * SCALE,
-        marginTop: 15 * SCALE,
-        marginBottom: 15 * SCALE,
-        gap: 10 * SCALE,
+        marginTop: 20 * SCALE,
+        marginBottom: 10 * SCALE,
+        gap: 12 * SCALE,
     },
     searchInput: {
-        flex: 1,
-        fontSize: 14 * SCALE,
-        fontWeight: '300',
-        color: '#FFFFFF',
-    },
-    providerList: {
-        flex: 1,
-        paddingHorizontal: 20 * SCALE,
-    },
-    providerItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-        borderWidth: 0.3,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 10 * SCALE,
-        padding: 15 * SCALE,
-        marginBottom: 12 * SCALE,
-    },
-    providerLogo: {
-        width: 40 * SCALE,
-        height: 40 * SCALE,
-        borderRadius: 20 * SCALE,
-        marginRight: 15 * SCALE,
-    },
-    providerItemName: {
         flex: 1,
         fontSize: 14 * SCALE,
         fontWeight: '400',
         color: '#FFFFFF',
     },
-    applyButtonContainer: {
+    providerList: {
         paddingHorizontal: 20 * SCALE,
-        paddingTop: 15 * SCALE,
-        paddingBottom: 20 * SCALE,
+        marginBottom: 20 * SCALE,
+    },
+    providerItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14 * SCALE,
+        gap: 12 * SCALE,
+        borderBottomWidth: 0.3,
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+        backgroundColor: '#FFFFFF0D',
+        borderRadius: 10 * 1,
+        padding: 10 * SCALE,
+        marginBottom: 10 * SCALE,
+    },
+    providerLogo: {
+        width: 33 * SCALE,
+        height: 33 * SCALE,
+        borderRadius: 16.5 * SCALE,
+    },
+    providerItemName: {
+        flex: 1,
+        fontSize: 14 * 1,
+        fontWeight: '400',
+        color: '#FFFFFF',
     },
     // Summary Modal Styles
     summaryModalContent: {
@@ -1087,7 +1106,7 @@ const styles = StyleSheet.create({
         paddingBottom: 10 * SCALE,
     },
     summaryModalTitle: {
-        fontSize: 16 * SCALE,
+        fontSize: 16 * 1,
         fontWeight: '500',
         color: '#FFFFFF',
     },
@@ -1108,29 +1127,34 @@ const styles = StyleSheet.create({
         marginBottom: 30 * SCALE,
     },
     summaryAmountLabel: {
-        fontSize: 14 * SCALE,
+        fontSize: 14 * 1,
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.5)',
         marginBottom: 8 * SCALE,
     },
     summaryAmountValue: {
-        fontSize: 36 * SCALE,
+        fontSize: 40 * 1,
         fontWeight: '600',
         color: '#A9EF45',
     },
     summaryDetailsCard: {
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-        borderWidth: 0.3,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        // backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        // borderWidth: 0.3,
+        // borderColor: 'rgba(255, 255, 255, 0.2)',
         borderRadius: 15 * SCALE,
-        padding: 14 * SCALE,
+        // padding: 14 * SCALE,
         marginBottom: 20 * SCALE,
     },
     summaryRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 12 * SCALE,
+        backgroundColor: '#FFFFFF0D',
+        // borderRadius: 10 * SCALE,
+        padding: 10 * SCALE,
+        paddingVertical: 14 * SCALE,
+        borderWidth: 0.3,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
     },
     summaryLabel: {
         fontSize: 12 * SCALE,
@@ -1147,9 +1171,7 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(255, 255, 255, 0.2)',
     },
     summaryInfoSection: {
-        backgroundColor: 'rgba(255, 255, 255, 0.03)',
-        borderWidth: 0.3,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: '#CE56001A',
         borderRadius: 15 * SCALE,
         padding: 14 * SCALE,
         marginBottom: 20 * SCALE,
@@ -1175,8 +1197,8 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     understandButtonText: {
-        fontSize: 16 * SCALE,
-        fontWeight: '500',
+        fontSize: 14 * 1,
+        fontWeight: '400',
         color: '#000000',
     },
     // PIN Modal Styles
@@ -1305,10 +1327,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     numpadCircle: {
-        width: 80 * SCALE,
-        height: 80 * SCALE,
-        borderRadius: 40 * SCALE,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        width: 53 * SCALE,
+        height: 53 * SCALE,
+        borderRadius: 26.5 * SCALE,
+        backgroundColor: '#000914',
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -1316,7 +1338,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#A9EF45',
     },
     numpadText: {
-        fontSize: 28 * SCALE,
+        fontSize: 19.2 * SCALE,
         fontWeight: '400',
         color: '#FFFFFF',
     },
@@ -1324,53 +1346,112 @@ const styles = StyleSheet.create({
         color: '#000000',
     },
     backspaceSquare: {
-        width: 50 * SCALE,
-        height: 50 * SCALE,
-        borderRadius: 10 * SCALE,
-        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        width: 53 * SCALE,
+        height: 53 * SCALE,
+        borderRadius: 26.5 * SCALE,
+        backgroundColor: '#000914',
         alignItems: 'center',
         justifyContent: 'center',
     },
     // Security Modal Styles
-    securityContent: {
+    securityModalContentBottom: {
+        backgroundColor: '#020c19',
+        borderTopLeftRadius: 30 * SCALE,
+        borderTopRightRadius: 30 * SCALE,
         paddingHorizontal: 20 * SCALE,
         paddingTop: 20 * SCALE,
-        gap: 25 * SCALE,
+        paddingBottom: 30 * SCALE,
+        alignItems: 'center',
+        maxHeight: '90%',
     },
-    securityInstruction: {
+    securityModalHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        paddingHorizontal: 10 * SCALE,
+        paddingVertical: 10 * SCALE,
+        borderBottomWidth: 0.3,
+        borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+        marginBottom: 20 * SCALE,
+    },
+    securityModalTitle: {
+        fontSize: 16 * SCALE,
+        fontWeight: '500',
+        color: '#FFFFFF',
+        flex: 1,
+    },
+    securityIconContainer: {
+        alignItems: 'center',
+        marginTop: 20 * SCALE,
+        marginBottom: 20 * SCALE,
+    },
+    securityIconCircle: {
+        width: 120 * SCALE,
+        height: 120 * SCALE,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    securityIcon: {
+        width: 120 * SCALE,
+        height: 120 * SCALE,
+    },
+    securityTitle: {
+        fontSize: 20 * SCALE,
+        fontWeight: '500',
+        color: '#FFFFFF',
+        marginBottom: 8 * SCALE,
+        textAlign: 'center',
+    },
+    securitySubtitle: {
         fontSize: 14 * SCALE,
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.5)',
-        marginBottom: 12 * SCALE,
+        textAlign: 'center',
+        marginBottom: 30 * SCALE,
     },
-    securityCodeContainer: {
+    securityInputWrapper: {
+        width: '100%',
+        marginBottom: 20 * SCALE,
+        paddingHorizontal: 10 * SCALE,
+    },
+    securityInputLabel: {
+        fontSize: 14 * SCALE,
+        fontWeight: '300',
+        color: '#FFFFFF',
+        marginBottom: 8 * SCALE,
+    },
+    securityInputField: {
         backgroundColor: 'rgba(255, 255, 255, 0.05)',
+        borderRadius: 10 * SCALE,
         borderWidth: 0.3,
         borderColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 10 * SCALE,
-        paddingHorizontal: 15 * SCALE,
-        paddingVertical: 15 * SCALE,
+        paddingHorizontal: 11 * SCALE,
+        minHeight: 60 * SCALE,
+        justifyContent: 'center',
     },
-    securityCodeInput: {
-        fontSize: 20 * SCALE,
-        fontWeight: '400',
+    securityInput: {
+        fontSize: 14 * SCALE,
+        fontWeight: '300',
         color: '#FFFFFF',
-        textAlign: 'center',
-        letterSpacing: 8 * SCALE,
+        paddingVertical: 0,
     },
     securityProceedButton: {
-        width: 120 * SCALE,
-        height: 120 * SCALE,
-        borderRadius: 60 * SCALE,
         backgroundColor: '#A9EF45',
+        borderRadius: 100 * SCALE,
+        paddingVertical: 17 * SCALE,
         alignItems: 'center',
         justifyContent: 'center',
-        alignSelf: 'center',
-        marginTop: 40 * SCALE,
-        marginBottom: 20 * SCALE,
+        minHeight: 60 * SCALE,
+        width: '100%',
     },
     securityProceedButtonDisabled: {
         backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    },
+    securityProceedButtonText: {
+        fontSize: 14 * SCALE,
+        fontWeight: '400',
+        color: '#000',
     },
 });
 

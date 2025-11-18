@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -145,7 +145,7 @@ const EditProfile = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Edit Profile</Text>
+            <ThemedText style={styles.headerTitle}>Edit Profile</ThemedText>
           </View>
         </View>
 
@@ -173,7 +173,7 @@ const EditProfile = () => {
         <View style={styles.formCard}>
           {/* Country Field */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Country</Text>
+            <ThemedText style={styles.fieldLabel}>Country</ThemedText>
             <TouchableOpacity
               style={styles.inputField}
               onPress={handleCountrySelect}
@@ -183,7 +183,7 @@ const EditProfile = () => {
                 style={styles.countryFlag}
                 resizeMode="cover"
               />
-              <Text style={styles.inputText}>{profileData.country}</Text>
+              <ThemedText style={styles.inputText}>{profileData.country}</ThemedText>
               <MaterialCommunityIcons
                 name="chevron-down"
                 size={24 * SCALE}
@@ -194,7 +194,7 @@ const EditProfile = () => {
 
           {/* First Name Field */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>First name</Text>
+            <ThemedText style={styles.fieldLabel}>First name</ThemedText>
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
@@ -210,7 +210,7 @@ const EditProfile = () => {
 
           {/* Last Name Field */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Last name</Text>
+            <ThemedText style={styles.fieldLabel}>Last name</ThemedText>
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
@@ -226,7 +226,7 @@ const EditProfile = () => {
 
           {/* Email Field */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Email</Text>
+            <ThemedText style={styles.fieldLabel}>Email</ThemedText>
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
@@ -244,7 +244,7 @@ const EditProfile = () => {
 
           {/* Phone Number Field */}
           <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Phone number</Text>
+            <ThemedText style={styles.fieldLabel}>Phone number</ThemedText>
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
@@ -262,9 +262,9 @@ const EditProfile = () => {
 
         {/* Warning Message */}
         <View style={styles.warningContainer}>
-          <Text style={styles.warningText}>
-            To edit your account...<Text style={styles.warningLink}>Contact Support</Text>
-          </Text>
+          <ThemedText style={styles.warningText}>
+            To edit your account...<ThemedText style={styles.warningLink}>Contact Support</ThemedText>
+          </ThemedText>
         </View>
 
         {/* Bottom spacing for Save button */}
@@ -277,7 +277,7 @@ const EditProfile = () => {
           style={styles.saveButton}
           onPress={handleSave}
         >
-          <Text style={styles.saveButtonText}>Save</Text>
+          <ThemedText style={styles.saveButtonText}>Save</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -291,7 +291,7 @@ const EditProfile = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -308,7 +308,7 @@ const EditProfile = () => {
                     style={styles.countryFlagModal}
                     resizeMode="cover"
                   />
-                  <Text style={styles.countryName}>{c.name}</Text>
+                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountryId === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -321,7 +321,7 @@ const EditProfile = () => {
               style={styles.applyButton} 
               onPress={handleApplyCountry}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

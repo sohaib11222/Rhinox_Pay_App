@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -203,7 +203,7 @@ const BillPaymentMainScreen = () => {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Bill Payment</Text>
+          <ThemedText style={styles.headerTitle}>Bill Payment</ThemedText>
         </View>
 
         {/* Bill Payment Categories Grid */}
@@ -236,8 +236,8 @@ const BillPaymentMainScreen = () => {
                     )}
                   </View>
                 </View>
-                <Text style={styles.categoryTitle}>{category.title}</Text>
-                <Text style={styles.categoryDescription}>{category.description}</Text>
+                <ThemedText style={styles.categoryTitle}>{category.title}</ThemedText>
+                <ThemedText style={styles.categoryDescription}>{category.description}</ThemedText>
               </LinearGradient>
             </TouchableOpacity>
           ))}
@@ -246,9 +246,9 @@ const BillPaymentMainScreen = () => {
         {/* Recent Transactions */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
-            <Text style={styles.recentTransactionsTitle}>Recent Transactions</Text>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
             <TouchableOpacity onPress={handleViewAllPress}>
-              <Text style={styles.viewAllText}>View All</Text>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -277,7 +277,7 @@ const BillPaymentMainScreen = () => {
                   </View>
                 </View>
                 <View style={styles.transactionDetails}>
-                  <Text style={styles.transactionTitle}>{transaction.title}</Text>
+                  <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
                   <View style={styles.transactionStatusRow}>
                     <View
                       style={[
@@ -285,19 +285,19 @@ const BillPaymentMainScreen = () => {
                         { backgroundColor: getStatusColor(transaction.status) },
                       ]}
                     />
-                    <Text
+                    <ThemedText
                       style={[
                         styles.transactionStatus,
                         { color: getStatusColor(transaction.status) },
                       ]}
                     >
                       {transaction.status}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </View>
                 <View style={styles.transactionAmountContainer}>
-                  <Text style={styles.transactionAmount}>{transaction.amount}</Text>
-                  <Text style={styles.transactionDate}>{transaction.date}</Text>
+                  <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                 </View>
               </TouchableOpacity>
             ))}

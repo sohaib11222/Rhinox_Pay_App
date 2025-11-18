@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   ScrollView,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
@@ -86,10 +86,10 @@ const HomeScreen = () => {
 
           {/* Greeting Text */}
           <View style={styles.greetingContainer}>
-            <Text style={styles.greetingText}>Hi, AbdulMalik</Text>
+            <ThemedText style={styles.greetingText}>Hi, AbdulMalik</ThemedText>
             <View style={styles.welcomeRow}>
-              <Text style={styles.welcomeText}>Welcome</Text>
-              <Text style={styles.welcomeEmoji}>👋</Text>
+              <ThemedText style={styles.welcomeText}>Welcome</ThemedText>
+              <ThemedText style={styles.welcomeEmoji}>👋</ThemedText>
             </View>
           </View>
 
@@ -124,13 +124,13 @@ const HomeScreen = () => {
 
         {/* Balance Section */}
         <View style={styles.balanceSection}>
-          <Text style={styles.balanceLabel}>Your balance</Text>
+          <ThemedText style={styles.balanceLabel}>Your balance</ThemedText>
           <View style={styles.balanceRow}>
-            <Text style={styles.balanceAmount}>
-              <Text style={styles.balanceCurrency}>N</Text>
+            <ThemedText style={styles.balanceAmount}>
+              <ThemedText style={styles.balanceCurrency}>N</ThemedText>
               {balanceVisible ? '2,000,000.' : '*******.'}
-              <Text style={styles.balanceDecimals}>00</Text>
-            </Text>
+              <ThemedText style={styles.balanceDecimals}>00</ThemedText>
+            </ThemedText>
             <TouchableOpacity
               onPress={() => setBalanceVisible(!balanceVisible)}
               style={styles.eyeButton}
@@ -153,7 +153,7 @@ const HomeScreen = () => {
             <Image
               source={require('../../assets/send-square.png')}
               style={[{ width: 42, height: 42 }]} resizeMode="cover"
-            />            <Text style={styles.actionButtonText}>Send</Text>
+            />            <ThemedText style={styles.actionButtonText}>Send</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionButton}
@@ -164,22 +164,22 @@ const HomeScreen = () => {
                 source={require('../../assets/send-2.png')}
                 style={[{ width: 42, height: 42 }]} resizeMode="cover"
               />            </View>
-            <Text style={styles.actionButtonText}>Fund</Text>
+            <ThemedText style={styles.actionButtonText}>Fund</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton}>
             <Image
               source={require('../../assets/arrow-swap.png')}
               style={[{ width: 42, height: 42 }]}
               resizeMode="cover"
-            />            <Text style={styles.actionButtonText}>Convert</Text>
+            />            <ThemedText style={styles.actionButtonText}>Convert</ThemedText>
           </TouchableOpacity>
         </View>
 
         {/* Active Wallets Section */}
         <View style={styles.walletsHeader}>
-          <Text style={styles.walletsTitle}>Active Wallets</Text>
+          <ThemedText style={styles.walletsTitle}>Active Wallets</ThemedText>
           <TouchableOpacity>
-            <Text style={styles.viewAllText}>View All</Text>
+            <ThemedText style={styles.viewAllText}>View All</ThemedText>
           </TouchableOpacity>
         </View>
 
@@ -199,16 +199,16 @@ const HomeScreen = () => {
                 resizeMode="cover"
               />
               <View style={styles.walletInfo}>
-                <Text style={styles.walletCode}>NGN</Text>
-                <Text style={styles.walletName}>Nigerian Naira</Text>
+                <ThemedText style={styles.walletCode}>NGN</ThemedText>
+                <ThemedText style={styles.walletName}>Nigerian Naira</ThemedText>
               </View>
             </View>
             <View style={styles.walletDivider} />
-            <Text style={styles.walletBalanceLabel}>Balance</Text>
-            <Text style={styles.walletBalanceAmount}>
-              2,000,000.00<Text style={styles.walletBalanceCurrency}>NGN</Text>
-            </Text>
-            <Text style={styles.walletUsdAmount}>$20,000</Text>
+            <ThemedText style={styles.walletBalanceLabel}>Balance</ThemedText>
+            <ThemedText style={styles.walletBalanceAmount}>
+              2,000,000.00<ThemedText style={styles.walletBalanceCurrency}>NGN</ThemedText>
+            </ThemedText>
+            <ThemedText style={styles.walletUsdAmount}>$20,000</ThemedText>
           </LinearGradient>
 
           {/* KSH Wallet Card */}
@@ -221,16 +221,16 @@ const HomeScreen = () => {
               />
 
               <View style={styles.walletInfo}>
-                <Text style={[styles.walletCode, styles.walletCodeDark]}>KSH</Text>
-                <Text style={[styles.walletName, styles.walletNameDark]}>Kenya Shilling</Text>
+                <ThemedText style={[styles.walletCode, styles.walletCodeDark]}>KSH</ThemedText>
+                <ThemedText style={[styles.walletName, styles.walletNameDark]}>Kenya Shilling</ThemedText>
               </View>
             </View>
             <View style={styles.walletDivider} />
-            <Text style={[styles.walletBalanceLabel, styles.walletBalanceLabelDark]}>Balance</Text>
-            <Text style={[styles.walletBalanceAmount, styles.walletBalanceAmountDark]}>
-              20,000<Text style={styles.walletBalanceCurrencyDark}>KSH</Text>
-            </Text>
-            <Text style={[styles.walletUsdAmount, styles.walletUsdAmountDark]}>$20,000</Text>
+            <ThemedText style={[styles.walletBalanceLabel, styles.walletBalanceLabelDark]}>Balance</ThemedText>
+            <ThemedText style={[styles.walletBalanceAmount, styles.walletBalanceAmountDark]}>
+              20,000<ThemedText style={styles.walletBalanceCurrencyDark}>KSH</ThemedText>
+            </ThemedText>
+            <ThemedText style={[styles.walletUsdAmount, styles.walletUsdAmountDark]}>$20,000</ThemedText>
           </View>
         </View>
 
@@ -277,13 +277,13 @@ const HomeScreen = () => {
         {/* All Transactions Card */}
         <View style={styles.transactionCard}>
           <View style={styles.transactionCardHeader}>
-            <Text style={styles.transactionCardTitle}>All Transactions</Text>
+            <ThemedText style={styles.transactionCardTitle}>All Transactions</ThemedText>
             <View style={styles.filterButtonContainer}>
               <TouchableOpacity 
                 style={styles.filterButton}
                 onPress={() => setShowFilterDropdown(!showFilterDropdown)}
               >
-                <Text style={styles.filterButtonText}>{selectedFilter}</Text>
+                <ThemedText style={styles.filterButtonText}>{selectedFilter}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={12 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
               
@@ -297,7 +297,7 @@ const HomeScreen = () => {
                       setShowFilterDropdown(false);
                     }}
                   >
-                    <Text style={styles.filterOptionText}>Fiat</Text>
+                    <ThemedText style={styles.filterOptionText}>Fiat</ThemedText>
                     {selectedFilter === 'Fiat' && (
                       <MaterialCommunityIcons name="check" size={16} color="#A9EF45" />
                     )}
@@ -309,7 +309,7 @@ const HomeScreen = () => {
                       setShowFilterDropdown(false);
                     }}
                   >
-                    <Text style={styles.filterOptionText}>Crypto</Text>
+                    <ThemedText style={styles.filterOptionText}>Crypto</ThemedText>
                     {selectedFilter === 'Crypto' && (
                       <MaterialCommunityIcons name="check" size={16} color="#A9EF45" />
                     )}
@@ -318,9 +318,9 @@ const HomeScreen = () => {
               )}
             </View>
           </View>
-          <Text style={styles.transactionTotalAmount}>
-            <Text style={styles.transactionTotalCurrency}>N</Text>150,000.<Text style={styles.transactionTotalDecimals}>00</Text>
-          </Text>
+          <ThemedText style={styles.transactionTotalAmount}>
+            <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>N</ThemedText> <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}> 150,000.</ThemedText><ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalDecimals}>00</ThemedText>
+          </ThemedText>
 
           {/* Chart Bars */}
           <View style={styles.chartBars}>
@@ -334,19 +334,19 @@ const HomeScreen = () => {
           <View style={styles.legend}>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, styles.legendDot1]} />
-              <Text style={styles.legendText}>Send</Text>
+              <ThemedText style={styles.legendText}>Send</ThemedText>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, styles.legendDot2]} />
-              <Text style={styles.legendText}>Deposits</Text>
+              <ThemedText style={styles.legendText}>Deposits</ThemedText>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, styles.legendDot3]} />
-              <Text style={styles.legendText}>Convert</Text>
+              <ThemedText style={styles.legendText}>Convert</ThemedText>
             </View>
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, styles.legendDot4]} />
-              <Text style={styles.legendText}>Bill Payments</Text>
+              <ThemedText style={styles.legendText}>Bill Payments</ThemedText>
             </View>
           </View>
         </View>
@@ -354,9 +354,9 @@ const HomeScreen = () => {
         {/* Recent Transactions Card */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
-            <Text style={styles.recentTransactionsTitle}>Recent Transactions</Text>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
             <TouchableOpacity>
-              <Text style={styles.viewAllText}>View All</Text>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -372,15 +372,15 @@ const HomeScreen = () => {
                 </View>
               </View>
               <View style={styles.transactionDetails}>
-                <Text style={styles.transactionTitle}>{transaction.title}</Text>
+                <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
                 <View style={styles.transactionStatusRow}>
                   <View style={styles.statusDot} />
-                  <Text style={styles.transactionSubtitle}>{transaction.status || transaction.subtitle}</Text>
+                  <ThemedText style={styles.transactionSubtitle}>{transaction.status || transaction.subtitle}</ThemedText>
                 </View>
               </View>
               <View style={styles.transactionAmountContainer}>
-                <Text style={styles.transactionAmount}>{transaction.amount}</Text>
-                <Text style={styles.transactionDate}>{transaction.date}</Text>
+                <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
               </View>
             </View>
           ))}
@@ -400,7 +400,7 @@ const HomeScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -415,8 +415,8 @@ const HomeScreen = () => {
                     setSelectedCountryName(c.name);
                   }}
                 >
-                  <Text style={styles.countryFlag}>{c.flag}</Text>
-                  <Text style={styles.countryName}>{c.name}</Text>
+                  <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -429,7 +429,7 @@ const HomeScreen = () => {
               style={styles.applyButton} 
               onPress={() => setShowCountryModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -449,7 +449,7 @@ const HomeScreen = () => {
               contentContainerStyle={styles.sendFundsModalScrollContent}
             >
               <View style={styles.sendFundsModalHeader}>
-                <Text style={styles.sendFundsModalTitle}>Send Funds</Text>
+                <ThemedText style={styles.sendFundsModalTitle}>Send Funds</ThemedText>
                 <TouchableOpacity onPress={() => setShowSendFundsModal(false)}>
                   <View style={styles.sendFundsModalCloseCircle}>
                     <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -475,7 +475,7 @@ const HomeScreen = () => {
                   onPress={() => setSendFundsWalletType('Fiat')}
                 >
                   <MaterialCommunityIcons name="bank" size={16 * SCALE} color={sendFundsWalletType === 'Fiat' ? '#000000' : '#FFFFFF'} />
-                  <Text style={[styles.sendFundsWalletToggleText, sendFundsWalletType === 'Fiat' && styles.sendFundsWalletToggleTextActive]}>Fiat Wallet</Text>
+                  <ThemedText style={[styles.sendFundsWalletToggleText, sendFundsWalletType === 'Fiat' && styles.sendFundsWalletToggleTextActive]}>Fiat Wallet</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.sendFundsWalletToggleButton, styles.sendFundsWalletToggleRight, sendFundsWalletType === 'Crypto' && styles.sendFundsWalletToggleActive]}
@@ -486,7 +486,7 @@ const HomeScreen = () => {
                     style={styles.sendFundsBitcoinIcon}
                     resizeMode="contain"
                   />
-                  <Text style={[styles.sendFundsWalletToggleText, sendFundsWalletType === 'Crypto' && styles.sendFundsWalletToggleTextActive]}>Crypto Wallet</Text>
+                  <ThemedText style={[styles.sendFundsWalletToggleText, sendFundsWalletType === 'Crypto' && styles.sendFundsWalletToggleTextActive]}>Crypto Wallet</ThemedText>
                 </TouchableOpacity>
               </View>
 
@@ -494,7 +494,7 @@ const HomeScreen = () => {
                 <>
                   {/* Select Currency Section */}
                   <View style={styles.sendFundsCurrencySection}>
-                    <Text style={styles.sendFundsSectionTitle}>Select Currency</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Currency</ThemedText>
                     <LinearGradient
                       colors={['#A9EF4533', '#FFFFFF0D']}
                       start={{ x: 1, y: 0 }}
@@ -502,14 +502,14 @@ const HomeScreen = () => {
                       style={styles.sendFundsBalanceCard}
                     >
                       <View style={styles.sendFundsBalanceCardContent}>
-                        <Text style={styles.sendFundsBalanceLabel}>My Balance</Text>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
                         <View style={styles.sendFundsBalanceRow}>
                           <Image
                             source={require('../../assets/Vector (34).png')}
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <Text style={styles.sendFundsBalanceAmount}>N200,000</Text>
+                          <ThemedText style={styles.sendFundsBalanceAmount}>N200,000</ThemedText>
                         </View>
                       </View>
                       <TouchableOpacity
@@ -521,7 +521,7 @@ const HomeScreen = () => {
                           style={styles.sendFundsCountryFlagImage}
                           resizeMode="cover"
                         />
-                        <Text style={styles.sendFundsCountryNameText}>{selectedCountryName}</Text>
+                        <ThemedText style={styles.sendFundsCountryNameText}>{selectedCountryName}</ThemedText>
                         <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                       </TouchableOpacity>
                     </LinearGradient>
@@ -529,7 +529,7 @@ const HomeScreen = () => {
 
                   {/* Send Options Section */}
                   <View style={styles.sendFundsOptionsSection}>
-                    <Text style={styles.sendFundsSectionTitle}>Send Options</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Send Options</ThemedText>
                     <View style={styles.sendFundsOptionsContainer}>
                       {/* Rhinox User Option */}
                       <TouchableOpacity
@@ -554,8 +554,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>RhionX User (User ID)</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -583,8 +583,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Bank Account</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Send to a user's bank account.</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Bank Account</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send to a user's bank account.</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -612,8 +612,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Mobile Money</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Send via mobile moneyt</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send via mobile moneyt</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -624,7 +624,7 @@ const HomeScreen = () => {
                 <>
                   {/* Select Asset Section */}
                   <View style={styles.sendFundsCurrencySection}>
-                    <Text style={styles.sendFundsSectionTitle}>Select Crypto</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Crypto</ThemedText>
                     <LinearGradient
                       colors={['#A9EF4533', '#FFFFFF0D']}
                       start={{ x: 1, y: 0 }}
@@ -632,16 +632,16 @@ const HomeScreen = () => {
                       style={styles.sendFundsBalanceCard}
                     >
                       <View style={styles.sendFundsBalanceCardContent}>
-                        <Text style={styles.sendFundsBalanceLabel}>My Balance</Text>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
                         <View style={styles.sendFundsBalanceRow}>
                           <Image
                             source={require('../../assets/Vector (34).png')}
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <Text style={styles.sendFundsBalanceAmount}>
+                          <ThemedText style={styles.sendFundsBalanceAmount}>
                             {selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00001 BTC'}
-                          </Text>
+                          </ThemedText>
                         </View>
                       </View>
                       <TouchableOpacity
@@ -655,7 +655,7 @@ const HomeScreen = () => {
                               style={styles.sendFundsAssetIcon}
                               resizeMode="cover"
                             />
-                            <Text style={styles.sendFundsAssetNameText}>{selectedAsset.name}</Text>
+                            <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
                           </>
                         ) : (
                           <>
@@ -664,7 +664,7 @@ const HomeScreen = () => {
                               style={styles.sendFundsAssetIcon}
                               resizeMode="cover"
                             />
-                            <Text style={styles.sendFundsAssetNameText}>Bitcoin</Text>
+                            <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
                           </>
                         )}
                         <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
@@ -674,7 +674,7 @@ const HomeScreen = () => {
 
                   {/* Send Options Section */}
                   <View style={styles.sendFundsOptionsSection}>
-                    <Text style={styles.sendFundsSectionTitle}>Send Options</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Send Options</ThemedText>
                     <View style={styles.sendFundsOptionsContainer}>
                       {/* Rhinox User Option */}
                       <TouchableOpacity
@@ -699,8 +699,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>RhionX User (User ID)</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -726,8 +726,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Wallet Address</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Send to a user's wallet address</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Wallet Address</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send to a user's wallet address</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -739,7 +739,7 @@ const HomeScreen = () => {
               {/* Recent Section - Only show for Fiat */}
               {sendFundsWalletType === 'Fiat' && (
                 <View style={styles.sendFundsRecentSection}>
-                  <Text style={styles.sendFundsSectionTitle}>Recent</Text>
+                  <ThemedText style={styles.sendFundsSectionTitle}>Recent</ThemedText>
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -754,8 +754,8 @@ const HomeScreen = () => {
                     ].map((contact) => (
                       <View key={contact.id} style={styles.sendFundsRecentItem}>
                         <Image source={contact.avatar} style={styles.sendFundsRecentAvatar} resizeMode="cover" />
-                        <Text style={styles.sendFundsRecentName}>{contact.name}</Text>
-                        <Text style={styles.sendFundsRecentCurrency}>{contact.currency}</Text>
+                        <ThemedText style={styles.sendFundsRecentName}>{contact.name}</ThemedText>
+                        <ThemedText style={styles.sendFundsRecentCurrency}>{contact.currency}</ThemedText>
                       </View>
                     ))}
                   </ScrollView>
@@ -775,7 +775,7 @@ const HomeScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Asset</Text>
+                <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
                 <TouchableOpacity onPress={() => setShowAssetModal(false)}>
                   <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
                 </TouchableOpacity>
@@ -810,8 +810,8 @@ const HomeScreen = () => {
                         resizeMode="cover"
                       />
                       <View style={styles.assetItemInfo}>
-                        <Text style={styles.assetItemName}>{asset.name}</Text>
-                        <Text style={styles.assetItemBalance}>Bal : {asset.balance}</Text>
+                        <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                        <ThemedText style={styles.assetItemBalance}>Bal : {asset.balance}</ThemedText>
                       </View>
                       <MaterialCommunityIcons
                         name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
@@ -827,7 +827,7 @@ const HomeScreen = () => {
                   style={styles.applyButton}
                   onPress={() => setShowAssetModal(false)}
                 >
-                  <Text style={styles.applyButtonText}>Apply</Text>
+                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -844,7 +844,7 @@ const HomeScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Country</Text>
+                <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
                 <TouchableOpacity onPress={() => setShowSendFundsCountryModal(false)}>
                   <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
                 </TouchableOpacity>
@@ -859,8 +859,8 @@ const HomeScreen = () => {
                       setSelectedCountryName(c.name);
                     }}
                   >
-                    <Text style={styles.countryFlag}>{c.flag}</Text>
-                    <Text style={styles.countryName}>{c.name}</Text>
+                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24}
@@ -873,7 +873,7 @@ const HomeScreen = () => {
                 style={styles.applyButton} 
                 onPress={() => setShowSendFundsCountryModal(false)}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -894,7 +894,7 @@ const HomeScreen = () => {
               contentContainerStyle={styles.sendFundsModalScrollContent}
             >
               <View style={styles.sendFundsModalHeader}>
-                <Text style={styles.sendFundsModalTitle}>Fund Wallet</Text>
+                <ThemedText style={styles.sendFundsModalTitle}>Fund Wallet</ThemedText>
                 <TouchableOpacity onPress={() => setShowFundWalletModal(false)}>
                   <View style={styles.sendFundsModalCloseCircle}>
                     <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -920,7 +920,7 @@ const HomeScreen = () => {
                   onPress={() => setFundWalletType('Fiat')}
                 >
                   <MaterialCommunityIcons name="bank" size={16 * SCALE} color={fundWalletType === 'Fiat' ? '#000000' : '#FFFFFF'} />
-                  <Text style={[styles.sendFundsWalletToggleText, fundWalletType === 'Fiat' && styles.sendFundsWalletToggleTextActive]}>Fiat Wallet</Text>
+                  <ThemedText style={[styles.sendFundsWalletToggleText, fundWalletType === 'Fiat' && styles.sendFundsWalletToggleTextActive]}>Fiat Wallet</ThemedText>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.sendFundsWalletToggleButton, styles.sendFundsWalletToggleRight, fundWalletType === 'Crypto' && styles.sendFundsWalletToggleActive]}
@@ -931,7 +931,7 @@ const HomeScreen = () => {
                     style={styles.sendFundsBitcoinIcon}
                     resizeMode="contain"
                   />
-                  <Text style={[styles.sendFundsWalletToggleText, fundWalletType === 'Crypto' && styles.sendFundsWalletToggleTextActive]}>Crypto Wallet</Text>
+                  <ThemedText style={[styles.sendFundsWalletToggleText, fundWalletType === 'Crypto' && styles.sendFundsWalletToggleTextActive]}>Crypto Wallet</ThemedText>
                 </TouchableOpacity>
               </View>
 
@@ -939,7 +939,7 @@ const HomeScreen = () => {
                 <>
                   {/* Select Currency Section */}
                   <View style={styles.sendFundsCurrencySection}>
-                    <Text style={styles.sendFundsSectionTitle}>Select Currency</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Currency</ThemedText>
                     <LinearGradient
                       colors={['#A9EF4533', '#FFFFFF0D']}
                       start={{ x: 1, y: 0 }}
@@ -947,14 +947,14 @@ const HomeScreen = () => {
                       style={styles.sendFundsBalanceCard}
                     >
                       <View style={styles.sendFundsBalanceCardContent}>
-                        <Text style={styles.sendFundsBalanceLabel}>My Balance</Text>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
                         <View style={styles.sendFundsBalanceRow}>
                           <Image
                             source={require('../../assets/Vector (34).png')}
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <Text style={styles.sendFundsBalanceAmount}>N200,000</Text>
+                          <ThemedText style={styles.sendFundsBalanceAmount}>N200,000</ThemedText>
                         </View>
                       </View>
                       <TouchableOpacity
@@ -966,7 +966,7 @@ const HomeScreen = () => {
                           style={styles.sendFundsCountryFlagImage}
                           resizeMode="cover"
                         />
-                        <Text style={styles.sendFundsCountryNameText}>{selectedCountryName}</Text>
+                        <ThemedText style={styles.sendFundsCountryNameText}>{selectedCountryName}</ThemedText>
                         <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                       </TouchableOpacity>
                     </LinearGradient>
@@ -974,7 +974,7 @@ const HomeScreen = () => {
 
                   {/* Select Channel Section */}
                   <View style={styles.sendFundsOptionsSection}>
-                    <Text style={styles.sendFundsSectionTitle}>Select Channel</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Channel</ThemedText>
                     <View style={styles.sendFundsOptionsContainer}>
                       {/* Bank Transfer Option */}
                       <TouchableOpacity
@@ -999,8 +999,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Bank Transfer</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Fund your wallet via bank transfer</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Bank Transfer</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via bank transfer</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -1028,8 +1028,8 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Mobile Money</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Fund your wallet via mobile moneyt</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via mobile moneyt</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -1038,7 +1038,7 @@ const HomeScreen = () => {
                       <TouchableOpacity
                         onPress={() => {
                           setShowFundWalletModal(false);
-                          // TODO: Navigate to Conversion screen
+                          (navigation as any).navigate('Settings', { screen: 'Conversion' });
                         }}
                       >
                         <LinearGradient
@@ -1049,76 +1049,25 @@ const HomeScreen = () => {
                         >
                           <View style={styles.sendFundsIconCircle}>
                             <Image
-                              source={require('../../assets/arrow-swap.png')}
+                              source={require('../../assets/Vector (44).png')}
                               style={styles.sendFundsIcon}
                               resizeMode="contain"
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Conversion</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Convert funds between your fiat wallets</Text>
-                          </View>
-                        </LinearGradient>
-                      </TouchableOpacity>
-
-                      {/* P2P Trading Option */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setShowFundWalletModal(false);
-                          // TODO: Navigate to P2P Trading screen
-                        }}
-                      >
-                        <LinearGradient
-                          colors={['#A9EF4533', '#FFFFFF0D']}
-                          start={{ x: 1, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={styles.sendFundsOption}
-                        >
-                          <View style={styles.sendFundsIconCircle}>
-                            <Image
-                              source={require('../../assets/Frame 2398.png')}
-                              style={styles.sendFundsIcon}
-                              resizeMode="contain"
-                            />
-                          </View>
-                          <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>P2P Trading</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Trade your assets in our p2p market</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Conversion</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Convert funds between your fiat wallets</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
                     </View>
-                  </View>
-
-                  {/* Recent Section */}
-                  <View style={styles.sendFundsRecentSection}>
-                    <Text style={styles.sendFundsSectionTitle}>Recent</Text>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.sendFundsRecentScrollContent}
-                    >
-                      {[
-                        { id: '1', name: 'Adewale', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '2', name: 'Sasha', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '3', name: 'Olayemi', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '4', name: 'Adejoke', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '5', name: 'Tunde', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                      ].map((contact) => (
-                        <View key={contact.id} style={styles.sendFundsRecentItem}>
-                          <Image source={contact.avatar} style={styles.sendFundsRecentAvatar} resizeMode="cover" />
-                          <Text style={styles.sendFundsRecentName}>{contact.name}</Text>
-                          <Text style={styles.sendFundsRecentCurrency}>{contact.currency}</Text>
-                        </View>
-                      ))}
-                    </ScrollView>
                   </View>
                 </>
               ) : (
                 <>
                   {/* Select Asset Section */}
                   <View style={styles.sendFundsCurrencySection}>
-                    <Text style={styles.sendFundsSectionTitle}>Select Crypto</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Crypto</ThemedText>
                     <LinearGradient
                       colors={['#A9EF4533', '#FFFFFF0D']}
                       start={{ x: 1, y: 0 }}
@@ -1126,16 +1075,16 @@ const HomeScreen = () => {
                       style={styles.sendFundsBalanceCard}
                     >
                       <View style={styles.sendFundsBalanceCardContent}>
-                        <Text style={styles.sendFundsBalanceLabel}>My Balance</Text>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
                         <View style={styles.sendFundsBalanceRow}>
                           <Image
                             source={require('../../assets/Vector (34).png')}
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <Text style={styles.sendFundsBalanceAmount}>
+                          <ThemedText style={styles.sendFundsBalanceAmount}>
                             {selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00001 BTC'}
-                          </Text>
+                          </ThemedText>
                         </View>
                       </View>
                       <TouchableOpacity
@@ -1149,7 +1098,7 @@ const HomeScreen = () => {
                               style={styles.sendFundsAssetIcon}
                               resizeMode="cover"
                             />
-                            <Text style={styles.sendFundsAssetNameText}>{selectedAsset.name}</Text>
+                            <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
                           </>
                         ) : (
                           <>
@@ -1158,7 +1107,7 @@ const HomeScreen = () => {
                               style={styles.sendFundsAssetIcon}
                               resizeMode="cover"
                             />
-                            <Text style={styles.sendFundsAssetNameText}>Bitcoin</Text>
+                            <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
                           </>
                         )}
                         <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
@@ -1168,14 +1117,14 @@ const HomeScreen = () => {
 
                   {/* Select Channel Section */}
                   <View style={styles.sendFundsOptionsSection}>
-                    <Text style={styles.sendFundsSectionTitle}>Select Channel</Text>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Channel</ThemedText>
                     <View style={styles.sendFundsOptionsContainer}>
-                      {/* Bank Transfer Option */}
+                      {/* Crypto Option */}
                       <TouchableOpacity
                         onPress={() => {
                           setShowFundWalletModal(false);
                           (navigation as any).navigate('Settings', {
-                            screen: 'FundWallet',
+                            screen: 'Assets',
                           });
                         }}
                       >
@@ -1187,70 +1136,14 @@ const HomeScreen = () => {
                         >
                           <View style={styles.sendFundsIconCircle}>
                             <Image
-                              source={require('../../assets/Vector (43).png')}
+                              source={require('../../assets/CurrencyBtc.png')}
                               style={styles.sendFundsIcon}
                               resizeMode="contain"
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Bank Transfer</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Fund your wallet via bank transfer</Text>
-                          </View>
-                        </LinearGradient>
-                      </TouchableOpacity>
-
-                      {/* Mobile Money Option */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setShowFundWalletModal(false);
-                          (navigation as any).navigate('Settings', {
-                            screen: 'MobileFund',
-                          });
-                        }}
-                      >
-                        <LinearGradient
-                          colors={['#A9EF4533', '#FFFFFF0D']}
-                          start={{ x: 1, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={styles.sendFundsOption}
-                        >
-                          <View style={styles.sendFundsIconCircle}>
-                            <Image
-                              source={require('../../assets/Cardholder.png')}
-                              style={styles.sendFundsIcon}
-                              resizeMode="contain"
-                            />
-                          </View>
-                          <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Mobile Money</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Fund your wallet via mobile moneyt</Text>
-                          </View>
-                        </LinearGradient>
-                      </TouchableOpacity>
-
-                      {/* Conversion Option */}
-                      <TouchableOpacity
-                        onPress={() => {
-                          setShowFundWalletModal(false);
-                          // TODO: Navigate to Conversion screen
-                        }}
-                      >
-                        <LinearGradient
-                          colors={['#A9EF4533', '#FFFFFF0D']}
-                          start={{ x: 1, y: 0 }}
-                          end={{ x: 0, y: 1 }}
-                          style={styles.sendFundsOption}
-                        >
-                          <View style={styles.sendFundsIconCircle}>
-                            <Image
-                              source={require('../../assets/arrow-swap.png')}
-                              style={styles.sendFundsIcon}
-                              resizeMode="contain"
-                            />
-                          </View>
-                          <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>Conversion</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Convert funds between your fiat wallets</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Crypto</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via crypto</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -1259,7 +1152,9 @@ const HomeScreen = () => {
                       <TouchableOpacity
                         onPress={() => {
                           setShowFundWalletModal(false);
-                          // TODO: Navigate to P2P Trading screen
+                          (navigation as any).navigate('Settings', {
+                            screen: 'P2PFund',
+                          });
                         }}
                       >
                         <LinearGradient
@@ -1270,14 +1165,14 @@ const HomeScreen = () => {
                         >
                           <View style={styles.sendFundsIconCircle}>
                             <Image
-                              source={require('../../assets/Frame 2398.png')}
+                              source={require('../../assets/Vector (42).png')}
                               style={styles.sendFundsIcon}
                               resizeMode="contain"
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <Text style={styles.sendFundsOptionTitle}>P2P Trading</Text>
-                            <Text style={styles.sendFundsOptionSubtitle}>Trade your assets in our p2p market</Text>
+                            <ThemedText style={styles.sendFundsOptionTitle}>P2P Trading</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Trade your assets in our p2p market</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -1299,7 +1194,7 @@ const HomeScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Asset</Text>
+                <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
                 <TouchableOpacity onPress={() => setShowFundWalletAssetModal(false)}>
                   <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
                 </TouchableOpacity>
@@ -1334,8 +1229,8 @@ const HomeScreen = () => {
                         resizeMode="cover"
                       />
                       <View style={styles.assetItemInfo}>
-                        <Text style={styles.assetItemName}>{asset.name}</Text>
-                        <Text style={styles.assetItemBalance}>Bal : {asset.balance}</Text>
+                        <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                        <ThemedText style={styles.assetItemBalance}>Bal : {asset.balance}</ThemedText>
                       </View>
                       <MaterialCommunityIcons
                         name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
@@ -1351,7 +1246,7 @@ const HomeScreen = () => {
                   style={styles.applyButton}
                   onPress={() => setShowFundWalletAssetModal(false)}
                 >
-                  <Text style={styles.applyButtonText}>Apply</Text>
+                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1368,7 +1263,7 @@ const HomeScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Country</Text>
+                <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
                 <TouchableOpacity onPress={() => setShowFundWalletCountryModal(false)}>
                   <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
                 </TouchableOpacity>
@@ -1383,8 +1278,8 @@ const HomeScreen = () => {
                       setSelectedCountryName(c.name);
                     }}
                   >
-                    <Text style={styles.countryFlag}>{c.flag}</Text>
-                    <Text style={styles.countryName}>{c.name}</Text>
+                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24}
@@ -1397,7 +1292,7 @@ const HomeScreen = () => {
                 style={styles.applyButton} 
                 onPress={() => setShowFundWalletCountryModal(false)}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -1496,17 +1391,19 @@ const styles = StyleSheet.create({
   },
   balanceAmount: {
     fontSize: 50 * SCALE,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#FFFFFF',
     // lineHeight: 74 * SCALE,
     flex: 1,
   },
   balanceCurrency: {
     fontSize: 14 * 1,
+    fontWeight:700,
   },
   balanceDecimals: {
     fontSize: 50 * SCALE,
     color: 'rgba(255, 255, 255, 0.5)',
+    fontWeight:700,
   },
   eyeButton: {
     padding: 4 * SCALE,
@@ -1750,6 +1647,7 @@ const styles = StyleSheet.create({
   },
   transactionTotalCurrency: {
     fontSize: 10 * SCALE,
+    fontWeight:700,
   },
   transactionTotalDecimals: {
     fontSize: 40 * 1,

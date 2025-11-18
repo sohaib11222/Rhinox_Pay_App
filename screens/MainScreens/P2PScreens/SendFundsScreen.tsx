@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -18,6 +17,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -172,12 +172,14 @@ const SendFundsScreen = () => {
 
   const handleSuccessCancel = () => {
     setShowSuccessModal(false);
-    navigation.goBack();
+    // Navigate back to Home tab instead of Settings tab
+    (navigation as any).navigate('Home', { screen: 'HomeMain' });
   };
 
   const handleReceiptClose = () => {
     setShowReceiptModal(false);
-    navigation.goBack();
+    // Navigate back to Home tab instead of Settings tab
+    (navigation as any).navigate('Home', { screen: 'HomeMain' });
   };
 
   const getSelectedCountryData = () => {
@@ -198,14 +200,17 @@ const SendFundsScreen = () => {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              // Navigate back to Home tab instead of Settings tab
+              (navigation as any).navigate('Home', { screen: 'HomeMain' });
+            }}
           >
             <View style={styles.iconCircle}>
               <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Send Funds</Text>
+            <ThemedText style={styles.headerTitle}>Send Funds</ThemedText>
           </View>
         </View>
 
@@ -218,7 +223,7 @@ const SendFundsScreen = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -248,7 +253,7 @@ const SendFundsScreen = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -259,7 +264,7 @@ const SendFundsScreen = () => {
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <Text style={styles.amountInputLabel}>N</Text>
+              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
@@ -282,7 +287,7 @@ const SendFundsScreen = () => {
                   style={styles.quickAmountButton}
                   onPress={() => handleAmountSelect(quickAmount)}
                 >
-                  <Text style={styles.quickAmountText}>{quickAmount}</Text>
+                  <ThemedText style={styles.quickAmountText}>{quickAmount}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -313,8 +318,8 @@ const SendFundsScreen = () => {
             {userName && (
               <View style={[styles.inputField, {backgroundColor: '#020C19', borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                 <View style={styles.accountNameContainer}>
-                  <Text style={styles.accountNameLabel}>User Name</Text>
-                  <Text style={styles.accountNameValue}>{userName}</Text>
+                  <ThemedText style={styles.accountNameLabel}>User Name</ThemedText>
+                  <ThemedText style={styles.accountNameValue}>{userName}</ThemedText>
                 </View>
               </View>
             )}
@@ -326,7 +331,7 @@ const SendFundsScreen = () => {
             onPress={handleProceed}
             disabled={!walletId || !userName}
           >
-            <Text style={styles.proceedButtonText}>Proceed</Text>
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
           </TouchableOpacity>
         </View>
 
@@ -337,15 +342,15 @@ const SendFundsScreen = () => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <Text style={styles.feeText}>Fee : N200</Text>
+          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
         {/* Recent Transactions Card */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
-            <Text style={styles.recentTransactionsTitle}>Recent Transactions</Text>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
             <TouchableOpacity>
-              <Text style={styles.viewAllText}>View All</Text>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -354,13 +359,13 @@ const SendFundsScreen = () => {
               <View key={transaction.id} style={styles.transactionItem}>
                 <Image source={transaction.avatar} style={styles.transactionIcon} resizeMode="cover" />
                 <View style={styles.transactionDetails}>
-                  <Text style={styles.transactionPhone}>{transaction.name}</Text>
+                  <ThemedText style={styles.transactionPhone}>{transaction.name}</ThemedText>
                   <View style={styles.transactionMeta}>
-                    <Text style={styles.transactionPlan}>{transaction.walletId} • {transaction.country}</Text>
+                    <ThemedText style={styles.transactionPlan}>{transaction.walletId} • {transaction.country}</ThemedText>
                   </View>
                 </View>
                 <View style={styles.transactionRight}>
-                  <Text style={styles.transactionDate}>Last Transfer: {transaction.date}</Text>
+                  <ThemedText style={styles.transactionDate}>Last Transfer: {transaction.date}</ThemedText>
                 </View>
               </View>
             ))}
@@ -380,7 +385,7 @@ const SendFundsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -400,7 +405,7 @@ const SendFundsScreen = () => {
                     style={styles.countryFlagModal}
                     resizeMode="cover"
                   />
-                  <Text style={styles.countryNameModal}>{country.name}</Text>
+                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -413,7 +418,7 @@ const SendFundsScreen = () => {
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -437,7 +442,7 @@ const SendFundsScreen = () => {
                 <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
               </View>
             </TouchableOpacity>
-            <Text style={styles.qrScannerTitle}>Scan QR Code</Text>
+            <ThemedText style={styles.qrScannerTitle}>Scan QR Code</ThemedText>
           </View>
           <View style={styles.qrScannerView}>
             <View style={styles.qrScannerFrame}>
@@ -461,7 +466,7 @@ const SendFundsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.summaryModalContent}>
             <View style={styles.summaryModalHeader}>
-              <Text style={styles.summaryModalTitle}>Summary</Text>
+              <ThemedText style={styles.summaryModalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <View style={styles.summaryCloseCircle}>
                   <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -473,7 +478,7 @@ const SendFundsScreen = () => {
               {/* Transfer Details Card */}
               <View style={styles.summaryTransferCard}>
                 {/* You Send Section */}
-                <Text style={styles.summarySectionLabel}>You send</Text>
+                <ThemedText style={styles.summarySectionLabel}>You send</ThemedText>
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryRowLeft}>
                     <Image
@@ -481,10 +486,10 @@ const SendFundsScreen = () => {
                       style={styles.summaryFlag}
                       resizeMode="cover"
                     />
-                    <Text style={styles.summaryCountryText}>{selectedCountryName}</Text>
+                    <ThemedText style={styles.summaryCountryText}>{selectedCountryName}</ThemedText>
                     <MaterialCommunityIcons name="chevron-down" size={16 * SCALE} color="#FFFFFF" />
                   </View>
-                  <Text style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</Text>
+                  <ThemedText style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</ThemedText>
                 </View>
 
                 {/* Transfer Icon Divider */}
@@ -501,7 +506,7 @@ const SendFundsScreen = () => {
                 </View>
 
                 {/* User Receives Section */}
-                <Text style={styles.summarySectionLabel}>User Receives</Text>
+                <ThemedText style={styles.summarySectionLabel}>User Receives</ThemedText>
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryRowLeft}>
                     <Image
@@ -509,36 +514,36 @@ const SendFundsScreen = () => {
                       style={styles.summaryFlag}
                       resizeMode="cover"
                     />
-                    <Text style={styles.summaryCountryText}>{selectedCountryName}</Text>
+                    <ThemedText style={styles.summaryCountryText}>{selectedCountryName}</ThemedText>
                   </View>
-                  <Text style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</Text>
+                  <ThemedText style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</ThemedText>
                 </View>
               </View>
 
               {/* Details Card */}
               <View style={styles.summaryDetailsCard}>
                 <View style={[styles.summaryDetailRow, {borderTopRightRadius: 10, borderTopLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
-                  <Text style={styles.summaryDetailLabel}>Country</Text>
-                  <Text style={styles.summaryDetailValue}>{selectedCountryName}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Country</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{selectedCountryName}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Rhinoxpay ID</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Rhinoxpay ID</ThemedText>
                   <View style={styles.summaryDetailValueRow}>
                     <Image
                       source={require('../../../assets/login/memoji.png')}
                       style={styles.summaryProfileIcon}
                       resizeMode="cover"
                     />
-                    <Text style={styles.summaryDetailValue}>{walletId}</Text>
+                    <ThemedText style={styles.summaryDetailValue}>{walletId}</ThemedText>
                   </View>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Account Name</Text>
-                  <Text style={styles.summaryDetailValue}>{userName}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{userName}</ThemedText>
                 </View>
                 <View style={[styles.summaryDetailRow, {borderBottomRightRadius: 10, borderBottomLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
-                  <Text style={styles.summaryDetailLabel}>Fee</Text>
-                  <Text style={styles.summaryDetailValue}>N0</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Fee</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>N0</ThemedText>
                 </View>
               </View>
             </ScrollView>
@@ -547,7 +552,7 @@ const SendFundsScreen = () => {
               style={styles.summaryProceedButton}
               onPress={handleSummaryProceed}
             >
-              <Text style={styles.summaryProceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.summaryProceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -563,7 +568,7 @@ const SendFundsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
             <View style={styles.pinModalHeader}>
-              <Text style={styles.pinModalTitle}>Verification</Text>
+              <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowPinModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -580,8 +585,8 @@ const SendFundsScreen = () => {
             </View>
 
             <View style={styles.pinModalTextContainer}>
-              <Text style={styles.pinInstruction}>Input Pin to Complete Transaction</Text>
-              <Text style={styles.pinAmount}>N{amount}</Text>
+              <ThemedText style={styles.pinInstruction}>Input Pin to Complete Transaction</ThemedText>
+              <ThemedText style={styles.pinAmount}>N{amount}</ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -592,9 +597,9 @@ const SendFundsScreen = () => {
                   return (
                     <View key={index} style={styles.pinSlot}>
                       {hasValue ? (
-                        <Text style={styles.pinSlotText}>{digit}</Text>
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                       ) : (
-                        <Text style={styles.pinSlotAsterisk}>*</Text>
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                       )}
                     </View>
                   );
@@ -616,14 +621,14 @@ const SendFundsScreen = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -641,14 +646,14 @@ const SendFundsScreen = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -666,14 +671,14 @@ const SendFundsScreen = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -694,14 +699,14 @@ const SendFundsScreen = () => {
                       lastPressedButton === '0' && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === '0' && styles.numpadTextPressed,
                       ]}
                     >
                       0
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -728,7 +733,7 @@ const SendFundsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.securityModalContentBottom}>
             <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Security Verification</Text>
+              <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -744,11 +749,11 @@ const SendFundsScreen = () => {
               </View>
             </View>
 
-            <Text style={styles.securityTitle}>Security Verification</Text>
-            <Text style={styles.securitySubtitle}>Verify via email and your authenticator app</Text>
+            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Email Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -762,7 +767,7 @@ const SendFundsScreen = () => {
             </View>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Authenticator App Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -780,7 +785,7 @@ const SendFundsScreen = () => {
               onPress={handleSecurityComplete}
               disabled={!emailCode || !authenticatorCode}
             >
-              <Text style={styles.proceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -942,6 +947,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingTop: 80,
     paddingBottom: 80 * 1,
+    fontFamily: 'Agbalumo-Regular',
+
     padding: 0,
     margin: 0,
   },

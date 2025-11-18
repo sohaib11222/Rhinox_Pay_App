@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   TouchableOpacity,
   StatusBar,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const SetBiometrics = () => {
   const navigation = useNavigation();
@@ -87,7 +87,7 @@ const SetBiometrics = () => {
           </View>
         </TouchableOpacity>
         <View style={styles.headerTitleWrapper}>
-          <Text style={styles.headerTitle}>Setup Biometrics</Text>
+          <ThemedText style={styles.headerTitle}>Setup Biometrics</ThemedText>
         </View>
       </View>
 
@@ -100,20 +100,20 @@ const SetBiometrics = () => {
 
       {/* Content */}
       <View style={styles.content}>
-        <Text style={styles.contentTitle}>Setup Biometrics</Text>
-        <Text style={styles.contentSubtitle}>
+        <ThemedText style={styles.contentTitle}>Setup Biometrics</ThemedText>
+        <ThemedText style={styles.contentSubtitle}>
           Once setup you can login with biometrics
-        </Text>
+        </ThemedText>
       </View>
 
       {/* Buttons */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.proceedButton} onPress={handleSetupBiometrics}>
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-          <Text style={styles.skipButtonText}>Skip</Text>
+          <ThemedText style={styles.skipButtonText}>Skip</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -138,7 +138,7 @@ const SetBiometrics = () => {
               </View>
             </TouchableOpacity>
             <View style={styles.headerTitleWrapper}>
-              <Text style={styles.headerTitle}>Setup Pin</Text>
+              <ThemedText style={styles.headerTitle}>Setup Pin</ThemedText>
             </View>
           </View>
 
@@ -153,12 +153,12 @@ const SetBiometrics = () => {
 
           {/* Content */}
           <View style={styles.pinContent}>
-            <Text style={styles.contentTitle}>
+            <ThemedText style={styles.contentTitle}>
               {pinStep === 'setup' ? 'Setup Pin' : 'Re-enter Pin'}
-            </Text>
-            <Text style={styles.contentSubtitle}>
+            </ThemedText>
+            <ThemedText style={styles.contentSubtitle}>
               Setup your pin to use for your transactions
-            </Text>
+            </ThemedText>
           </View>
 
           {/* PIN Display - pill input bar with 5 fields */}
@@ -171,9 +171,9 @@ const SetBiometrics = () => {
                 return (
                   <View key={index} style={styles.pinSlot}>
                     {hasValue ? (
-                      <Text style={styles.pinSlotText}>{digit}</Text>
+                      <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                     ) : (
-                      <Text style={styles.pinSlotAsterisk}>*</Text>
+                      <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                     )}
                   </View>
                 );
@@ -196,14 +196,14 @@ const SetBiometrics = () => {
                       lastPressedButton === num.toString() && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === num.toString() && styles.numpadTextPressed,
                       ]}
                     >
                       {num}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -221,14 +221,14 @@ const SetBiometrics = () => {
                       lastPressedButton === num.toString() && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === num.toString() && styles.numpadTextPressed,
                       ]}
                     >
                       {num}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -246,14 +246,14 @@ const SetBiometrics = () => {
                       lastPressedButton === num.toString() && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === num.toString() && styles.numpadTextPressed,
                       ]}
                     >
                       {num}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -272,14 +272,14 @@ const SetBiometrics = () => {
                     lastPressedButton === '0' && styles.numpadCirclePressed,
                   ]}
                 >
-                  <Text
+                  <ThemedText
                     style={[
                       styles.numpadText,
                       lastPressedButton === '0' && styles.numpadTextPressed,
                     ]}
                   >
                     0
-                  </Text>
+                  </ThemedText>
                 </View>
               </TouchableOpacity>
               <TouchableOpacity
@@ -296,11 +296,11 @@ const SetBiometrics = () => {
           {/* Buttons */}
           <View style={styles.pinButtonContainer}>
             <TouchableOpacity style={styles.proceedButton}>
-              <Text style={styles.proceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-              <Text style={styles.skipButtonText}>Skip</Text>
+              <ThemedText style={styles.skipButtonText}>Skip</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

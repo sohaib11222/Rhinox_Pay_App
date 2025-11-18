@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -193,7 +193,7 @@ const P2PProfile = () => {
                         />
                     </TouchableOpacity>
                     <View style={styles.headerTitleContainer}>
-                        <Text style={styles.headerTitle}>P2P</Text>
+                        <ThemedText style={styles.headerTitle}>P2P</ThemedText>
                     </View>
           <TouchableOpacity 
             style={styles.countrySelector}
@@ -214,7 +214,7 @@ const P2PProfile = () => {
               style={styles.countryFlag}
               resizeMode="cover"
             />
-            <Text style={styles.countryText}>{selectedCountry}</Text>
+            <ThemedText style={styles.countryText}>{selectedCountry}</ThemedText>
             <MaterialCommunityIcons
               name="chevron-down"
               size={14 * SCALE}
@@ -234,10 +234,10 @@ const P2PProfile = () => {
                             />
                         </View>
                     </View>
-                    <Text style={styles.marketTitle}>P2P Market</Text>
-                    <Text style={styles.marketSubtitle}>
+                    <ThemedText style={styles.marketTitle}>P2P Market</ThemedText>
+                    <ThemedText style={styles.marketSubtitle}>
                         Trade your assets directly with other users
-                    </Text>
+                    </ThemedText>
                 </View>
 
                 {/* Buy/Sell Toggle */}
@@ -255,7 +255,7 @@ const P2PProfile = () => {
                             size={17 * SCALE}
                             color="#FFFFFF"
                         />
-                        <Text style={styles.toggleButtonText}>Buy</Text>
+                        <ThemedText style={styles.toggleButtonText}>Buy</ThemedText>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={[styles.toggleButton, styles.toggleButtonRight]}
@@ -270,7 +270,7 @@ const P2PProfile = () => {
                             size={17 * SCALE}
                             color="#FFFFFF"
                         />
-                        <Text style={styles.toggleButtonText}>Sell</Text>
+                        <ThemedText style={styles.toggleButtonText}>Sell</ThemedText>
                     </TouchableOpacity>
                 </View>
             </LinearGradient>
@@ -308,9 +308,9 @@ const P2PProfile = () => {
                                 />
                             </View>
                             <View style={styles.menuTextContainer}>
-                                <Text style={styles.menuTitle}>{item.title}</Text>
+                                <ThemedText style={styles.menuTitle}>{item.title}</ThemedText>
                                 <View style={styles.menuSubtitleContainer}>
-                                    <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
+                                    <ThemedText style={styles.menuSubtitle}>{item.subtitle}</ThemedText>
                                     {item.id === 'my-ads' && (
                                         <View style={styles.notificationDot} />
                                     )}
@@ -343,7 +343,7 @@ const P2PProfile = () => {
                 </View>
 
                 {/* My Orders Section */}
-                <Text style={styles.ordersTitle}>My Orders</Text>
+                <ThemedText style={styles.ordersTitle}>My Orders</ThemedText>
 
                 {/* Order Filter Tabs */}
                 <View style={styles.filterTabsContainer}>
@@ -355,14 +355,14 @@ const P2PProfile = () => {
                             ]}
                             onPress={() => setSelectedTab('All')}
                         >
-                            <Text
+                            <ThemedText
                                 style={[
                                     styles.filterTabText,
                                     selectedTab === 'All' && styles.filterTabTextActive,
                                 ]}
                             >
                                 All
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[
@@ -371,14 +371,14 @@ const P2PProfile = () => {
                             ]}
                             onPress={() => setSelectedTab('Buy')}
                         >
-                            <Text
+                            <ThemedText
                                 style={[
                                     styles.filterTabText,
                                     selectedTab === 'Buy' && styles.filterTabTextActive,
                                 ]}
                             >
                                 Buy
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[
@@ -387,14 +387,14 @@ const P2PProfile = () => {
                             ]}
                             onPress={() => setSelectedTab('Sell')}
                         >
-                            <Text
+                            <ThemedText
                                 style={[
                                     styles.filterTabText,
                                     selectedTab === 'Sell' && styles.filterTabTextActive,
                                 ]}
                             >
                                 Sell
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -402,7 +402,7 @@ const P2PProfile = () => {
                 {/* Filter Dropdown */}
                 <View style={styles.filterDropdownContainer}>
                     <TouchableOpacity style={styles.filterDropdown}>
-                        <Text style={styles.filterDropdownText}>All</Text>
+                        <ThemedText style={styles.filterDropdownText}>All</ThemedText>
                         <MaterialCommunityIcons
                             name="chevron-down"
                             size={14 * SCALE}
@@ -431,27 +431,27 @@ const P2PProfile = () => {
                                 resizeMode="cover"
                             />
                             <View style={styles.orderDetails}>
-                                <Text style={styles.orderUserName}>{order.userName}</Text>
-                                <Text style={styles.orderDescription}>
+                                <ThemedText style={styles.orderUserName}>{order.userName}</ThemedText>
+                                <ThemedText style={styles.orderDescription}>
                                     {order.type} {order.asset}{' '}
-                                    <Text style={[styles.orderStatus, { color: getStatusColor(order.status) }]}>
+                                    <ThemedText style={[styles.orderStatus, { color: getStatusColor(order.status) }]}>
                                         {order.status}
-                                    </Text>
-                                </Text>
+                                    </ThemedText>
+                                </ThemedText>
                             </View>
                             <View style={styles.orderAmountContainer}>
-                                <Text
+                                <ThemedText
                                     style={[
                                         styles.orderAmount,
                                         order.status === 'Completed' && order.type === 'Sell' && styles.orderAmountRed,
                                     ]}
                                 >
                                     {order.amount}
-                                    <Text style={styles.orderAssetAmount}>
+                                    <ThemedText style={styles.orderAssetAmount}>
                                         ({order.assetAmount})
-                                    </Text>
-                                </Text>
-                                <Text style={styles.orderDate}>{order.date}</Text>
+                                    </ThemedText>
+                                </ThemedText>
+                                <ThemedText style={styles.orderDate}>{order.date}</ThemedText>
                             </View>
                         </View>
                     ))}
@@ -482,7 +482,7 @@ const P2PProfile = () => {
         <View style={styles.adTypeModalOverlay}>
           <View style={styles.adTypeModalContent}>
             <View style={styles.adTypeModalHeader}>
-              <Text style={styles.adTypeModalTitle}>Select Ad type</Text>
+              <ThemedText style={styles.adTypeModalTitle}>Select Ad type</ThemedText>
               <TouchableOpacity onPress={() => setShowAdTypeModal(false)}>
                 <View style={styles.adTypeModalCloseCircle}>
                   <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -508,8 +508,8 @@ const P2PProfile = () => {
                 />
               </View>
               <View style={styles.adTypeTextContainer}>
-                <Text style={styles.adTypeOptionTitle}>Sell AD</Text>
-                <Text style={styles.adTypeOptionSubtitle}>Sell tokens to users</Text>
+                <ThemedText style={styles.adTypeOptionTitle}>Sell AD</ThemedText>
+                <ThemedText style={styles.adTypeOptionSubtitle}>Sell tokens to users</ThemedText>
               </View>
             </TouchableOpacity>
 
@@ -533,8 +533,8 @@ const P2PProfile = () => {
                 </View>
               </View>
               <View style={styles.adTypeTextContainer}>
-                <Text style={styles.adTypeOptionTitle}>Buy AD</Text>
-                <Text style={styles.adTypeOptionSubtitle}>Buy tokens from users</Text>
+                <ThemedText style={styles.adTypeOptionTitle}>Buy AD</ThemedText>
+                <ThemedText style={styles.adTypeOptionSubtitle}>Buy tokens from users</ThemedText>
               </View>
             </TouchableOpacity>
           </View>
@@ -551,7 +551,7 @@ const P2PProfile = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -570,7 +570,7 @@ const P2PProfile = () => {
                     style={styles.countryFlagModal}
                     resizeMode="cover"
                   />
-                  <Text style={styles.countryName}>{c.name}</Text>
+                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountryId === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -591,7 +591,7 @@ const P2PProfile = () => {
                 setShowCountryModal(false);
               }}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

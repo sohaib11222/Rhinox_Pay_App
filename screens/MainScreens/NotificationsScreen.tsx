@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -149,7 +149,7 @@ const NotificationsScreen = () => {
             <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <ThemedText style={styles.headerTitle}>Notifications</ThemedText>
       </View>
 
       {/* Tabs */}
@@ -158,25 +158,25 @@ const NotificationsScreen = () => {
           style={[styles.tab, activeTab === 'all' && styles.tabActive]}
           onPress={() => setActiveTab('all')}
         >
-          <Text style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
+          <ThemedText style={[styles.tabText, activeTab === 'all' && styles.tabTextActive]}>
             All
-          </Text>
+          </ThemedText>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'general' && styles.tabActive]}
           onPress={() => setActiveTab('general')}
         >
-          <Text style={[styles.tabText, activeTab === 'general' && styles.tabTextActive]}>
+          <ThemedText style={[styles.tabText, activeTab === 'general' && styles.tabTextActive]}>
             General
-          </Text>
+          </ThemedText>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'transactions' && styles.tabActive]}
           onPress={() => setActiveTab('transactions')}
         >
-          <Text style={[styles.tabText, activeTab === 'transactions' && styles.tabTextActive]}>
+          <ThemedText style={[styles.tabText, activeTab === 'transactions' && styles.tabTextActive]}>
             Transactions
-          </Text>
+          </ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -187,7 +187,7 @@ const NotificationsScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.notificationsCard}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
+          <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
           <View style={styles.notificationsContainer}>
             {filteredNotifications.map((notification) => {
               const itemHeight = notification.type === 'transaction' 
@@ -222,17 +222,17 @@ const NotificationsScreen = () => {
                   <View style={styles.notificationContent}>
                     {notification.type === 'transaction' ? (
                       <>
-                        <Text style={styles.notificationTitle}>{notification.title}</Text>
+                        <ThemedText style={styles.notificationTitle}>{notification.title}</ThemedText>
                         {notification.status && (
-                          <Text style={styles.notificationStatus}>{notification.status}</Text>
+                          <ThemedText style={styles.notificationStatus}>{notification.status}</ThemedText>
                         )}
                         {notification.amount && (
-                          <Text style={styles.notificationAmount}>{notification.amount}</Text>
+                          <ThemedText style={styles.notificationAmount}>{notification.amount}</ThemedText>
                         )}
                       </>
                     ) : (
                       <>
-                        <Text style={styles.notificationTitle}>{notification.title}</Text>
+                        <ThemedText style={styles.notificationTitle}>{notification.title}</ThemedText>
                         {notification.image ? (
                           <View style={styles.descriptionWithImageContainer}>
                             <Image
@@ -240,14 +240,14 @@ const NotificationsScreen = () => {
                               style={styles.notificationImage}
                               resizeMode="cover"
                             />
-                            <Text style={styles.notificationDescription}>
+                            <ThemedText style={styles.notificationDescription}>
                               {notification.description}
-                            </Text>
+                            </ThemedText>
                           </View>
                         ) : (
-                          <Text style={styles.notificationDescription}>
+                          <ThemedText style={styles.notificationDescription}>
                             {notification.description}
-                          </Text>
+                          </ThemedText>
                         )}
                       </>
                     )}
@@ -258,10 +258,10 @@ const NotificationsScreen = () => {
                     styles.notificationFooter,
                     notification.type === 'general' && styles.notificationFooterGeneral
                   ]}>
-                    <Text style={styles.notificationDate}>{notification.date}</Text>
+                    <ThemedText style={styles.notificationDate}>{notification.date}</ThemedText>
                     {notification.hasViewTransaction && (
                       <TouchableOpacity onPress={() => handleViewTransaction(notification)}>
-                        <Text style={styles.viewTransactionText}>View Transaction</Text>
+                        <ThemedText style={styles.viewTransactionText}>View Transaction</ThemedText>
                       </TouchableOpacity>
                     )}
                   </View>

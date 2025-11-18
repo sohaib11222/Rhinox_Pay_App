@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   Image,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -69,20 +69,20 @@ const TransactionSuccessModal: React.FC<TransactionSuccessModalProps> = ({
           </View>
 
           {/* Success Title */}
-          <Text style={styles.successTitle}>Complete</Text>
+          <ThemedText style={styles.successTitle}>Complete</ThemedText>
 
           {/* Success Message */}
-          <Text style={styles.successMessage}>
+          <ThemedText style={styles.successMessage}>
             {getSuccessMessage()}
-          </Text>
+          </ThemedText>
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity style={styles.viewTransactionButton} onPress={onViewTransaction}>
-              <Text style={styles.viewTransactionButtonText}>View Transaction</Text>
+              <ThemedText style={styles.viewTransactionButtonText}>View Transaction</ThemedText>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

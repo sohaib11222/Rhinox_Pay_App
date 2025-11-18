@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   TextInput,
   TouchableOpacity,
@@ -14,6 +13,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -160,15 +160,15 @@ const LoginScreen = () => {
         <View style={styles.mainContent}>
           {/* Title Section */}
           <View style={styles.titleSection}>
-            <Text style={styles.title}>Login</Text>
-            <Text style={styles.subtitle}>Login to your account</Text>
+            <ThemedText style={styles.title}>Login</ThemedText>
+            <ThemedText style={styles.subtitle}>Login to your account</ThemedText>
           </View>
 
           {/* Form Container */}
           <View style={styles.formContainer}>
             {/* Email Field */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Email</Text>
+              <ThemedText style={styles.inputLabel}>Email</ThemedText>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.input}
@@ -190,7 +190,7 @@ const LoginScreen = () => {
 
             {/* Password Field */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Password</Text>
+              <ThemedText style={styles.inputLabel}>Password</ThemedText>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.input}
@@ -220,23 +220,23 @@ const LoginScreen = () => {
               style={styles.forgotPasswordContainer}
               onPress={handleForgotPassword}
             >
-              <Text style={styles.forgotPasswordText}>Forgot Password ?</Text>
+              <ThemedText style={styles.forgotPasswordText}>Forgot Password ?</ThemedText>
             </TouchableOpacity>
 
             {/* Login Button */}
             <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-              <Text style={styles.loginButtonText}>Login</Text>
+              <ThemedText style={styles.loginButtonText}>Login</ThemedText>
             </TouchableOpacity>
           </View>
 
           {/* Register Link */}
           <View style={styles.registerContainer}>
-            <Text style={styles.registerText}>
+            <ThemedText style={styles.registerText}>
               Don't have an account ?{' '}
-              <Text style={styles.registerLink} onPress={handleRegister}>
+              <ThemedText style={styles.registerLink} onPress={handleRegister}>
                 Register
-              </Text>
-            </Text>
+              </ThemedText>
+            </ThemedText>
           </View>
         </View>
 
@@ -256,7 +256,7 @@ const LoginScreen = () => {
           <View style={styles.forgotPasswordModalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Forgot Password</Text>
+              <ThemedText style={styles.modalTitle}>Forgot Password</ThemedText>
               <TouchableOpacity
                 onPress={() => setShowForgotPasswordModal(false)}
                 style={styles.closeButton}
@@ -267,7 +267,7 @@ const LoginScreen = () => {
 
             {/* Enter Email Address Section */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>Enter Email Addresss</Text>
+              <ThemedText style={styles.modalSectionTitle}>Enter Email Addresss</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -283,22 +283,22 @@ const LoginScreen = () => {
               {emailVerified && (
                 <View style={styles.verificationMessage}>
                   <MaterialCommunityIcons name="check-circle" size={20} color="#A9EF45" />
-                  <Text style={styles.verificationText}>Email Address Verified</Text>
+                  <ThemedText style={styles.verificationText}>Email Address Verified</ThemedText>
                 </View>
               )}
               {emailVerified && (
-                <Text style={styles.countdownText}>
+                <ThemedText style={styles.countdownText}>
                   A 5 digit code has been sent to your registered email. Resend in{' '}
-                  <Text style={styles.countdownTimer}>
+                  <ThemedText style={styles.countdownTimer}>
                     {String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')} Sec
-                  </Text>
-                </Text>
+                  </ThemedText>
+                </ThemedText>
               )}
             </View>
 
             {/* Input Code Section */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>Input Code</Text>
+              <ThemedText style={styles.modalSectionTitle}>Input Code</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -321,7 +321,7 @@ const LoginScreen = () => {
               onPress={handleProceed}
               disabled={!emailVerified || verificationCode.length === 0}
             >
-              <Text style={styles.modalProceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.modalProceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -347,7 +347,7 @@ const LoginScreen = () => {
               >
                 <MaterialCommunityIcons name="chevron-left" size={24} color="#FFFFFF" />
               </TouchableOpacity>
-              <Text style={styles.changePasswordTitle}>Change Password</Text>
+              <ThemedText style={styles.changePasswordTitle}>Change Password</ThemedText>
               <TouchableOpacity
                 onPress={() => setShowChangePasswordModal(false)}
                 style={styles.closeButton}
@@ -358,7 +358,7 @@ const LoginScreen = () => {
 
             {/* New Password Section */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>New Password</Text>
+              <ThemedText style={styles.modalSectionTitle}>New Password</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -385,7 +385,7 @@ const LoginScreen = () => {
 
             {/* Re-enter Password Section */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>Re-enter new Password</Text>
+              <ThemedText style={styles.modalSectionTitle}>Re-enter new Password</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -419,7 +419,7 @@ const LoginScreen = () => {
               onPress={handleSavePassword}
               disabled={newPassword.length === 0 || confirmPassword.length === 0}
             >
-              <Text style={styles.modalSaveButtonText}>Save</Text>
+              <ThemedText style={styles.modalSaveButtonText}>Save</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

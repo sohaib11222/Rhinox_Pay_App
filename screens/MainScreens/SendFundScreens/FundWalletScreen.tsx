@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
     View,
-    Text,
     StyleSheet,
     ScrollView,
     TouchableOpacity,
@@ -19,6 +18,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -181,14 +181,17 @@ const FundWalletScreen = () => {
                 <View style={styles.header}>
                     <TouchableOpacity
                         style={styles.backButton}
-                        onPress={() => navigation.goBack()}
+                        onPress={() => {
+                            // Navigate back to Home tab instead of Settings tab
+                            (navigation as any).navigate('Home', { screen: 'HomeMain' });
+                        }}
                     >
                         <View style={styles.iconCircle}>
                             <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
                         </View>
                     </TouchableOpacity>
                     <View style={styles.headerTitleContainer}>
-                        <Text style={styles.headerTitle}>Fund Wallet</Text>
+                        <ThemedText style={styles.headerTitle}>Fund Wallet</ThemedText>
                     </View>
                 </View>
 
@@ -201,14 +204,14 @@ const FundWalletScreen = () => {
                         style={styles.balanceCard}
                     >
                         <View style={styles.balanceCardContent}>
-                            <Text style={styles.balanceLabel}>My Balance</Text>
+                            <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
                             <View style={styles.balanceRow}>
                                 <Image
                                     source={require('../../../assets/Vector (34).png')}
                                     style={styles.walletIcon}
                                     resizeMode="cover"
                                 />
-                                <Text style={styles.balanceAmount}>N{balance}</Text>
+                                <ThemedText style={styles.balanceAmount}>N{balance}</ThemedText>
                             </View>
                         </View>
                         <TouchableOpacity
@@ -220,7 +223,7 @@ const FundWalletScreen = () => {
                                 style={styles.countryFlagImage}
                                 resizeMode="cover"
                             />
-                            <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+                            <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
                             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
                     </LinearGradient>
@@ -230,9 +233,9 @@ const FundWalletScreen = () => {
                 <View style={styles.mainCard}>
                     {/* Amount Input Section */}
                     <View style={styles.amountSection}>
-                        <Text style={styles.amountLabel}>Enter Amount</Text>
+                        <ThemedText style={styles.amountLabel}>Enter Amount</ThemedText>
                         <View style={styles.amountInputLabelContainer}>
-                            <Text style={styles.amountInputLabel}>₦</Text>
+                            <ThemedText style={styles.amountInputLabel}>₦</ThemedText>
                             <TextInput
                                 style={styles.amountInput}
                                 value={amount}
@@ -251,36 +254,36 @@ const FundWalletScreen = () => {
                     </View>
                     <View style={styles.bankDetailsCard}>
                         <View style={[styles.bankDetailRow, { borderTopRightRadius: 10 * SCALE, borderTopLeftRadius: 10 * SCALE, borderWidth: 0.5 }]}>
-                            <Text style={styles.bankDetailLabel}>Bank Name</Text>
+                            <ThemedText style={styles.bankDetailLabel}>Bank Name</ThemedText>
                             <View style={styles.bankDetailValueRow}>
-                                <Text style={styles.bankDetailValue}>{bankDetails.bankName}</Text>
+                                <ThemedText style={styles.bankDetailValue}>{bankDetails.bankName}</ThemedText>
                                 <TouchableOpacity onPress={() => copyToClipboard(bankDetails.bankName)}>
                                     <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                                 </TouchableOpacity>
                             </View>
                         </View>
                         <View style={styles.bankDetailRow}>
-                            <Text style={styles.bankDetailLabel}>Account Number</Text>
+                            <ThemedText style={styles.bankDetailLabel}>Account Number</ThemedText>
                             <View style={styles.bankDetailValueRow}>
-                                <Text style={styles.bankDetailValue}>{bankDetails.accountNumber}</Text>
+                                <ThemedText style={styles.bankDetailValue}>{bankDetails.accountNumber}</ThemedText>
                                 <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountNumber)}>
                                     <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                                 </TouchableOpacity>
                             </View>
                         </View>
                         <View style={styles.bankDetailRow}>
-                            <Text style={styles.bankDetailLabel}>Account Name</Text>
+                            <ThemedText style={styles.bankDetailLabel}>Account Name</ThemedText>
                             <View style={styles.bankDetailValueRow}>
-                                <Text style={styles.bankDetailValue}>{bankDetails.accountName}</Text>
+                                <ThemedText style={styles.bankDetailValue}>{bankDetails.accountName}</ThemedText>
                                 <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountName)}>
                                     <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                                 </TouchableOpacity>
                             </View>
                         </View>
                         <View style={[styles.bankDetailRow, { borderBottomRightRadius: 10 * SCALE, borderBottomLeftRadius: 10 * SCALE, borderWidth: 0.5 }]}>
-                            <Text style={styles.bankDetailLabel}>Reference</Text>
+                            <ThemedText style={styles.bankDetailLabel}>Reference</ThemedText>
                             <View style={styles.bankDetailValueRow}>
-                                <Text style={styles.bankDetailValue}>{bankDetails.reference}</Text>
+                                <ThemedText style={styles.bankDetailValue}>{bankDetails.reference}</ThemedText>
                                 <TouchableOpacity onPress={() => copyToClipboard(bankDetails.reference)}>
                                     <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                                 </TouchableOpacity>
@@ -295,11 +298,11 @@ const FundWalletScreen = () => {
                 <View style={styles.notesSection}>
                     <View style={styles.noteRow}>
                         <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                        <Text style={styles.noteText}>You are to deposit to this account number to prevent loss of funds</Text>
+                        <ThemedText style={styles.noteText}>You are to deposit to this account number to prevent loss of funds</ThemedText>
                     </View>
                     <View style={styles.noteRow}>
                         <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                        <Text style={styles.noteText}>Payment will take a few minutes to reflect</Text>
+                        <ThemedText style={styles.noteText}>Payment will take a few minutes to reflect</ThemedText>
                     </View>
                 </View>
 
@@ -310,7 +313,7 @@ const FundWalletScreen = () => {
                         style={[{ marginBottom: -1, width: 14, height: 14 }]}
                         resizeMode="cover"
                     />
-                    <Text style={styles.feeText}>Fee : N200</Text>
+                    <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
                 </View>
 
                 {/* Payment Made Button */}
@@ -319,7 +322,7 @@ const FundWalletScreen = () => {
                         style={styles.proceedButton}
                         onPress={handlePaymentMade}
                     >
-                        <Text style={styles.proceedButtonText}>I have made payment ({formatTime(countdown)})</Text>
+                        <ThemedText style={styles.proceedButtonText}>I have made payment ({formatTime(countdown)})</ThemedText>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -334,7 +337,7 @@ const FundWalletScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Select Country</Text>
+                            <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
                             <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
                             </TouchableOpacity>
@@ -349,8 +352,8 @@ const FundWalletScreen = () => {
                                         setSelectedCountryName(c.name);
                                     }}
                                 >
-                                    <Text style={styles.countryFlag}>{c.flag}</Text>
-                                    <Text style={styles.countryName}>{c.name}</Text>
+                                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
+                                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                                     <MaterialCommunityIcons
                                         name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
                                         size={24}
@@ -363,7 +366,7 @@ const FundWalletScreen = () => {
                             style={styles.applyButton}
                             onPress={() => setShowCountryModal(false)}
                         >
-                            <Text style={styles.applyButtonText}>Apply</Text>
+                            <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -379,7 +382,7 @@ const FundWalletScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
                         <View style={styles.pinModalHeader}>
-                            <Text style={styles.pinModalTitle}>Verification</Text>
+                            <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
                             <TouchableOpacity onPress={() => setShowPinModal(false)}>
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                             </TouchableOpacity>
@@ -396,8 +399,8 @@ const FundWalletScreen = () => {
                         </View>
 
                         <View style={styles.pinModalTextContainer}>
-                            <Text style={styles.pinInstruction}>Input Pin to Fund</Text>
-                            <Text style={styles.pinAmount}>₦{amount}</Text>
+                            <ThemedText style={styles.pinInstruction}>Input Pin to Fund</ThemedText>
+                            <ThemedText style={styles.pinAmount}>₦{amount}</ThemedText>
                         </View>
 
                         <View style={styles.pinBar}>
@@ -408,9 +411,9 @@ const FundWalletScreen = () => {
                                     return (
                                         <View key={index} style={styles.pinSlot}>
                                             {hasValue ? (
-                                                <Text style={styles.pinSlotText}>{digit}</Text>
+                                                <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                                             ) : (
-                                                <Text style={styles.pinSlotAsterisk}>*</Text>
+                                                <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                                             )}
                                         </View>
                                     );
@@ -435,14 +438,14 @@ const FundWalletScreen = () => {
                                                 lastPressedButton === num.toString() && styles.numpadCirclePressed,
                                             ]}
                                         >
-                                            <Text
+                                            <ThemedText
                                                 style={[
                                                     styles.numpadText,
                                                     lastPressedButton === num.toString() && styles.numpadTextPressed,
                                                 ]}
                                             >
                                                 {num}
-                                            </Text>
+                                            </ThemedText>
                                         </View>
                                     </TouchableOpacity>
                                 ))}
@@ -460,14 +463,14 @@ const FundWalletScreen = () => {
                                                 lastPressedButton === num.toString() && styles.numpadCirclePressed,
                                             ]}
                                         >
-                                            <Text
+                                            <ThemedText
                                                 style={[
                                                     styles.numpadText,
                                                     lastPressedButton === num.toString() && styles.numpadTextPressed,
                                                 ]}
                                             >
                                                 {num}
-                                            </Text>
+                                            </ThemedText>
                                         </View>
                                     </TouchableOpacity>
                                 ))}
@@ -485,14 +488,14 @@ const FundWalletScreen = () => {
                                                 lastPressedButton === num.toString() && styles.numpadCirclePressed,
                                             ]}
                                         >
-                                            <Text
+                                            <ThemedText
                                                 style={[
                                                     styles.numpadText,
                                                     lastPressedButton === num.toString() && styles.numpadTextPressed,
                                                 ]}
                                             >
                                                 {num}
-                                            </Text>
+                                            </ThemedText>
                                         </View>
                                     </TouchableOpacity>
                                 ))}
@@ -508,14 +511,14 @@ const FundWalletScreen = () => {
                                             lastPressedButton === '.' && styles.numpadCirclePressed,
                                         ]}
                                     >
-                                        <Text
+                                        <ThemedText
                                             style={[
                                                 styles.numpadText,
                                                 lastPressedButton === '.' && styles.numpadTextPressed,
                                             ]}
                                         >
                                             .
-                                        </Text>
+                                        </ThemedText>
                                     </View>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -528,14 +531,14 @@ const FundWalletScreen = () => {
                                             lastPressedButton === '0' && styles.numpadCirclePressed,
                                         ]}
                                     >
-                                        <Text
+                                        <ThemedText
                                             style={[
                                                 styles.numpadText,
                                                 lastPressedButton === '0' && styles.numpadTextPressed,
                                             ]}
                                         >
                                             0
-                                        </Text>
+                                        </ThemedText>
                                     </View>
                                 </TouchableOpacity>
                                 <TouchableOpacity
@@ -562,7 +565,7 @@ const FundWalletScreen = () => {
                 <View style={styles.modalOverlay}>
                     <View style={styles.securityModalContentBottom}>
                         <View style={styles.securityModalHeader}>
-                            <Text style={styles.securityModalTitle}>Security Verification</Text>
+                            <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
                             <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                             </TouchableOpacity>
@@ -578,11 +581,11 @@ const FundWalletScreen = () => {
                             </View>
                         </View>
 
-                        <Text style={styles.securityTitle}>Security Verification</Text>
-                        <Text style={styles.securitySubtitle}>Verify via email and your authenticator app</Text>
+                        <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+                        <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
 
                         <View style={styles.securityInputWrapper}>
-                            <Text style={styles.securityInputLabel}>Email Code</Text>
+                            <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
                             <View style={styles.securityInputField}>
                                 <TextInput
                                     style={styles.securityInput}
@@ -596,7 +599,7 @@ const FundWalletScreen = () => {
                         </View>
 
                         <View style={styles.securityInputWrapper}>
-                            <Text style={styles.securityInputLabel}>Authenticator App Code</Text>
+                            <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
                             <View style={styles.securityInputField}>
                                 <TextInput
                                     style={styles.securityInput}
@@ -614,7 +617,7 @@ const FundWalletScreen = () => {
                             onPress={handleSecurityComplete}
                             disabled={!emailCode || !authenticatorCode}
                         >
-                            <Text style={styles.securityProceedButtonText}>Proceed</Text>
+                            <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -802,6 +805,7 @@ const styles = StyleSheet.create({
         paddingBottom: 80 * 1,
         padding: 0,
         margin: 0,
+        fontFamily: 'Agbalumo-Regular',
     },
     bankDetailsCard: {
         borderRadius: 15 * SCALE,

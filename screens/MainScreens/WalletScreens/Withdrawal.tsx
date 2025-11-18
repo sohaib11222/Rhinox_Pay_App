@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -17,6 +16,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -161,7 +161,7 @@ const Withdrawal = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Withdrawal</Text>
+            <ThemedText style={styles.headerTitle}>Withdrawal</ThemedText>
           </View>
         </View>
 
@@ -174,7 +174,7 @@ const Withdrawal = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -203,7 +203,7 @@ const Withdrawal = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -214,7 +214,7 @@ const Withdrawal = () => {
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <Text style={styles.amountInputLabel}>N</Text>
+              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
@@ -236,7 +236,7 @@ const Withdrawal = () => {
                   style={styles.quickAmountButton}
                   onPress={() => handleAmountSelect(quickAmount)}
                 >
-                  <Text style={styles.quickAmountText}>{quickAmount}</Text>
+                  <ThemedText style={styles.quickAmountText}>{quickAmount}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -247,9 +247,9 @@ const Withdrawal = () => {
             style={styles.inputField}
             onPress={() => setShowBankModal(true)}
           >
-            <Text style={[styles.inputLabel, !selectedBank && styles.inputPlaceholder]}>
+            <ThemedText style={[styles.inputLabel, !selectedBank && styles.inputPlaceholder]}>
               {selectedBank ? selectedBank.bankName : 'Withdrawal Account'}
-            </Text>
+            </ThemedText>
             <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -261,7 +261,7 @@ const Withdrawal = () => {
             style={styles.feeIcon}
             resizeMode="cover"
           />
-          <Text style={styles.feeText}>Fee : N200</Text>
+          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
         {/* Bottom spacing for proceed button */}
@@ -275,7 +275,7 @@ const Withdrawal = () => {
           onPress={handleProceed}
           disabled={!selectedBank || !amount}
         >
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -290,7 +290,7 @@ const Withdrawal = () => {
           <View style={styles.bankModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Bank</Text>
+              <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
               <TouchableOpacity onPress={() => setShowBankModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -299,7 +299,7 @@ const Withdrawal = () => {
             {/* Search Bar */}
             <View style={styles.filterContainer}>
               <TouchableOpacity style={styles.filterButton}>
-                <Text style={styles.filterText}>All</Text>
+                <ThemedText style={styles.filterText}>All</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                 <Image
                   source={require('../../../assets/Vector (35).png')}
@@ -310,7 +310,7 @@ const Withdrawal = () => {
             </View>
             {/* Bank List */}
             <ScrollView style={styles.bankList} showsVerticalScrollIndicator={false}>
-              <Text style={styles.bankListTitle}>Bank Transfer</Text>
+              <ThemedText style={styles.bankListTitle}>Bank Transfer</ThemedText>
               {filteredBanks.map((bank) => (
                 <TouchableOpacity
                   key={bank.id}
@@ -322,18 +322,18 @@ const Withdrawal = () => {
                 >
                   {selectedBank?.id === bank.id && (
                     <View style={styles.selectedBadge}>
-                      <Text style={styles.selectedBadgeText}>Selected</Text>
+                      <ThemedText style={styles.selectedBadgeText}>Selected</ThemedText>
                     </View>
                   )}
                   <View style={styles.bankItemContent}>
                     <View style={styles.bankItemRow}>
-                      <Text style={styles.bankItemLabel}>Bank Name</Text>
-                      <Text style={styles.bankItemValue}>{bank.bankName}</Text>
+                      <ThemedText style={styles.bankItemLabel}>Bank Name</ThemedText>
+                      <ThemedText style={styles.bankItemValue}>{bank.bankName}</ThemedText>
                     </View>
                     <View style={styles.bankItemRow}>
-                      <Text style={styles.bankItemLabel}>Account Number</Text>
+                      <ThemedText style={styles.bankItemLabel}>Account Number</ThemedText>
                       <View style={styles.accountNumberRow}>
-                        <Text style={styles.bankItemValue}>{bank.accountNumber}</Text>
+                        <ThemedText style={styles.bankItemValue}>{bank.accountNumber}</ThemedText>
                         <TouchableOpacity
                           onPress={() => handleCopyAccountNumber(bank.accountNumber)}
                           style={styles.copyButton}
@@ -343,8 +343,8 @@ const Withdrawal = () => {
                       </View>
                     </View>
                     <View style={styles.bankItemRow}>
-                      <Text style={styles.bankItemLabel}>Account Name</Text>
-                      <Text style={styles.bankItemValue}>{bank.accountName}</Text>
+                      <ThemedText style={styles.bankItemLabel}>Account Name</ThemedText>
+                      <ThemedText style={styles.bankItemValue}>{bank.accountName}</ThemedText>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -357,7 +357,7 @@ const Withdrawal = () => {
               onPress={handleApplyBank}
               disabled={!selectedBank}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -374,7 +374,7 @@ const Withdrawal = () => {
           <View style={styles.summaryModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Summary</Text>
+              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -382,39 +382,39 @@ const Withdrawal = () => {
 
             {/* Amount Section */}
             <View style={styles.summaryAmountSection}>
-              <Text style={styles.summaryAmountLabel}>You are Withdrawing</Text>
-              <Text style={styles.summaryAmountValue}>N{amount}</Text>
+              <ThemedText style={styles.summaryAmountLabel}>You are Withdrawing</ThemedText>
+              <ThemedText style={styles.summaryAmountValue}>N{amount}</ThemedText>
             </View>
 
             {/* Account Details */}
             <View style={styles.summaryDetailsCard}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Account Number</Text>
-                <Text style={styles.summaryValue}>{selectedBank?.accountNumber || ''}</Text>
+                <ThemedText style={styles.summaryLabel}>Account Number</ThemedText>
+                <ThemedText style={styles.summaryValue}>{selectedBank?.accountNumber || ''}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Bank Name</Text>
-                <Text style={styles.summaryValue}>{selectedBank?.bankName || ''}</Text>
+                <ThemedText style={styles.summaryLabel}>Bank Name</ThemedText>
+                <ThemedText style={styles.summaryValue}>{selectedBank?.bankName || ''}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Account Name</Text>
-                <Text style={styles.summaryValue}>{selectedBank?.accountName || ''}</Text>
+                <ThemedText style={styles.summaryLabel}>Account Name</ThemedText>
+                <ThemedText style={styles.summaryValue}>{selectedBank?.accountName || ''}</ThemedText>
               </View>
             </View>
 
             {/* Transaction Details */}
             <View style={styles.summaryDetailsCard}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Transaction Fee</Text>
-                <Text style={styles.summaryValue}>20 NGN</Text>
+                <ThemedText style={styles.summaryLabel}>Transaction Fee</ThemedText>
+                <ThemedText style={styles.summaryValue}>20 NGN</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Funding Route</Text>
-                <Text style={styles.summaryValue}>Instant Transfer</Text>
+                <ThemedText style={styles.summaryLabel}>Funding Route</ThemedText>
+                <ThemedText style={styles.summaryValue}>Instant Transfer</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Provider</Text>
-                <Text style={styles.summaryValue}>Yellow card</Text>
+                <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
+                <ThemedText style={styles.summaryValue}>Yellow card</ThemedText>
               </View>
             </View>
 
@@ -422,13 +422,13 @@ const Withdrawal = () => {
             <View style={styles.warningSection}>
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <Text style={styles.warningText}>
+                <ThemedText style={styles.warningText}>
                   Ensure you are sending cash to the right bank account number to prevent loss of funds
-                </Text>
+                </ThemedText>
               </View>
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <Text style={styles.warningText}>Payment will arrive in a few minutes</Text>
+                <ThemedText style={styles.warningText}>Payment will arrive in a few minutes</ThemedText>
               </View>
             </View>
 
@@ -437,7 +437,7 @@ const Withdrawal = () => {
               style={styles.completeButton}
               onPress={handleCompleteWithdrawal}
             >
-              <Text style={styles.completeButtonText}>Complete Withdrawal</Text>
+              <ThemedText style={styles.completeButtonText}>Complete Withdrawal</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -497,7 +497,7 @@ const Withdrawal = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.countryModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -514,7 +514,7 @@ const Withdrawal = () => {
                   }}
                 >
                   <Image source={country.flag} style={styles.countryFlagImage} resizeMode="cover" />
-                  <Text style={styles.countryNameText}>{country.name}</Text>
+                  <ThemedText style={styles.countryNameText}>{country.name}</ThemedText>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -649,6 +649,7 @@ const styles = StyleSheet.create({
     paddingBottom: 80 * 1,
     padding: 0,
     margin: 0,
+    fontFamily: 'Agbalumo-Regular',
   },
   quickAmountsContainer: {
     flexDirection: 'row',

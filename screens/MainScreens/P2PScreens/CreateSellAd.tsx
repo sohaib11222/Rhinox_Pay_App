@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -90,7 +90,7 @@ const CreateSellAd = () => {
             <MaterialCommunityIcons name="chevron-left" size={20 * SCALE} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Create Sell Ad</Text>
+        <ThemedText style={styles.headerTitle}>Create Sell Ad</ThemedText>
         <TouchableOpacity style={styles.supportButton}>
           <MaterialCommunityIcons name="headphones" size={24 * SCALE} color="#FFFFFF" />
         </TouchableOpacity>
@@ -102,7 +102,7 @@ const CreateSellAd = () => {
       >
         {/* Select crypto to sell */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Select crypto to sell</Text>
+          <ThemedText style={styles.sectionLabel}>Select crypto to sell</ThemedText>
           <TouchableOpacity
             onPress={() => setShowCryptoModal(true)}
           >
@@ -113,14 +113,14 @@ const CreateSellAd = () => {
               style={styles.selectorCard}
             >
               <View style={styles.selectorCardLeft}>
-                <Text style={styles.balanceLabel}>My Balance</Text>
+                <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
                 <View style={styles.balanceRow}>
                   <Image
                     source={require('../../../assets/Vector (34).png')}
                     style={[{ marginBottom: -1, width: 18, height: 16 }]}
                     resizeMode="cover"
                   />
-                  <Text style={styles.balanceAmount}>0.23 {selectedCryptoData.symbol}</Text>
+                  <ThemedText style={styles.balanceAmount}>0.23 {selectedCryptoData.symbol}</ThemedText>
                 </View>
               </View>
               <View style={styles.selectorCardRight}>
@@ -129,7 +129,7 @@ const CreateSellAd = () => {
                   style={styles.cryptoIcon}
                   resizeMode="contain"
                 />
-                <Text style={styles.selectorText}>{selectedCrypto}</Text>
+                <ThemedText style={styles.selectorText}>{selectedCrypto}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="#FFFFFF" />
               </View>
             </LinearGradient>
@@ -138,7 +138,7 @@ const CreateSellAd = () => {
 
         {/* Currency to receive */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Currency to receive</Text>
+          <ThemedText style={styles.sectionLabel}>Currency to receive</ThemedText>
           <TouchableOpacity
             onPress={() => setShowCurrencyModal(true)}
           >
@@ -149,14 +149,14 @@ const CreateSellAd = () => {
               style={styles.selectorCard}
             >
               <View style={styles.selectorCardLeft}>
-                <Text style={styles.balanceLabel}>My Balance</Text>
+                <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
                 <View style={styles.balanceRow}>
                   <Image
                     source={require('../../../assets/Vector (34).png')}
                     style={[{ marginBottom: -1, width: 18, height: 16 }]}
                     resizeMode="cover"
                   />
-                  <Text style={styles.balanceAmount}>N200,000</Text>
+                  <ThemedText style={styles.balanceAmount}>N200,000</ThemedText>
                 </View>
               </View>
               <View style={styles.selectorCardRight}>
@@ -165,7 +165,7 @@ const CreateSellAd = () => {
                   style={styles.currencyFlag}
                   resizeMode="contain"
                 />
-                <Text style={styles.selectorText}>{selectedCurrency}</Text>
+                <ThemedText style={styles.selectorText}>{selectedCurrency}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="#FFFFFF" />
               </View>
             </LinearGradient>
@@ -174,7 +174,7 @@ const CreateSellAd = () => {
 
         {/* Order Details */}
         <View style={[styles.section, { backgroundColor: '#FFFFFF08', borderRadius: 10 * SCALE, borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)', padding: 15 * SCALE }]}>
-          <Text style={styles.sectionTitle}>Order Details</Text>
+          <ThemedText style={styles.sectionTitle}>Order Details</ThemedText>
 
           {/* Sell Price and Market Price in one card */}
           <View style={styles.priceCard}>
@@ -187,8 +187,8 @@ const CreateSellAd = () => {
             />
             <View style={styles.priceDivider} />
             <View style={styles.marketPriceRow}>
-              <Text style={styles.marketPriceLabel}>Market Price</Text>
-              <Text style={styles.marketPriceValue}>N1,500</Text>
+              <ThemedText style={styles.marketPriceLabel}>Market Price</ThemedText>
+              <ThemedText style={styles.marketPriceValue}>N1,500</ThemedText>
             </View>
           </View>
 
@@ -218,7 +218,7 @@ const CreateSellAd = () => {
           </View>
 
           <View style={styles.autoAcceptRow}>
-            <Text style={styles.autoAcceptLabel}>Automatically accept orders</Text>
+            <ThemedText style={styles.autoAcceptLabel}>Automatically accept orders</ThemedText>
             <Switch
               value={autoAccept}
               onValueChange={setAutoAccept}
@@ -230,13 +230,13 @@ const CreateSellAd = () => {
 
         {/* Payment details */}
         <View style={[styles.section, { backgroundColor: '#FFFFFF08', borderRadius: 10 * SCALE, borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)', padding: 15 * SCALE }]}>
-          <Text style={styles.sectionTitle}>Payment details</Text>
+          <ThemedText style={styles.sectionTitle}>Payment details</ThemedText>
 
           <TouchableOpacity
             style={styles.input}
             onPress={() => setShowPaymentMethodModal(true)}
           >
-            <Text style={styles.inputPlaceholder}>Select payment method</Text>
+            <ThemedText style={styles.inputPlaceholder}>Select payment method</ThemedText>
             <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
           </TouchableOpacity>
 
@@ -245,7 +245,7 @@ const CreateSellAd = () => {
             <View style={styles.selectedMethodsContainer}>
               {selectedPaymentMethods.map((method) => (
                 <View key={method.id} style={styles.methodTag}>
-                  <Text style={styles.methodTagText}>{method.name}</Text>
+                  <ThemedText style={styles.methodTagText}>{method.name}</ThemedText>
                   <TouchableOpacity
                     onPress={() => handleRemovePaymentMethod(method.id)}
                     style={styles.methodTagClose}
@@ -272,7 +272,7 @@ const CreateSellAd = () => {
             setShowSuccessModal(true);
           }}
         >
-          <Text style={styles.createOrderButtonText}>Create Order</Text>
+          <ThemedText style={styles.createOrderButtonText}>Create Order</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -288,10 +288,10 @@ const CreateSellAd = () => {
             <View style={styles.successIconCircle}>
               <MaterialCommunityIcons name="check" size={40 * SCALE} color="#FFFFFF" />
             </View>
-            <Text style={styles.successModalTitle}>Sell Ad Created</Text>
-            <Text style={styles.successModalMessage}>
+            <ThemedText style={styles.successModalTitle}>Sell Ad Created</ThemedText>
+            <ThemedText style={styles.successModalMessage}>
               Congratulations, your sell ad has been created successfully
-            </Text>
+            </ThemedText>
             <View style={styles.successModalButtons}>
               <TouchableOpacity
                 style={styles.viewAdButton}
@@ -302,7 +302,7 @@ const CreateSellAd = () => {
                   });
                 }}
               >
-                <Text style={styles.viewAdButtonText}>View Ad</Text>
+                <ThemedText style={styles.viewAdButtonText}>View Ad</ThemedText>
               </TouchableOpacity>
               <View style={styles.successModalButtonDivider} />
               <TouchableOpacity
@@ -312,7 +312,7 @@ const CreateSellAd = () => {
                   navigation.goBack();
                 }}
               >
-                <Text style={styles.cancelSuccessButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelSuccessButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -329,7 +329,7 @@ const CreateSellAd = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.paymentModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Bank</Text>
+              <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
               <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -351,7 +351,7 @@ const CreateSellAd = () => {
                   style={styles.paymentMethodItem}
                   onPress={() => handleSelectPaymentMethod(method)}
                 >
-                  <Text style={styles.paymentMethodItemText}>{method.name}</Text>
+                  <ThemedText style={styles.paymentMethodItemText}>{method.name}</ThemedText>
                   {selectedPaymentMethods.find(m => m.id === method.id) ? (
                     <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
                   ) : (
@@ -366,7 +366,7 @@ const CreateSellAd = () => {
                 style={styles.applyButton}
                 onPress={() => setShowPaymentMethodModal(false)}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -383,7 +383,7 @@ const CreateSellAd = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Crypto</Text>
+              <ThemedText style={styles.modalTitle}>Select Crypto</ThemedText>
               <TouchableOpacity onPress={() => setShowCryptoModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -400,7 +400,7 @@ const CreateSellAd = () => {
                 >
                   <View style={styles.modalItemLeft}>
                     <Image source={crypto.icon} style={styles.modalCryptoIcon} resizeMode="contain" />
-                    <Text style={styles.modalItemText}>{crypto.name}</Text>
+                    <ThemedText style={styles.modalItemText}>{crypto.name}</ThemedText>
                   </View>
                   {selectedCrypto === crypto.name && (
                     <MaterialCommunityIcons name="check" size={20 * SCALE} color="#A9EF45" />
@@ -422,7 +422,7 @@ const CreateSellAd = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.countryModalHeader}>
-              <Text style={styles.countryModalTitle}>Select Country</Text>
+              <ThemedText style={styles.countryModalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCurrencyModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -438,7 +438,7 @@ const CreateSellAd = () => {
                   }}
                 >
                   <Image source={currency.flag} style={styles.countryFlagImage} resizeMode="cover" />
-                  <Text style={styles.countryName}>{currency.name}</Text>
+                  <ThemedText style={styles.countryName}>{currency.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCurrency === currency.name ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24}
@@ -451,7 +451,7 @@ const CreateSellAd = () => {
               style={styles.countryApplyButton}
               onPress={() => setShowCurrencyModal(false)}
             >
-              <Text style={styles.countryApplyButtonText}>Apply</Text>
+              <ThemedText style={styles.countryApplyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

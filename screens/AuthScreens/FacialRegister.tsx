@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   TouchableOpacity,
   StatusBar,
@@ -9,6 +8,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 type ScanStatus = 'idle' | 'scanning' | 'success' | 'failed';
 
@@ -59,7 +59,7 @@ const FacialRegister = () => {
             <MaterialCommunityIcons name="chevron-left" size={24} color="#FFF" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>KYC Registration</Text>
+        <ThemedText style={styles.headerTitle}>KYC Registration</ThemedText>
       </View>
 
       {/* Shield Icon */}
@@ -68,10 +68,10 @@ const FacialRegister = () => {
       </View>
 
       {/* Title */}
-      <Text style={styles.title}>Facial Verification</Text>
-      <Text style={styles.subtitle}>
+      <ThemedText style={styles.title}>Facial Verification</ThemedText>
+      <ThemedText style={styles.subtitle}>
         Complete your facial verifiction scan
-      </Text>
+      </ThemedText>
 
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
@@ -79,9 +79,9 @@ const FacialRegister = () => {
         <View style={styles.progressBar2} />
       </View>
 
-      <Text style={styles.instruction}>
+      <ThemedText style={styles.instruction}>
         Place your face in the center of the frame
-      </Text>
+      </ThemedText>
 
       {/* Face Scanner */}
       <View style={styles.scannerContainer}>
@@ -132,33 +132,33 @@ const FacialRegister = () => {
       {/* Status Text */}
       <View style={styles.statusContainer}>
         {scanStatus === 'idle' && (
-          <Text style={styles.statusText}>Tap to start face scan</Text>
+          <ThemedText style={styles.statusText}>Tap to start face scan</ThemedText>
         )}
         
         {scanStatus === 'scanning' && (
           <>
-            <Text style={styles.statusText}>Face scanning in progress</Text>
-            <Text style={styles.statusSubtext}>
+            <ThemedText style={styles.statusText}>Face scanning in progress</ThemedText>
+            <ThemedText style={styles.statusSubtext}>
               Do not move your head unitl scan is complete
-            </Text>
+            </ThemedText>
           </>
         )}
         
         {scanStatus === 'success' && (
           <>
-            <Text style={styles.statusText}>Verification Successful</Text>
-            <Text style={styles.statusSubtext}>
+            <ThemedText style={styles.statusText}>Verification Successful</ThemedText>
+            <ThemedText style={styles.statusSubtext}>
               Your facial verification has been completed successfully
-            </Text>
+            </ThemedText>
           </>
         )}
         
         {scanStatus === 'failed' && (
           <>
-            <Text style={styles.statusText}>Verification Failed</Text>
-            <Text style={styles.statusSubtext}>
+            <ThemedText style={styles.statusText}>Verification Failed</ThemedText>
+            <ThemedText style={styles.statusSubtext}>
               Your facial verification failed, kindly retry it
-            </Text>
+            </ThemedText>
           </>
         )}
       </View>
@@ -169,17 +169,17 @@ const FacialRegister = () => {
           style={styles.proceedButton}
           onPress={scanStatus === 'failed' ? handleRetry : handleProceed}
         >
-          <Text style={styles.proceedButtonText}>
+          <ThemedText style={styles.proceedButtonText}>
             {scanStatus === 'failed' ? 'Retry' : 'Proceed'}
-          </Text>
+          </ThemedText>
         </TouchableOpacity>
         
         {scanStatus === 'failed' && (
           <>
             <TouchableOpacity style={styles.continueButton}>
-              <Text style={styles.continueButtonText}>Continue Later</Text>
+              <ThemedText style={styles.continueButtonText}>Continue Later</ThemedText>
             </TouchableOpacity>
-            <Text style={styles.contactSupport}>Contact Support</Text>
+            <ThemedText style={styles.contactSupport}>Contact Support</ThemedText>
           </>
         )}
       </View>
@@ -198,11 +198,11 @@ const FacialRegister = () => {
                 <MaterialCommunityIcons name="check-circle" size={90} color="#A9EF45" />
               </View>
             </View>
-            <Text style={styles.successMessage}>
+            <ThemedText style={styles.successMessage}>
               Your verification request has been submitted successfully and will be reviewed soon.
-            </Text>
+            </ThemedText>
             <TouchableOpacity style={styles.homeButton} onPress={handleHome}>
-              <Text style={styles.homeButtonText}>Home</Text>
+              <ThemedText style={styles.homeButtonText}>Home</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

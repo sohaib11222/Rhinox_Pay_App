@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -98,7 +98,7 @@ const SellOrder = () => {
           </View>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>Sell Order</Text>
+          <ThemedText style={styles.headerTitle}>Sell Order</ThemedText>
         </View>
         <TouchableOpacity style={styles.backButton}>
           <View style={styles.iconCircle}>
@@ -120,14 +120,14 @@ const SellOrder = () => {
             resizeMode="cover"
           />
           <View style={styles.vendorInfo}>
-            <Text style={styles.vendorName}>{orderData.vendorName}</Text>
-            <Text style={styles.vendorStatus}>{orderData.vendorStatus}</Text>
+            <ThemedText style={styles.vendorName}>{orderData.vendorName}</ThemedText>
+            <ThemedText style={styles.vendorStatus}>{orderData.vendorStatus}</ThemedText>
           </View>
-          <Text style={styles.vendorRating}>{orderData.vendorRating}</Text>
+          <ThemedText style={styles.vendorRating}>{orderData.vendorRating}</ThemedText>
         </View>
 
         {/* Vendor Rate */}
-        <Text style={styles.rateTitle}>Vendor Rate</Text>
+        <ThemedText style={styles.rateTitle}>Vendor Rate</ThemedText>
         <LinearGradient
           colors={['#FFFFFF0D', '#A9EF4533']}    
         start={{ x: 0, y: 0 }}
@@ -136,16 +136,16 @@ const SellOrder = () => {
         >
           <View style={styles.rateContent}>
             <View>
-              <Text style={styles.rateLabel}>Rate</Text>
-              <Text style={styles.rateRefresh}>Refreshes in 1 min</Text>
+              <ThemedText style={styles.rateLabel}>Rate</ThemedText>
+              <ThemedText style={styles.rateRefresh}>Refreshes in 1 min</ThemedText>
             </View>
-            <Text style={styles.rateValue}>{orderData.rate}</Text>
+            <ThemedText style={styles.rateValue}>{orderData.rate}</ThemedText>
           </View>
         </LinearGradient>
 
         {/* Order Details Card */}
         <View style={styles.orderCard}>
-          <Text style={styles.orderCardTitle}>Order Details</Text>
+          <ThemedText style={styles.orderCardTitle}>Order Details</ThemedText>
 
           {/* Currency Selectors */}
           <View style={styles.currencySelectors}>
@@ -153,17 +153,17 @@ const SellOrder = () => {
               style={[styles.currencySelector, currencyType === 'Fiat' && styles.currencySelectorActive]}
               onPress={() => setCurrencyType('Fiat')}
             >
-              <Text style={[styles.currencySelectorText, currencyType === 'Fiat' && styles.currencySelectorTextActive]}>
+              <ThemedText style={[styles.currencySelectorText, currencyType === 'Fiat' && styles.currencySelectorTextActive]}>
                 Fiat
-              </Text>
+              </ThemedText>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.currencySelector, currencyType === 'Crypto' && styles.currencySelectorActive]}
               onPress={() => setCurrencyType('Crypto')}
             >
-              <Text style={[styles.currencySelectorText, currencyType === 'Crypto' && styles.currencySelectorTextActive]}>
+              <ThemedText style={[styles.currencySelectorText, currencyType === 'Crypto' && styles.currencySelectorTextActive]}>
                 Crypto
-              </Text>
+              </ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -171,7 +171,7 @@ const SellOrder = () => {
           {currencyType === 'Fiat' ? (
             <>
               <View style={styles.amountSection}>
-                <Text style={styles.amountLabel}>Amount to sell</Text>
+                <ThemedText style={styles.amountLabel}>Amount to sell</ThemedText>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
@@ -186,23 +186,23 @@ const SellOrder = () => {
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                 />
                 <View style={styles.balanceRow}>
-                  <Text style={styles.balanceLabel}>Balance</Text>
-                  <Text style={styles.balanceValue}>NGN 0.00</Text>
+                  <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
+                  <ThemedText style={styles.balanceValue}>NGN 0.00</ThemedText>
                 </View>
               </View>
 
               {/* You will Receive */}
               <View style={styles.receiveSection}>
-                <Text style={styles.receiveLabel}>You will Receive</Text>
+                <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
                 <View style={styles.receiveValueContainer}>
-                  <Text style={styles.receiveValue}>0.00 USDT</Text>
+                  <ThemedText style={styles.receiveValue}>0.00 USDT</ThemedText>
                 </View>
               </View>
             </>
           ) : (
             <>
               <View style={styles.amountSection}>
-                <Text style={styles.amountLabel}>Enter USDT Amount</Text>
+                <ThemedText style={styles.amountLabel}>Enter USDT Amount</ThemedText>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
@@ -217,15 +217,15 @@ const SellOrder = () => {
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                 />
                 <View style={styles.balanceRow}>
-                  <Text style={styles.balanceLabel}>Balance</Text>
-                  <Text style={styles.balanceValue}>USDT 0.00</Text>
+                  <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
+                  <ThemedText style={styles.balanceValue}>USDT 0.00</ThemedText>
                 </View>
               </View>
 
               {/* You will Pay */}
               <View style={styles.receiveSection}>
-                <Text style={styles.receiveLabel}>You will Receive</Text>
-                <Text style={styles.payValue}>N10,000</Text>
+                <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
+                <ThemedText style={styles.payValue}>N10,000</ThemedText>
               </View>
             </>
           )}
@@ -235,9 +235,9 @@ const SellOrder = () => {
             style={styles.paymentMethodField}
             onPress={() => setShowPaymentMethodModal(true)}
           >
-            <Text style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
+            <ThemedText style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
               {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select payment method'}
-            </Text>
+            </ThemedText>
             <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -249,7 +249,7 @@ const SellOrder = () => {
         onPress={handleSell}
         disabled={!amount || !selectedPaymentMethod}
       >
-        <Text style={styles.sellButtonText}>Sell</Text>
+        <ThemedText style={styles.sellButtonText}>Sell</ThemedText>
       </TouchableOpacity>
 
       {/* Select Payment Method Modal */}
@@ -262,7 +262,7 @@ const SellOrder = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.paymentModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Bank</Text>
+              <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
               <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -284,7 +284,7 @@ const SellOrder = () => {
                   style={styles.paymentMethodItem}
                   onPress={() => handlePaymentMethodSelect(method)}
                 >
-                  <Text style={styles.paymentMethodItemText}>{method.name}</Text>
+                  <ThemedText style={styles.paymentMethodItemText}>{method.name}</ThemedText>
                   {tempSelectedPaymentMethod?.id === method.id ? (
                     <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
                   ) : (
@@ -300,7 +300,7 @@ const SellOrder = () => {
                 onPress={handleApplyPaymentMethod}
                 disabled={!tempSelectedPaymentMethod}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -149,7 +149,7 @@ const Betting = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Betting</Text>
+            <ThemedText style={styles.headerTitle}>Betting</ThemedText>
           </View>
         </View>
 
@@ -162,7 +162,7 @@ const Betting = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -191,7 +191,7 @@ const Betting = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -202,7 +202,7 @@ const Betting = () => {
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <Text style={styles.amountInputLabel}>N</Text>
+              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
@@ -224,7 +224,7 @@ const Betting = () => {
                   style={styles.quickAmountButton}
                   onPress={() => handleAmountSelect(quickAmount)}
                 >
-                  <Text style={styles.quickAmountText}>{quickAmount}</Text>
+                  <ThemedText style={styles.quickAmountText}>{quickAmount}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -237,11 +237,11 @@ const Betting = () => {
               style={styles.inputField}
               onPress={() => setShowBettingPlatformModal(true)}
             >
-              <Text style={[styles.inputLabel, !selectedBettingPlatform && styles.inputPlaceholder]}>
+              <ThemedText style={[styles.inputLabel, !selectedBettingPlatform && styles.inputPlaceholder]}>
                 {selectedBettingPlatform
                   ? BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || 'Select Betting Platform'
                   : 'Select Betting Platform'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -266,7 +266,7 @@ const Betting = () => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <Text style={styles.feeText}>Fee : N200</Text>
+          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
         {/* Bottom spacing for proceed button */}
@@ -280,7 +280,7 @@ const Betting = () => {
           onPress={handleProceed}
           disabled={!selectedBettingPlatform || !userId || !amount}
         >
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -295,7 +295,7 @@ const Betting = () => {
           <View style={styles.platformModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Betting Platform</Text>
+              <ThemedText style={styles.modalTitle}>Select Betting Platform</ThemedText>
               <TouchableOpacity onPress={() => setShowBettingPlatformModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -322,7 +322,7 @@ const Betting = () => {
                   onPress={() => handleBettingPlatformSelect(platform.id)}
                 >
                   <Image source={platform.icon} style={styles.platformIcon} resizeMode="cover" />
-                  <Text style={styles.platformName}>{platform.name}</Text>
+                  <ThemedText style={styles.platformName}>{platform.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedBettingPlatform === platform.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -337,7 +337,7 @@ const Betting = () => {
               style={styles.applyButton}
               onPress={() => setShowBettingPlatformModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -353,7 +353,7 @@ const Betting = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -368,8 +368,8 @@ const Betting = () => {
                     setSelectedCountryName(country.name);
                   }}
                 >
-                  <Text style={styles.countryFlagEmoji}>{country.flag}</Text>
-                  <Text style={styles.countryNameModal}>{country.name}</Text>
+                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -382,7 +382,7 @@ const Betting = () => {
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -399,7 +399,7 @@ const Betting = () => {
           <View style={styles.summaryModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Summary</Text>
+              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -408,26 +408,26 @@ const Betting = () => {
             {/* Summary Details */}
             <View style={styles.summaryDetails}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Country</Text>
-                <Text style={styles.summaryValue}>{selectedCountryName}</Text>
+                <ThemedText style={styles.summaryLabel}>Country</ThemedText>
+                <ThemedText style={styles.summaryValue}>{selectedCountryName}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Betting Platform</Text>
-                <Text style={styles.summaryValue}>
+                <ThemedText style={styles.summaryLabel}>Betting Platform</ThemedText>
+                <ThemedText style={styles.summaryValue}>
                   {BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || ''}
-                </Text>
+                </ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>User ID</Text>
-                <Text style={styles.summaryValue}>{userId}</Text>
+                <ThemedText style={styles.summaryLabel}>User ID</ThemedText>
+                <ThemedText style={styles.summaryValue}>{userId}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Fee</Text>
-                <Text style={styles.summaryValue}>N200</Text>
+                <ThemedText style={styles.summaryLabel}>Fee</ThemedText>
+                <ThemedText style={styles.summaryValue}>N200</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Amount</Text>
-                <Text style={styles.summaryValue}>N{amount}</Text>
+                <ThemedText style={styles.summaryLabel}>Amount</ThemedText>
+                <ThemedText style={styles.summaryValue}>N{amount}</ThemedText>
               </View>
             </View>
 
@@ -436,7 +436,7 @@ const Betting = () => {
               style={styles.completeButton}
               onPress={handleComplete}
             >
-              <Text style={styles.completeButtonText}>Proceed</Text>
+              <ThemedText style={styles.completeButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -612,6 +612,7 @@ const styles = StyleSheet.create({
     paddingBottom: 80 * 1,
     padding: 0,
     margin: 0,
+    fontFamily: 'Agbalumo-Regular',
   },
   quickAmountsContainer: {
     flexDirection: 'row',

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -244,11 +244,11 @@ const CryptoAssetDetails = () => {
             elevation: 10,
           }}
         >
-          <Text style={styles.tooltipPrice}>${selectedPoint.value.toFixed(2)}</Text>
+          <ThemedText style={styles.tooltipPrice}>${selectedPoint.value.toFixed(2)}</ThemedText>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 * SCALE }}>
-            <Text style={styles.tooltipChange}>
+            <ThemedText style={styles.tooltipChange}>
               ↑ {Math.abs(assetData.priceChangePercent)}%
-            </Text>
+            </ThemedText>
           </View>
         </View>
       </View>
@@ -273,7 +273,7 @@ const CryptoAssetDetails = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>{assetData.name}</Text>
+            <ThemedText style={styles.headerTitle}>{assetData.name}</ThemedText>
           </View>
         </View>
 
@@ -296,17 +296,17 @@ const CryptoAssetDetails = () => {
                   />
                 </View>
                 <View style={styles.currencyTextContainer}>
-                  <Text style={styles.currencyName}>{assetData.name}</Text>
-                  <Text style={styles.currencyTicker}>{assetData.ticker}</Text>
+                  <ThemedText style={styles.currencyName}>{assetData.name}</ThemedText>
+                  <ThemedText style={styles.currencyTicker}>{assetData.ticker}</ThemedText>
                 </View>
               </View>
               <View style={styles.currencyRight}>
-                <Text style={styles.currencyBalance}>
+                <ThemedText style={styles.currencyBalance}>
                   {balanceVisible ? `${assetData.balance} ${assetData.ticker}` : '••••'}
-                </Text>
-                <Text style={styles.currencyBalanceUSD}>
+                </ThemedText>
+                <ThemedText style={styles.currencyBalanceUSD}>
                   {balanceVisible ? assetData.balanceUSD : '••••'}
-                </Text>
+                </ThemedText>
               </View>
             </View>
 
@@ -324,14 +324,14 @@ const CryptoAssetDetails = () => {
                   ]}
                   onPress={() => setSelectedTimeRange(range.id)}
                 >
-                  <Text
+                  <ThemedText
                     style={[
                       styles.timeRangeText,
                       selectedTimeRange === range.id && styles.timeRangeTextActive,
                     ]}
                   >
                     {range.label}
-                  </Text>
+                  </ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -365,7 +365,7 @@ const CryptoAssetDetails = () => {
                     />
                   )}
                 </View>
-                <Text style={styles.quickActionText}>{action.title}</Text>
+                <ThemedText style={styles.quickActionText}>{action.title}</ThemedText>
               </TouchableOpacity>
             ))}
           </View>
@@ -374,7 +374,7 @@ const CryptoAssetDetails = () => {
         {/* Recent Activity Section */}
         <View style={styles.recentActivityCard}>
           <View style={styles.recentActivityHeader}>
-            <Text style={styles.recentActivityTitle}>Recent Activity</Text>
+            <ThemedText style={styles.recentActivityTitle}>Recent Activity</ThemedText>
             <TouchableOpacity>
               {/* <Text style={styles.viewAllText}>View All</Text> */}
             </TouchableOpacity>
@@ -393,7 +393,7 @@ const CryptoAssetDetails = () => {
                   </View>
                 </View>
                 <View style={styles.activityDetails}>
-                  <Text style={styles.activityType}>{activity.type}</Text>
+                  <ThemedText style={styles.activityType}>{activity.type}</ThemedText>
                   <View style={styles.activityStatusRow}>
                     <View
                       style={[
@@ -401,26 +401,26 @@ const CryptoAssetDetails = () => {
                         { backgroundColor: activity.status === 'Successful' ? '#008000' : activity.status === 'Pending' ? '#ffa500' : '#ff0000' },
                       ]}
                     />
-                    <Text
+                    <ThemedText
                       style={[
                         styles.activityStatus,
                         { color: activity.status === 'Successful' ? '#008000' : activity.status === 'Pending' ? '#ffa500' : '#ff0000' },
                       ]}
                     >
                       {activity.status}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </View>
                 <View style={styles.activityAmountContainer}>
-                  <Text
+                  <ThemedText
                     style={[
                       styles.activityAmount,
                       activity.status === 'Successful' && styles.activityAmountGreen,
                     ]}
                   >
                     {activity.amount}
-                  </Text>
-                  <Text style={styles.activityDate}>{activity.date}</Text>
+                  </ThemedText>
+                  <ThemedText style={styles.activityDate}>{activity.date}</ThemedText>
                 </View>
               </View>
             ))}

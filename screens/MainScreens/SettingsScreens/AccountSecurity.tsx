@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -333,7 +333,7 @@ const AccountSecurity = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Security Settings</Text>
+            <ThemedText style={styles.headerTitle}>Security Settings</ThemedText>
           </View>
         </View>
 
@@ -341,7 +341,7 @@ const AccountSecurity = () => {
         <View style={styles.sectionsContainer}>
           {securitySections.map((section) => (
             <View key={section.id} style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <ThemedText style={styles.sectionTitle}>{section.title}</ThemedText>
               <View style={styles.sectionItems}>
                 {section.items.map((item) => (
                   <TouchableOpacity
@@ -356,7 +356,7 @@ const AccountSecurity = () => {
                         resizeMode="contain"
                       />
                     </View>
-                    <Text style={styles.itemTitle}>{item.title}</Text>
+                    <ThemedText style={styles.itemTitle}>{item.title}</ThemedText>
                     {item.hasToggle && (
                       <Switch
                         value={
@@ -402,7 +402,7 @@ const AccountSecurity = () => {
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Forgot Password</Text>
+              <ThemedText style={styles.modalTitle}>Forgot Password</ThemedText>
               <TouchableOpacity onPress={() => setShowForgotPasswordModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
               </TouchableOpacity>
@@ -410,7 +410,7 @@ const AccountSecurity = () => {
 
             {/* Email Input */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>Enter Email Addresss</Text>
+              <ThemedText style={styles.modalSectionTitle}>Enter Email Addresss</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -439,14 +439,14 @@ const AccountSecurity = () => {
                     size={14 * SCALE}
                     color="#008000"
                   />
-                  <Text style={styles.verifiedText}>Email Address Verified</Text>
+                  <ThemedText style={styles.verifiedText}>Email Address Verified</ThemedText>
                 </View>
-                <Text style={styles.resendText}>
+                <ThemedText style={styles.resendText}>
                   A 5 digit code has been sent to your registered email. Resend in {formatCountdown(countdown)} Sec
-                </Text>
+                </ThemedText>
 
                 <View style={styles.modalSection}>
-                  <Text style={styles.modalSectionTitle}>Input Code</Text>
+                  <ThemedText style={styles.modalSectionTitle}>Input Code</ThemedText>
                   <View style={styles.modalInputWrapper}>
                     <TextInput
                       style={styles.modalInput}
@@ -482,9 +482,9 @@ const AccountSecurity = () => {
                 (emailVerified && verificationCode.length !== 5)
               }
             >
-              <Text style={styles.modalActionButtonText}>
+              <ThemedText style={styles.modalActionButtonText}>
                 {emailVerified ? 'Proceed' : 'Send Code'}
-              </Text>
+              </ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -513,7 +513,7 @@ const AccountSecurity = () => {
                   color="#FFFFFF"
                 />
               </TouchableOpacity>
-              <Text style={[styles.modalTitle, { marginLeft: 10 }]}>Change Password</Text>
+              <ThemedText style={[styles.modalTitle, { marginLeft: 10 }]}>Change Password</ThemedText>
               <TouchableOpacity onPress={() => setShowChangePasswordModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
               </TouchableOpacity>
@@ -529,15 +529,15 @@ const AccountSecurity = () => {
                     color="#A9EF45"
                   />
                 </View>
-                <Text style={styles.successText}>
+                <ThemedText style={styles.successText}>
                   Your password has been changed successfully
-                </Text>
+                </ThemedText>
               </View>
             )}
 
             {/* New Password */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>New Password</Text>
+              <ThemedText style={styles.modalSectionTitle}>New Password</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -564,7 +564,7 @@ const AccountSecurity = () => {
 
             {/* Re-enter new Password */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>Re-enter new Password</Text>
+              <ThemedText style={styles.modalSectionTitle}>Re-enter new Password</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -601,7 +601,7 @@ const AccountSecurity = () => {
                 newPassword.length === 0 || confirmPassword.length === 0
               }
             >
-              <Text style={styles.modalActionButtonText}>Save</Text>
+              <ThemedText style={styles.modalActionButtonText}>Save</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -618,7 +618,7 @@ const AccountSecurity = () => {
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Setup Authenticator</Text>
+              <ThemedText style={styles.modalTitle}>Setup Authenticator</ThemedText>
               <TouchableOpacity onPress={() => setShow2FAModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
               </TouchableOpacity>
@@ -637,26 +637,26 @@ const AccountSecurity = () => {
 
             {/* Authenticator Setup Section */}
             <View style={styles.authenticatorSetupSection}>
-              <Text style={styles.authenticatorSetupTitle}>Authenticator Setup</Text>
-              <Text style={styles.authenticatorSetupSubtitle}>
+              <ThemedText style={styles.authenticatorSetupTitle}>Authenticator Setup</ThemedText>
+              <ThemedText style={styles.authenticatorSetupSubtitle}>
                 Paste the code below in your authenticator app
-              </Text>
+              </ThemedText>
 
               {/* Code Display Box */}
               <View style={styles.codeDisplayBox}>
-                <Text style={styles.codeDisplayText}>{authenticatorSetupCode}</Text>
+                <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode}</ThemedText>
                 <TouchableOpacity
                   style={styles.copyCodeButton}
                   onPress={handleCopyCode}
                 >
-                  <Text style={styles.copyCodeButtonText}>Copy Code</Text>
+                  <ThemedText style={styles.copyCodeButtonText}>Copy Code</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* Authenticator Code Input */}
             <View style={styles.modalSection}>
-              <Text style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</Text>
+              <ThemedText style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -680,7 +680,7 @@ const AccountSecurity = () => {
               onPress={handleProceed2FA}
               disabled={authenticatorCode.length === 0}
             >
-              <Text style={styles.modalActionButtonText}>Proceed</Text>
+              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -697,7 +697,7 @@ const AccountSecurity = () => {
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Set Pin</Text>
+              <ThemedText style={styles.modalTitle}>Set Pin</ThemedText>
               <TouchableOpacity onPress={() => setShowPasswordModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
               </TouchableOpacity>
@@ -716,15 +716,15 @@ const AccountSecurity = () => {
 
             {/* Content */}
             <View style={styles.passwordModalContent}>
-              <Text style={styles.passwordModalTitle}>Enter Password</Text>
-              <Text style={styles.passwordModalSubtitle}>
+              <ThemedText style={styles.passwordModalTitle}>Enter Password</ThemedText>
+              <ThemedText style={styles.passwordModalSubtitle}>
                 Enter your account Password.
-              </Text>
+              </ThemedText>
             </View>
 
             {/* Password Input */}
             <View style={styles.modalSection}>
-              <Text style={styles.modalSectionTitle}>Password</Text>
+              <ThemedText style={styles.modalSectionTitle}>Password</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -758,7 +758,7 @@ const AccountSecurity = () => {
               onPress={handleVerifyPassword}
               disabled={accountPassword.length === 0}
             >
-              <Text style={styles.modalActionButtonText}>Proceed</Text>
+              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -780,7 +780,7 @@ const AccountSecurity = () => {
           <View style={[styles.modalContent, styles.pinModalContent]}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Verification</Text>
+              <ThemedText style={styles.modalTitle}>Verification</ThemedText>
               <TouchableOpacity
                 onPress={() => {
                   setShowPinModal(false);
@@ -806,12 +806,12 @@ const AccountSecurity = () => {
 
             {/* Content */}
             <View style={styles.passwordModalContent}>
-              <Text style={styles.passwordModalTitle}>
+              <ThemedText style={styles.passwordModalTitle}>
                 {pinStep === 'setup' ? 'Enter Pin' : 'Re- Enter Pin'}
-              </Text>
-              <Text style={styles.passwordModalSubtitle}>
+              </ThemedText>
+              <ThemedText style={styles.passwordModalSubtitle}>
                 Setup your pin to use for your transactions
-              </Text>
+              </ThemedText>
             </View>
 
             {/* PIN Display */}
@@ -824,9 +824,9 @@ const AccountSecurity = () => {
                   return (
                     <View key={index} style={styles.pinSlot}>
                       {hasValue ? (
-                        <Text style={styles.pinSlotText}>{digit}</Text>
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                       ) : (
-                        <Text style={styles.pinSlotAsterisk}>*</Text>
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                       )}
                     </View>
                   );
@@ -849,14 +849,14 @@ const AccountSecurity = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -874,14 +874,14 @@ const AccountSecurity = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -899,14 +899,14 @@ const AccountSecurity = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -925,14 +925,14 @@ const AccountSecurity = () => {
                       lastPressedButton === '0' && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === '0' && styles.numpadTextPressed,
                       ]}
                     >
                       0
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -977,7 +977,7 @@ const AccountSecurity = () => {
                 (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5)
               }
             >
-              <Text style={styles.modalActionButtonText}>Proceed</Text>
+              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

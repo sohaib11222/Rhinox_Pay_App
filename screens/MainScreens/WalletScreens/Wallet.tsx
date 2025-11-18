@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
+import { ThemedText } from '../../../components';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -418,7 +418,7 @@ const Wallet = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>My Wallets</Text>
+            <ThemedText style={styles.headerTitle}>My Wallets</ThemedText>
           </View>
         </View>
 
@@ -433,9 +433,9 @@ const Wallet = () => {
               size={14 * SCALE}
               color={activeTab === 'fiat' ? '#000000' : '#FFFFFF'}
             />
-            <Text style={[styles.tabText, activeTab === 'fiat' && styles.tabTextActive]}>
+            <ThemedText style={[styles.tabText, activeTab === 'fiat' && styles.tabTextActive]}>
               Fiat Wallet
-            </Text>
+            </ThemedText>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'crypto' && styles.tabActive]}
@@ -446,9 +446,9 @@ const Wallet = () => {
               size={14 * SCALE}
               color={activeTab === 'crypto' ? '#000000' : '#FFFFFF'}
             />
-            <Text style={[styles.tabText, activeTab === 'crypto' && styles.tabTextActive]}>
+            <ThemedText style={[styles.tabText, activeTab === 'crypto' && styles.tabTextActive]}>
               Crypto Wallet
-            </Text>
+            </ThemedText>
           </TouchableOpacity>
         </View>
 
@@ -456,10 +456,10 @@ const Wallet = () => {
           <>
         {/* Section Title */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
+          <ThemedText style={styles.sectionTitle}>
             My {activeTab === 'fiat' ? 'Fiat' : 'Crypto'} Wallets{' '}
-            <Text style={styles.sectionCount}>({currentWallets.length})</Text>
-          </Text>
+            <ThemedText style={styles.sectionCount}>({currentWallets.length})</ThemedText>
+          </ThemedText>
           <TouchableOpacity>
             <MaterialCommunityIcons name="magnify" size={24 * SCALE} color="#FFFFFF" />
           </TouchableOpacity>
@@ -493,9 +493,9 @@ const Wallet = () => {
                       ]}
                     >
                   {/* Currency Code - Top Left */}
-                      <Text style={[styles.walletCurrencyCodeTop, { color: fiatCardStyle!.color }]}>
+                      <ThemedText style={[styles.walletCurrencyCodeTop, { color: fiatCardStyle!.color }]}>
                         {wallet.currencyCode}
-                      </Text>
+                      </ThemedText>
                   
                   {/* Flag Icon - Top Right */}
                   <View style={styles.walletIconTopRight}>
@@ -516,30 +516,30 @@ const Wallet = () => {
 
                   {/* Wallet Balance Section */}
                   <View style={styles.walletBalanceSectionFiat}>
-                        <Text style={[styles.walletBalanceLabel, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                        <ThemedText style={[styles.walletBalanceLabel, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
                           Wallet balance
-                        </Text>
+                        </ThemedText>
                     {balanceVisible ? (
                       <>
                         <View style={styles.walletBalanceAmountContainer}>
-                              <Text style={[styles.walletBalancePrefix, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalancePrefix, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
                             {wallet.balance.includes('N') ? '₦' : wallet.balance.includes('ksh') ? 'ksh' : ''}
-                          </Text>
-                              <Text style={[styles.walletBalanceMain, { color: fiatCardStyle!.color }]}>
+                          </ThemedText>
+                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalanceMain, { color: fiatCardStyle!.color }]}>
                             {wallet.balance.replace(/[Nksh₦]/g, '').split('.')[0] || '0'}
-                          </Text>
-                              <Text style={[styles.walletBalanceDecimal, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                          </ThemedText>
+                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalanceDecimal, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
                             .{wallet.balance.split('.')[1] || '00'}
-                          </Text>
+                          </ThemedText>
                         </View>
-                            {/* <Text style={[styles.walletBalanceUSD, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}> */}
+                            {/* <ThemedText style={[styles.walletBalanceUSD, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}> */}
                             {/* {wallet.balanceUSD} */}
-                            {/* </Text> */}
+                            {/* </ThemedText> */}
                       </>
                     ) : (
                       <>
-                            <Text style={[styles.walletBalanceAmount, { color: fiatCardStyle!.color }]}>••••••</Text>
-                            <Text style={[styles.walletBalanceUSD, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>••••</Text>
+                            <ThemedText style={[styles.walletBalanceAmount, { color: fiatCardStyle!.color }]}>••••••</ThemedText>
+                            <ThemedText style={[styles.walletBalanceUSD, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>••••</ThemedText>
                       </>
                     )}
                   </View>
@@ -557,9 +557,9 @@ const Wallet = () => {
                   </TouchableOpacity>
 
                   {/* User Name */}
-                      <Text style={[styles.walletUserName, { color: fiatCardStyle!.color }]}>
+                      <ThemedText style={[styles.walletUserName, { color: fiatCardStyle!.color }]}>
                         {wallet.userName}
-                      </Text>
+                      </ThemedText>
                 </LinearGradient>
             </View>
                 );
@@ -580,7 +580,7 @@ const Wallet = () => {
 
             {/* Quick Actions - Only for Fiat */}
         <View style={styles.quickActionsCard}>
-          <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+          <ThemedText style={styles.quickActionsTitle}>Quick Actions</ThemedText>
           <View style={styles.quickActionsContainer}>
             {quickActions.map((action) => (
               <TouchableOpacity
@@ -614,7 +614,7 @@ const Wallet = () => {
                     />
                   )}
                 </View>
-                <Text style={styles.quickActionText}>{action.title}</Text>
+                <ThemedText style={styles.quickActionText}>{action.title}</ThemedText>
               </TouchableOpacity>
             ))}
           </View>
@@ -631,19 +631,19 @@ const Wallet = () => {
                 style={styles.totalBalanceCard}
               >
                 <TouchableOpacity style={styles.currencyDropdown}>
-                  <Text style={styles.currencyDropdownText}>USD</Text>
+                  <ThemedText style={styles.currencyDropdownText}>USD</ThemedText>
                   <MaterialCommunityIcons name="chevron-down" size={16 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={styles.totalBalanceHeader}>
-                  <Text style={styles.totalBalanceLabel}>Total Balance</Text>
+                  <ThemedText style={styles.totalBalanceLabel}>Total Balance</ThemedText>
 
                 </View>
                 {balanceVisible ? (
-                  <Text style={styles.totalBalanceAmount}>
+                  <ThemedText fontFamily='Agbalumo-Regular' style={styles.totalBalanceAmount}>
                     ${totalCryptoBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Text>
+                  </ThemedText>
                 ) : (
-                  <Text style={styles.totalBalanceAmount}>••••••</Text>
+                  <ThemedText style={styles.totalBalanceAmount}>••••••</ThemedText>
                 )}
 
                 {/* Overlaid Quick Actions Card */}
@@ -665,7 +665,7 @@ const Wallet = () => {
                           resizeMode="contain"
                         />
                       )}
-                      <Text style={styles.cryptoOverlaidActionText}>{action.title}</Text>
+                      <ThemedText style={styles.cryptoOverlaidActionText}>{action.title}</ThemedText>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -675,7 +675,7 @@ const Wallet = () => {
             {/* All Crypto Section */}
             <View style={styles.allCryptoCard}>
               <View style={styles.allCryptoHeader}>
-                <Text style={styles.allCryptoTitle}>All Crypto</Text>
+                <ThemedText style={styles.allCryptoTitle}>All Crypto</ThemedText>
                 <TouchableOpacity>
                   <MaterialCommunityIcons name="magnify" size={24 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -712,8 +712,8 @@ const Wallet = () => {
                       />
                     </View>
                     <View style={styles.cryptoAssetInfo}>
-                      <Text style={styles.cryptoAssetName}>{asset.name}</Text>
-                      <Text style={styles.cryptoAssetTicker}>{asset.ticker}</Text>
+                      <ThemedText style={styles.cryptoAssetName}>{asset.name}</ThemedText>
+                      <ThemedText style={styles.cryptoAssetTicker}>{asset.ticker}</ThemedText>
                     </View>
                     <View style={styles.cryptoAssetRight}>
                       <View style={styles.cryptoAssetGraph}>
@@ -725,12 +725,12 @@ const Wallet = () => {
                         />
                       </View>
                       <View style={styles.cryptoAssetValues}>
-                        <Text style={[styles.cryptoAssetBalance, { color: asset.trend === 'up' ? '#008000' : '#ff0000' }]}>
+                        <ThemedText style={[styles.cryptoAssetBalance, { color: asset.trend === 'up' ? '#008000' : '#ff0000' }]}>
                           {balanceVisible ? asset.balance : '••••'}
-                        </Text>
-                        <Text style={styles.cryptoAssetUSD}>
+                        </ThemedText>
+                        <ThemedText style={styles.cryptoAssetUSD}>
                           {balanceVisible ? asset.balanceUSD : '••••'}
-                        </Text>
+                        </ThemedText>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -746,11 +746,11 @@ const Wallet = () => {
         <View style={styles.walletIdCard}>
           <View style={styles.walletIdHeader}>
             <View style={styles.walletIdInfo}>
-              <Text style={styles.walletIdTitle}>Wallet ID</Text>
-              <Text style={styles.walletIdDescription}>
+              <ThemedText style={styles.walletIdTitle}>Wallet ID</ThemedText>
+              <ThemedText style={styles.walletIdDescription}>
                 Here is your unique wallet id, you can use it to recieve funds from another
                 RhinoxPay user or through P2P
-              </Text>
+              </ThemedText>
             </View>
             <View style={styles.walletIdActions}>
               <TouchableOpacity style={styles.walletIdActionButton}>
@@ -768,15 +768,15 @@ const Wallet = () => {
               </TouchableOpacity>
             </View>
           </View>
-          <Text style={styles.walletIdValue}>{walletId}</Text>
+          <ThemedText style={styles.walletIdValue}>{walletId}</ThemedText>
         </View>
 
         {/* Recent Transactions */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
-            <Text style={styles.recentTransactionsTitle}>Recent Transactions</Text>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
             <TouchableOpacity>
-              <Text style={styles.viewAllText}>View All</Text>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -793,7 +793,7 @@ const Wallet = () => {
                   </View>
                 </View>
                 <View style={styles.transactionDetails}>
-                  <Text style={styles.transactionTitle}>{transaction.title}</Text>
+                  <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
                   <View style={styles.transactionStatusRow}>
                     <View
                       style={[
@@ -801,26 +801,26 @@ const Wallet = () => {
                         { backgroundColor: getStatusColor(transaction.status) },
                       ]}
                     />
-                    <Text
+                    <ThemedText
                       style={[
                         styles.transactionStatus,
                         { color: getStatusColor(transaction.status) },
                       ]}
                     >
                       {transaction.subtitle}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </View>
                 <View style={styles.transactionAmountContainer}>
-                  <Text
+                  <ThemedText
                     style={[
                       styles.transactionAmount,
                       transaction.status === 'Successful' && styles.transactionAmountGreen,
                     ]}
                   >
                     {transaction.amount}
-                  </Text>
-                  <Text style={styles.transactionDate}>{transaction.date}</Text>
+                  </ThemedText>
+                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                 </View>
               </View>
             ))}

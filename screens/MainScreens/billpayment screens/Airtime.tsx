@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -14,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -176,7 +176,7 @@ const Airtime = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Airtime</Text>
+            <ThemedText style={styles.headerTitle}>Airtime</ThemedText>
           </View>
         </View>
 
@@ -189,7 +189,7 @@ const Airtime = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -219,7 +219,7 @@ const Airtime = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -230,7 +230,7 @@ const Airtime = () => {
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <Text style={styles.amountInputLabel}>N</Text>
+              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
@@ -253,7 +253,7 @@ const Airtime = () => {
                   style={styles.quickAmountButton}
                   onPress={() => handleAmountSelect(quickAmount)}
                 >
-                  <Text style={styles.quickAmountText}>{quickAmount}</Text>
+                  <ThemedText style={styles.quickAmountText}>{quickAmount}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -267,11 +267,11 @@ const Airtime = () => {
               style={styles.inputField}
               onPress={() => setShowNetworkModal(true)}
             >
-              <Text style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
+              <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
                 {selectedProvider
                   ? NETWORKS.find((n) => n.id === selectedProvider)?.name || 'Select Provider'
                   : 'Select Provider'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -304,8 +304,8 @@ const Airtime = () => {
             {accountName && (
               <View style={styles.inputField}>
                 <View style={styles.accountNameContainer}>
-                  <Text style={styles.accountNameLabel}>Account Name</Text>
-                  <Text style={styles.accountNameValue}>{accountName}</Text>
+                  <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
                 </View>
               </View>
             )}
@@ -317,7 +317,7 @@ const Airtime = () => {
             onPress={handleProceed}
             disabled={!selectedProvider || !mobileNumber || !accountName}
           >
-            <Text style={styles.proceedButtonText}>Proceed</Text>
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
           </TouchableOpacity>
         </View>
 
@@ -328,12 +328,12 @@ const Airtime = () => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <Text style={styles.feeText}>Fee : N200</Text>
+          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
         {/* Recent Section */}
         <View style={styles.recentSection}>
-          <Text style={styles.recentTitle}>Recent</Text>
+          <ThemedText style={styles.recentTitle}>Recent</ThemedText>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -342,8 +342,8 @@ const Airtime = () => {
             {recentTransactions.map((transaction) => (
               <View key={transaction.id} style={styles.recentItem}>
                 <Image source={transaction.icon} style={styles.recentIcon} resizeMode="cover" />
-                <Text style={styles.recentPhone}>{transaction.phoneNumber}</Text>
-                <Text style={styles.recentNetwork}>{transaction.network}</Text>
+                <ThemedText style={styles.recentPhone}>{transaction.phoneNumber}</ThemedText>
+                <ThemedText style={styles.recentNetwork}>{transaction.network}</ThemedText>
               </View>
             ))}
           </ScrollView>
@@ -352,9 +352,9 @@ const Airtime = () => {
         {/* Recent Transactions Card */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
-            <Text style={styles.recentTransactionsTitle}>Recent Transactions</Text>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
             <TouchableOpacity>
-              <Text style={styles.viewAllText}>View All</Text>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -363,20 +363,20 @@ const Airtime = () => {
               <View key={transaction.id} style={styles.transactionItem}>
                 <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
                 <View style={styles.transactionDetails}>
-                  <Text style={styles.transactionPhone}>{transaction.phoneNumber}</Text>
+                  <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
                   <View style={styles.transactionMeta}>
                     {transaction.plan ? (
                       <>
-                        <Text style={styles.transactionPlan}>{transaction.plan}</Text>
+                        <ThemedText style={styles.transactionPlan}>{transaction.plan}</ThemedText>
                         <View style={styles.transactionDot} />
                       </>
                     ) : null}
-                    <Text style={styles.transactionNetwork}>{transaction.network}</Text>
+                    <ThemedText style={styles.transactionNetwork}>{transaction.network}</ThemedText>
                   </View>
                 </View>
                 <View style={styles.transactionRight}>
-                  <Text style={styles.transactionAmount}>{transaction.amount}</Text>
-                  <Text style={styles.transactionDate}>{transaction.date}</Text>
+                  <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                 </View>
               </View>
             ))}
@@ -398,7 +398,7 @@ const Airtime = () => {
           <View style={styles.networkModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Network</Text>
+              <ThemedText style={styles.modalTitle}>Select Network</ThemedText>
               <TouchableOpacity onPress={() => setShowNetworkModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -425,7 +425,7 @@ const Airtime = () => {
                   onPress={() => handleProviderSelect(network.id)}
                 >
                   <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
-                  <Text style={styles.networkName}>{network.name}</Text>
+                  <ThemedText style={styles.networkName}>{network.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedProvider === network.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -440,7 +440,7 @@ const Airtime = () => {
               style={styles.applyButton}
               onPress={() => setShowNetworkModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -456,7 +456,7 @@ const Airtime = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -471,8 +471,8 @@ const Airtime = () => {
                     setSelectedCountryName(country.name);
                   }}
                 >
-                  <Text style={styles.countryFlagEmoji}>{country.flag}</Text>
-                  <Text style={styles.countryNameModal}>{country.name}</Text>
+                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -485,7 +485,7 @@ const Airtime = () => {
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -613,6 +613,8 @@ const styles = StyleSheet.create({
     paddingBottom: 80 * 1,
     padding: 0,
     margin: 0,
+        fontFamily: 'Agbalumo-Regular',
+
   },
   quickAmountsContainer: {
     flexDirection: 'row',

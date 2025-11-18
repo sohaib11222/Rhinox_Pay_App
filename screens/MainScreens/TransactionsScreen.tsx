@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
     StyleSheet,
-    Text,
     View,
     ScrollView,
     TouchableOpacity,
@@ -12,7 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-
+import { ThemedText } from '../../components';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
 
@@ -176,14 +175,14 @@ const TransactionsScreen = () => {
             >
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={styles.headerTitle}>Transaction History</Text>
+                    <ThemedText style={styles.headerTitle}>Transaction History</ThemedText>
                 </View>
 
                 {/* Chart Section */}
                 <View style={styles.chartCard}>
                     <View style={styles.chartHeader}>
-                        <Text style={styles.chartLabel}>Total</Text>
-                        <Text style={styles.chartAmount}>{totalAmount}</Text>
+                        <ThemedText style={styles.chartLabel}>Total</ThemedText>
+                        <ThemedText style={styles.chartAmount}>{totalAmount}</ThemedText>
                     </View>
 
                     {/* Period Filters */}
@@ -192,33 +191,33 @@ const TransactionsScreen = () => {
                             style={[styles.periodButton, selectedPeriod === 'D' && styles.periodButtonActive]}
                             onPress={() => setSelectedPeriod('D')}
                         >
-                            <Text style={[styles.periodButtonText, selectedPeriod === 'D' && styles.periodButtonTextActive]}>
+                            <ThemedText style={[styles.periodButtonText, selectedPeriod === 'D' && styles.periodButtonTextActive]}>
                                 D
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.periodButton, selectedPeriod === 'W' && styles.periodButtonActive]}
                             onPress={() => setSelectedPeriod('W')}
                         >
-                            <Text style={[styles.periodButtonText, selectedPeriod === 'W' && styles.periodButtonTextActive]}>
+                            <ThemedText style={[styles.periodButtonText, selectedPeriod === 'W' && styles.periodButtonTextActive]}>
                                 W
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.periodButton, selectedPeriod === 'M' && styles.periodButtonActive]}
                             onPress={() => setSelectedPeriod('M')}
                         >
-                            <Text style={[styles.periodButtonText, selectedPeriod === 'M' && styles.periodButtonTextActive]}>
+                            <ThemedText style={[styles.periodButtonText, selectedPeriod === 'M' && styles.periodButtonTextActive]}>
                                 M
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.periodButton, selectedPeriod === 'Custom' && styles.periodButtonActive]}
                             onPress={() => setSelectedPeriod('Custom')}
                         >
-                            <Text style={[styles.periodButtonText, selectedPeriod === 'Custom' && styles.periodButtonTextActive]}>
+                            <ThemedText style={[styles.periodButtonText, selectedPeriod === 'Custom' && styles.periodButtonTextActive]}>
                                 Custom
-                            </Text>
+                            </ThemedText>
                         </TouchableOpacity>
                     </View>
 
@@ -226,11 +225,11 @@ const TransactionsScreen = () => {
                     <View style={styles.chartContainer}>
                         {/* Y-axis Labels */}
                         <View style={styles.yAxisLabels}>
-                            <Text style={styles.yAxisText}>$800</Text>
-                            <Text style={styles.yAxisText}>$600</Text>
-                            <Text style={styles.yAxisText}>$400</Text>
-                            <Text style={styles.yAxisText}>$200</Text>
-                            <Text style={styles.yAxisText}>$0</Text>
+                            <ThemedText style={styles.yAxisText}>$800</ThemedText>
+                            <ThemedText style={styles.yAxisText}>$600</ThemedText>
+                            <ThemedText style={styles.yAxisText}>$400</ThemedText>
+                            <ThemedText style={styles.yAxisText}>$200</ThemedText>
+                            <ThemedText style={styles.yAxisText}>$0</ThemedText>
                         </View>
 
                         {/* Chart Area - Scrollable */}
@@ -273,9 +272,9 @@ const TransactionsScreen = () => {
                                 {/* X-axis Labels */}
                                 <View style={styles.xAxisLabels}>
                                     {chartData.map((data, index) => (
-                                        <Text key={index} style={styles.xAxisText}>
+                                        <ThemedText key={index} style={styles.xAxisText}>
                                             {data.time}
-                                        </Text>
+                                        </ThemedText>
                                     ))}
                                 </View>
                             </View>
@@ -300,15 +299,15 @@ const TransactionsScreen = () => {
                                     resizeMode="cover"
                                 />
                             </View>
-                            <Text style={styles.summaryLabel}>Incoming</Text>
+                            <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
                         </View>
                         <View style={styles.summaryAmountContainer}>
                             <View style={styles.summaryAmountRow}>
-                                <Text style={styles.summaryAmountMain}>2,000,000.00</Text>
-                                <Text style={styles.summaryAmountCurrency}>NGN</Text>
+                                <ThemedText style={styles.summaryAmountMain}>2,000,000.00</ThemedText>
+                                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
                             </View>
                         </View>
-                        <Text style={styles.summaryUSD}>{summaryData.incoming.usd}</Text>
+                        <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
                     </LinearGradient>
 
                     {/* Outgoing Card - White background */}
@@ -321,15 +320,15 @@ const TransactionsScreen = () => {
                                     resizeMode="cover"
                                 />
                             </View>
-                            <Text style={styles.summaryLabelWhite}>Outgoing</Text>
+                            <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
                         </View>
                         <View style={styles.summaryAmountContainer}>
                             <View style={styles.summaryAmountRow}>
-                                <Text style={styles.summaryAmountMainWhite}>500.00</Text>
-                                <Text style={styles.summaryAmountCurrencyWhite}>NGN</Text>
+                                <ThemedText style={styles.summaryAmountMainWhite}>500.00</ThemedText>
+                                <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
                             </View>
                         </View>
-                        <Text style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</Text>
+                        <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
                     </View>
                 </View>
 
@@ -337,8 +336,8 @@ const TransactionsScreen = () => {
                 <View style={styles.transactionCard}>
                     {/* Fiat Section */}
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Transaction History</Text>
-                        <Text style={styles.sectionFilterLabel}>Fiat</Text>
+                        <ThemedText style={styles.sectionTitle}>Transaction History</ThemedText>
+                        <ThemedText style={styles.sectionFilterLabel}>Fiat</ThemedText>
                     </View>
 
                     <View style={styles.transactionList}>
@@ -387,12 +386,12 @@ const TransactionsScreen = () => {
                                     </View>
                                 </View>
                                 <View style={styles.transactionDetails}>
-                                    <Text style={styles.transactionTitle}>{transaction.title}</Text>
-                                    <Text style={styles.transactionDate}>{transaction.date}</Text>
+                                    <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
+                                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                                 </View>
                                 <View style={styles.transactionAmountContainer}>
-                                    <Text style={styles.transactionAmountNGN}>{transaction.amountNGN}</Text>
-                                    <Text style={styles.transactionAmountUSD}>{transaction.amountUSD}</Text>
+                                    <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
+                                    <ThemedText style={styles.transactionAmountUSD}>{transaction.amountUSD}</ThemedText>
                                 </View>
                             </TouchableOpacity>
                         ))}
@@ -400,8 +399,8 @@ const TransactionsScreen = () => {
 
                     {/* Crypto Section */}
                     <View style={[styles.sectionHeader, { marginTop: 20 * SCALE }]}>
-                        <Text style={styles.sectionTitle}>Transaction History</Text>
-                        <Text style={styles.sectionFilterLabel}>Crypto</Text>
+                        <ThemedText style={styles.sectionTitle}>Transaction History</ThemedText>
+                        <ThemedText style={styles.sectionFilterLabel}>Crypto</ThemedText>
                     </View>
 
                     <View style={styles.transactionList}>
@@ -441,12 +440,12 @@ const TransactionsScreen = () => {
                                     </View>
                                 </View>
                                 <View style={styles.transactionDetails}>
-                                    <Text style={styles.transactionTitle}>{transaction.title}</Text>
-                                    <Text style={styles.transactionDate}>{transaction.date}</Text>
+                                    <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
+                                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                                 </View>
                                 <View style={styles.transactionAmountContainer}>
-                                    <Text style={styles.transactionAmountNGN}>{transaction.amountNGN}</Text>
-                                    <Text style={styles.transactionAmountUSD}>{transaction.amountUSD}</Text>
+                                    <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
+                                    <ThemedText style={styles.transactionAmountUSD}>{transaction.amountUSD}</ThemedText>
                                 </View>
                             </TouchableOpacity>
                         ))}

@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -50,24 +50,24 @@ const TransactionErrorModal: React.FC<TransactionErrorModalProps> = ({
           </View>
 
           {/* Error Message */}
-          <Text style={styles.errorTitle}>
+          <ThemedText style={styles.errorTitle}>
             {transaction.transactionType === 'withdrawal' 
               ? 'Withdrawal Failed'
               : `${transaction.transferAmount || transaction.amountNGN || 'N200,000'} Not Sent`}
-          </Text>
-          <Text style={styles.errorMessage}>
+          </ThemedText>
+          <ThemedText style={styles.errorMessage}>
             {transaction.transactionType === 'withdrawal'
               ? `Your withdrawal of ${transaction.transferAmount || transaction.amountNGN || 'N200,000'} could not be completed`
               : `Your transfer of ${transaction.transferAmount || transaction.amountNGN || 'N200,000'} could not be completed due to netwrok error`}
-          </Text>
+          </ThemedText>
 
           {/* Action Buttons */}
           <View style={styles.buttonContainer}>
             <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
-              <Text style={styles.retryButtonText}>Retry</Text>
+              <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

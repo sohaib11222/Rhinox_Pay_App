@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -356,7 +356,7 @@ const BuyOrder = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Buy Order</Text>
+            <ThemedText style={styles.headerTitle}>Buy Order</ThemedText>
           </View>
           <TouchableOpacity style={styles.backButton}>
             <View style={styles.iconCircle}>
@@ -378,14 +378,14 @@ const BuyOrder = () => {
               resizeMode="cover"
             />
             <View style={styles.vendorInfo}>
-              <Text style={styles.vendorName}>{orderData.vendorName}</Text>
-              <Text style={styles.vendorStatus}>{orderData.vendorStatus}</Text>
+              <ThemedText style={styles.vendorName}>{orderData.vendorName}</ThemedText>
+              <ThemedText style={styles.vendorStatus}>{orderData.vendorStatus}</ThemedText>
             </View>
-            <Text style={styles.vendorRating}>{orderData.vendorRating}</Text>
+            <ThemedText style={styles.vendorRating}>{orderData.vendorRating}</ThemedText>
           </View>
 
           {/* Vendor Rate */}
-          <Text style={styles.rateTitle}>Vendor Rate</Text>
+          <ThemedText style={styles.rateTitle}>Vendor Rate</ThemedText>
           <LinearGradient
             colors={['#FFFFFF0D', '#A9EF4533']}
             start={{ x: 0, y: 0 }}
@@ -394,16 +394,16 @@ const BuyOrder = () => {
           >
             <View style={styles.rateContent}>
               <View>
-                <Text style={styles.rateLabel}>Rate</Text>
-                <Text style={styles.rateRefresh}>Refreshes in 1 min</Text>
+                <ThemedText style={styles.rateLabel}>Rate</ThemedText>
+                <ThemedText style={styles.rateRefresh}>Refreshes in 1 min</ThemedText>
               </View>
-              <Text style={styles.rateValue}>{orderData.rate}</Text>
+              <ThemedText style={styles.rateValue}>{orderData.rate}</ThemedText>
             </View>
           </LinearGradient>
 
           {/* Order Details Card */}
           <View style={styles.orderCard}>
-            <Text style={styles.orderCardTitle}>Order Details</Text>
+            <ThemedText style={styles.orderCardTitle}>Order Details</ThemedText>
 
             {/* Currency Selectors */}
             <View style={styles.currencySelectors}>
@@ -411,17 +411,17 @@ const BuyOrder = () => {
                 style={[styles.currencySelector, currencyType === 'Fiat' && styles.currencySelectorActive]}
                 onPress={() => setCurrencyType('Fiat')}
               >
-                <Text style={[styles.currencySelectorText, currencyType === 'Fiat' && styles.currencySelectorTextActive]}>
+                <ThemedText style={[styles.currencySelectorText, currencyType === 'Fiat' && styles.currencySelectorTextActive]}>
                   Fiat
-                </Text>
+                </ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.currencySelector, currencyType === 'Crypto' && styles.currencySelectorActive]}
                 onPress={() => setCurrencyType('Crypto')}
               >
-                <Text style={[styles.currencySelectorText, currencyType === 'Crypto' && styles.currencySelectorTextActive]}>
+                <ThemedText style={[styles.currencySelectorText, currencyType === 'Crypto' && styles.currencySelectorTextActive]}>
                   Crypto
-                </Text>
+                </ThemedText>
               </TouchableOpacity>
             </View>
 
@@ -429,7 +429,7 @@ const BuyOrder = () => {
             {currencyType === 'Fiat' ? (
               <>
                 <View style={styles.amountSection}>
-                  <Text style={styles.amountLabel}>Amount to buy</Text>
+                  <ThemedText style={styles.amountLabel}>Amount to buy</ThemedText>
                   <TextInput
                     style={styles.amountInput}
                     value={amount}
@@ -444,23 +444,23 @@ const BuyOrder = () => {
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   />
                   <View style={styles.balanceRow}>
-                    <Text style={styles.balanceLabel}>Balance</Text>
-                    <Text style={styles.balanceValue}>NGN 0.00</Text>
+                    <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
+                    <ThemedText style={styles.balanceValue}>NGN 0.00</ThemedText>
                   </View>
                 </View>
 
                 {/* You will Receive */}
                 <View style={styles.receiveSection}>
-                  <Text style={styles.receiveLabel}>You will Receive</Text>
+                  <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
                   <View style={styles.receiveValueContainer}>
-                    <Text style={styles.receiveValue}>0.00 USDT</Text>
+                    <ThemedText style={styles.receiveValue}>0.00 USDT</ThemedText>
                   </View>
                 </View>
               </>
             ) : (
               <>
                 <View style={styles.amountSection}>
-                  <Text style={styles.amountLabel}>Enter USDT Amount</Text>
+                  <ThemedText style={styles.amountLabel}>Enter USDT Amount</ThemedText>
                   <TextInput
                     style={styles.amountInput}
                     value={amount}
@@ -475,15 +475,15 @@ const BuyOrder = () => {
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   />
                   <View style={styles.balanceRow}>
-                    <Text style={styles.balanceLabel}>Balance</Text>
-                    <Text style={styles.balanceValue}>USDT 0.00</Text>
+                    <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
+                    <ThemedText style={styles.balanceValue}>USDT 0.00</ThemedText>
                   </View>
                 </View>
 
                 {/* You will Pay */}
                 <View style={styles.receiveSection}>
-                  <Text style={styles.receiveLabel}>You will Pay</Text>
-                  <Text style={styles.payValue}>N10,000</Text>
+                  <ThemedText style={styles.receiveLabel}>You will Pay</ThemedText>
+                  <ThemedText style={styles.payValue}>N10,000</ThemedText>
                 </View>
               </>
             )}
@@ -493,9 +493,9 @@ const BuyOrder = () => {
               style={styles.paymentMethodField}
               onPress={() => setShowPaymentMethodModal(true)}
             >
-              <Text style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
+              <ThemedText style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
                 {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select payment method'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
@@ -507,7 +507,7 @@ const BuyOrder = () => {
           onPress={handleBuy}
           disabled={!amount || !selectedPaymentMethod}
         >
-          <Text style={styles.buyButtonText}>Buy</Text>
+          <ThemedText style={styles.buyButtonText}>Buy</ThemedText>
         </TouchableOpacity>
 
         {/* Select Payment Method Modal */}
@@ -520,7 +520,7 @@ const BuyOrder = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.paymentModalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Select Bank</Text>
+                <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
                 <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
                   <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
@@ -542,7 +542,7 @@ const BuyOrder = () => {
                     style={styles.paymentMethodItem}
                     onPress={() => handlePaymentMethodSelect(method)}
                   >
-                    <Text style={styles.paymentMethodItemText}>{method.name}</Text>
+                    <ThemedText style={styles.paymentMethodItemText}>{method.name}</ThemedText>
                     {tempSelectedPaymentMethod?.id === method.id ? (
                       <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
                     ) : (
@@ -558,7 +558,7 @@ const BuyOrder = () => {
                   onPress={handleApplyPaymentMethod}
                   disabled={!tempSelectedPaymentMethod}
                 >
-                  <Text style={styles.applyButtonText}>Apply</Text>
+                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -595,9 +595,9 @@ const BuyOrder = () => {
           </View>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>
+          <ThemedText style={styles.headerTitle}>
             USDT Buy Ad
-          </Text>
+          </ThemedText>
         </View>
         <View style={styles.backButton} />
       </View>
@@ -608,11 +608,11 @@ const BuyOrder = () => {
       {/* Status and Amount - Only show in order flow */}
       {currentStep > 0 && (
         <View style={styles.statusSection}>
-          <Text style={styles.statusText}>{getStepStatus()}</Text>
+          <ThemedText style={styles.statusText}>{getStepStatus()}</ThemedText>
           <View style={styles.amountSectionHeader}>
-            <Text style={styles.amountText}>{orderData.usdtAmount}</Text>
+            <ThemedText style={styles.amountText}>{orderData.usdtAmount}</ThemedText>
             <TouchableOpacity style={styles.openChatButton}>
-              <Text style={styles.openChatText}>Open Chat</Text>
+              <ThemedText style={styles.openChatText}>Open Chat</ThemedText>
               {currentStep === 2 && <View style={styles.chatNotificationDot} />}
             </TouchableOpacity>
           </View>
@@ -627,36 +627,36 @@ const BuyOrder = () => {
         {/* Order Details Card - Only show in order flow */}
         {currentStep > 0 && (
           <View style={styles.orderDetailsCard}>
-            <Text style={styles.orderDetailsTitle}>Order Details</Text>
+            <ThemedText style={styles.orderDetailsTitle}>Order Details</ThemedText>
             <View style={styles.orderDetailsContent}>
               <View style={[styles.detailRow, { borderTopRightRadius: 10, borderTopLeftRadius: 10, borderBottomWidth: 1, }]}>
-                <Text style={styles.detailLabel}>Buyer name</Text>
-                <Text style={styles.detailValue}>{orderData.buyerName}</Text>
+                <ThemedText style={styles.detailLabel}>Buyer name</ThemedText>
+                <ThemedText style={styles.detailValue}>{orderData.buyerName}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Amount to be paid</Text>
-                <Text style={styles.detailValue}>{orderData.amountToBePaid}</Text>
+                <ThemedText style={styles.detailLabel}>Amount to be paid</ThemedText>
+                <ThemedText style={styles.detailValue}>{orderData.amountToBePaid}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Payment Account</Text>
-                <Text style={styles.detailValue}>{orderData.paymentAccount}</Text>
+                <ThemedText style={styles.detailLabel}>Payment Account</ThemedText>
+                <ThemedText style={styles.detailValue}>{orderData.paymentAccount}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Price</Text>
-                <Text style={styles.detailValue}>{orderData.price}</Text>
+                <ThemedText style={styles.detailLabel}>Price</ThemedText>
+                <ThemedText style={styles.detailValue}>{orderData.price}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Tx id</Text>
+                <ThemedText style={styles.detailLabel}>Tx id</ThemedText>
                 <View style={styles.txIdRow}>
-                  <Text style={styles.detailValue}>{orderData.txId}</Text>
+                  <ThemedText style={styles.detailValue}>{orderData.txId}</ThemedText>
                   <TouchableOpacity onPress={handleCopyTxId} style={styles.copyButton}>
                     <MaterialCommunityIcons name="content-copy" size={14 * SCALE} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               </View>
               <View style={[styles.detailRow, styles.detailRowLast]}>
-                <Text style={styles.detailLabel}>Order time</Text>
-                <Text style={styles.detailValue}>{orderData.orderTime}</Text>
+                <ThemedText style={styles.detailLabel}>Order time</ThemedText>
+                <ThemedText style={styles.detailValue}>{orderData.orderTime}</ThemedText>
               </View>
             </View>
           </View>
@@ -667,48 +667,48 @@ const BuyOrder = () => {
           <View style={styles.paymentAccountCard}>
             <View style={styles.paymentAccountHeader}>
               <View style={styles.paymentAccountHeaderLeft}>
-                <Text style={styles.paymentAccountTitle}>Payment Account</Text>
-                <Text style={styles.paymentAccountSubtitle}>
+                <ThemedText style={styles.paymentAccountTitle}>Payment Account</ThemedText>
+                <ThemedText style={styles.paymentAccountSubtitle}>
                   {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2')
                     ? 'Pay via Rhinoxpay id'
                     : 'Pay to the account below'}
-                </Text>
+                </ThemedText>
               </View>
               {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') && (
                 <TouchableOpacity style={styles.payNowButton} onPress={handlePayNow}>
-                  <Text style={styles.payNowButtonText}>Pay Now</Text>
+                  <ThemedText style={styles.payNowButtonText}>Pay Now</ThemedText>
                 </TouchableOpacity>
               )}
             </View>
             {/* RhinoxPay ID Payment Method */}
             {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') ? (
               <View style={styles.rhinoxPayCard}>
-                <Text style={styles.rhinoxPayLabel}>Rhinoxpay ID</Text>
-                <Text style={styles.rhinoxPayValue}>NGN1234</Text>
+                <ThemedText style={styles.rhinoxPayLabel}>Rhinoxpay ID</ThemedText>
+                <ThemedText style={styles.rhinoxPayValue}>NGN1234</ThemedText>
               </View>
             ) : (
               <>
                 <View style={styles.amountToPaySection}>
-                  <Text style={styles.amountToPayLabel}>Amount to pay</Text>
-                  <Text style={styles.amountToPayValue}>{orderData.amountToPay}</Text>
+                  <ThemedText style={styles.amountToPayLabel}>Amount to pay</ThemedText>
+                  <ThemedText style={styles.amountToPayValue}>{orderData.amountToPay}</ThemedText>
                 </View>
                 <View style={styles.paymentAccountDetails}>
                   <View style={[styles.detailRow, { borderTopRightRadius: 10, borderTopLeftRadius: 10, borderBottomWidth: 1, }]}>
-                    <Text style={styles.detailLabel}>Bank Name</Text>
-                    <Text style={styles.detailValue}>{orderData.bankName}</Text>
+                    <ThemedText style={styles.detailLabel}>Bank Name</ThemedText>
+                    <ThemedText style={styles.detailValue}>{orderData.bankName}</ThemedText>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Account Number</Text>
+                    <ThemedText style={styles.detailLabel}>Account Number</ThemedText>
                     <View style={styles.accountNumberRow}>
-                      <Text style={styles.detailValue}>{orderData.accountNumber}</Text>
+                      <ThemedText style={styles.detailValue}>{orderData.accountNumber}</ThemedText>
                       <TouchableOpacity onPress={handleCopyAccountNumber} style={styles.copyButton}>
                         <MaterialCommunityIcons name="content-copy" size={14 * SCALE} color="#FFFFFF" />
                       </TouchableOpacity>
                     </View>
                   </View>
                   <View style={[styles.detailRow, styles.detailRowLast]}>
-                    <Text style={styles.detailLabel}>Account Name</Text>
-                    <Text style={styles.detailValue}>{orderData.accountName}</Text>
+                    <ThemedText style={styles.detailLabel}>Account Name</ThemedText>
+                    <ThemedText style={styles.detailValue}>{orderData.accountName}</ThemedText>
                   </View>
                 </View>
               </>
@@ -719,8 +719,8 @@ const BuyOrder = () => {
         {/* Review Section (Step 4 only) */}
         {currentStep === 4 && (
           <View style={styles.reviewCard}>
-            <Text style={styles.reviewTitle}>Leave a review</Text>
-            <Text style={styles.reviewSubtitle}>How was your order</Text>
+            <ThemedText style={styles.reviewTitle}>Leave a review</ThemedText>
+            <ThemedText style={styles.reviewSubtitle}>How was your order</ThemedText>
             <View style={styles.reviewRatingButtons}>
               <TouchableOpacity
                 style={[styles.ratingButton, reviewRating === 'positive' && styles.ratingButtonActive, { borderWidth: 0.5, borderColor: '#A9EF45' }]}
@@ -776,7 +776,7 @@ const BuyOrder = () => {
               </View>
             </View>
             <TouchableOpacity style={styles.sendButton} onPress={handleSendReview}>
-              <Text style={styles.sendButtonText}>Send</Text>
+              <ThemedText style={styles.sendButtonText}>Send</ThemedText>
             </TouchableOpacity>
           </View>
         )}
@@ -792,10 +792,10 @@ const BuyOrder = () => {
                 style={styles.awaitingButton}
                 onPress={handleAcceptOrder}
               >
-                <Text style={styles.awaitingButtonText}>Accept Order</Text>
+                <ThemedText style={styles.awaitingButtonText}>Accept Order</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </>
           ) : (
@@ -805,12 +805,12 @@ const BuyOrder = () => {
                 style={styles.awaitingButton}
                 onPress={handleAwaitingButton}
               >
-                <Text style={styles.awaitingButtonText}>
+                <ThemedText style={styles.awaitingButtonText}>
                   Awaiting {formatCountdown(countdown)} min
-                </Text>
+                </ThemedText>
               </TouchableOpacity>
               <TouchableOpacity style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </>
           )}
@@ -820,23 +820,23 @@ const BuyOrder = () => {
       {currentStep === 2 && (
         <View style={styles.actionButtonsContainer}>
           <TouchableOpacity style={styles.paymentMadeButton} onPress={handlePaymentMade}>
-            <Text style={styles.paymentMadeButtonText}>Payment Made</Text>
+            <ThemedText style={styles.paymentMadeButtonText}>Payment Made</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity style={styles.appealButton}>
-            <Text style={styles.appealButtonText}>Appeal</Text>
+            <ThemedText style={styles.appealButtonText}>Appeal</ThemedText>
           </TouchableOpacity>
         </View>
       )}
 
       {currentStep === 3 && (
         <TouchableOpacity style={styles.appealOrderButton}>
-          <Text style={styles.appealOrderButtonText}>Appeal Order</Text>
+          <ThemedText style={styles.appealOrderButtonText}>Appeal Order</ThemedText>
         </TouchableOpacity>
       )}
 
       {currentStep === 4 && (
         <TouchableOpacity style={styles.closeButton}>
-          <Text style={styles.closeButtonText}>Close</Text>
+          <ThemedText style={styles.closeButtonText}>Close</ThemedText>
         </TouchableOpacity>
       )}
 
@@ -854,23 +854,23 @@ const BuyOrder = () => {
                 <MaterialCommunityIcons name="check" size={40 * SCALE} color="#FFFFFF" />
               </View>
             </View>
-            <Text style={styles.warningTitle}>Warning</Text>
+            <ThemedText style={styles.warningTitle}>Warning</ThemedText>
             <TouchableOpacity style={styles.confirmationCheckbox}>
               <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
-              <Text style={styles.confirmationText}>I confirm that i have made payment for this order</Text>
+              <ThemedText style={styles.confirmationText}>I confirm that i have made payment for this order</ThemedText>
             </TouchableOpacity>
             <View style={styles.warningModalButtons}>
               <TouchableOpacity
                 style={styles.completeButton}
                 onPress={handleWarningComplete}
               >
-                <Text style={styles.completeButtonText}>Complete</Text>
+                <ThemedText style={styles.completeButtonText}>Complete</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.cancelModalButton}
                 onPress={() => setShowWarningModal(false)}
               >
-                <Text style={styles.cancelModalButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelModalButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -887,7 +887,7 @@ const BuyOrder = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
             <View style={styles.pinModalHeader}>
-              <Text style={styles.pinModalTitle}>Verification</Text>
+              <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowPinModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -904,8 +904,8 @@ const BuyOrder = () => {
             </View>
 
             <View style={styles.pinModalTextContainer}>
-              <Text style={styles.pinInstruction}>Input Pin to Complete p2p Transaction</Text>
-              <Text style={styles.pinAmount}>N2,000,000</Text>
+              <ThemedText style={styles.pinInstruction}>Input Pin to Complete p2p Transaction</ThemedText>
+              <ThemedText style={styles.pinAmount}>N2,000,000</ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -916,9 +916,9 @@ const BuyOrder = () => {
                   return (
                     <View key={index} style={styles.pinSlot}>
                       {hasValue ? (
-                        <Text style={styles.pinSlotText}>{digit}</Text>
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                       ) : (
-                        <Text style={styles.pinSlotAsterisk}>*</Text>
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                       )}
                     </View>
                   );
@@ -940,14 +940,14 @@ const BuyOrder = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -965,14 +965,14 @@ const BuyOrder = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -990,14 +990,14 @@ const BuyOrder = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -1018,14 +1018,14 @@ const BuyOrder = () => {
                       lastPressedButton === '0' && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === '0' && styles.numpadTextPressed,
                       ]}
                     >
                       0
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1052,7 +1052,7 @@ const BuyOrder = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.securityModalContentBottom}>
             <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Security Verification</Text>
+              <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -1068,11 +1068,11 @@ const BuyOrder = () => {
               </View>
             </View>
 
-            <Text style={styles.securityTitle}>Security Verification</Text>
-            <Text style={styles.securitySubtitle}>Verify via email and your authenticator app</Text>
+            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Email Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -1086,7 +1086,7 @@ const BuyOrder = () => {
             </View>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Authenticator App Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -1104,7 +1104,7 @@ const BuyOrder = () => {
               onPress={handleSecurityProceed}
               disabled={!emailCode || !authenticatorCode}
             >
-              <Text style={styles.proceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -1120,7 +1120,7 @@ const BuyOrder = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.rhinoxPayModalContent}>
             <View style={styles.rhinoxPayModalHeader}>
-              <Text style={styles.rhinoxPayModalTitle}>Pay via rhinoxpay</Text>
+              <ThemedText style={styles.rhinoxPayModalTitle}>Pay via rhinoxpay</ThemedText>
               <TouchableOpacity onPress={() => setShowRhinoxPayModal(false)}>
                 <View style={styles.closeIconCircle}>
                   <MaterialCommunityIcons name="close" size={20 * SCALE} color="#FFFFFF" />
@@ -1131,7 +1131,7 @@ const BuyOrder = () => {
             <ScrollView style={styles.rhinoxPayModalScroll} showsVerticalScrollIndicator={false}>
               {/* Select Currency Section */}
               <View style={styles.selectCurrencySection}>
-                <Text style={styles.selectCurrencyLabel}>Select Currency</Text>
+                <ThemedText style={styles.selectCurrencyLabel}>Select Currency</ThemedText>
                 <LinearGradient
                   colors={['#FFFFFF0D', '#A9EF4533']}
                   start={{ x: 0, y: 0 }}
@@ -1139,14 +1139,14 @@ const BuyOrder = () => {
                   style={styles.balanceCard}
                 >
                   <View style={styles.balanceCardLeft}>
-                    <Text style={styles.myBalanceLabel}>My Balance</Text>
+                    <ThemedText style={styles.myBalanceLabel}>My Balance</ThemedText>
                     <View style={styles.balanceAmountRow}>
                       <Image
                         source={require('../../../assets/Vector (34).png')}
                         style={[{ marginBottom: -1, width: 18, height: 16 }]}
                         resizeMode="cover"
                       />
-                      <Text style={styles.balanceAmount}>N200,000</Text>
+                      <ThemedText style={styles.balanceAmount}>N200,000</ThemedText>
                     </View>
                   </View>
                   <TouchableOpacity
@@ -1172,7 +1172,7 @@ const BuyOrder = () => {
                         />
                       );
                     })()}
-                    <Text style={styles.currencySelectorTextModal}>{selectedCountryName}</Text>
+                    <ThemedText style={styles.currencySelectorTextModal}>{selectedCountryName}</ThemedText>
                     <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="#FFFFFF" />
                   </TouchableOpacity>
                 </LinearGradient>
@@ -1180,15 +1180,15 @@ const BuyOrder = () => {
 
               {/* Rhinox Pay ID Section */}
               <View style={styles.rhinoxPayIdSection}>
-                <Text style={styles.rhinoxPayIdLabel}>Rhinox Pay ID</Text>
+                <ThemedText style={styles.rhinoxPayIdLabel}>Rhinox Pay ID</ThemedText>
                 <View style={styles.rhinoxPayIdInput}>
-                  <Text style={styles.rhinoxPayIdPlaceholder}>Rhinoxpay ID</Text>
-                  <Text style={styles.rhinoxPayIdValue}>NGN1234</Text>
+                  <ThemedText style={styles.rhinoxPayIdPlaceholder}>Rhinoxpay ID</ThemedText>
+                  <ThemedText style={styles.rhinoxPayIdValue}>NGN1234</ThemedText>
                 </View>
                 <View style={styles.amountToPaySectionModal}>
-                <Text style={styles.amountToPayLabelModal}>Amount to Pay</Text>
+                <ThemedText style={styles.amountToPayLabelModal}>Amount to Pay</ThemedText>
                 <View style={styles.amountToPayInput}>
-                  <Text style={styles.amountToPayValueModal}>{rhinoxPayAmount}</Text>
+                  <ThemedText style={styles.amountToPayValueModal}>{rhinoxPayAmount}</ThemedText>
                 </View>
               </View>
               </View>
@@ -1199,7 +1199,7 @@ const BuyOrder = () => {
 
             <View style={styles.rhinoxPayModalFooter}>
               <TouchableOpacity style={styles.proceedButtonRhinoxPay} onPress={handleRhinoxPayProceed}>
-                <Text style={styles.proceedButtonRhinoxPayText}>Proceed</Text>
+                <ThemedText style={styles.proceedButtonRhinoxPayText}>Proceed</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -1218,17 +1218,17 @@ const BuyOrder = () => {
             <View style={styles.successIconCircle}>
               <MaterialCommunityIcons name="check" size={60 * SCALE} color="#FFFFFF" />
             </View>
-            <Text style={styles.successTitle}>Complete</Text>
-            <Text style={styles.successMessage}>
+            <ThemedText style={styles.successTitle}>Complete</ThemedText>
+            <ThemedText style={styles.successMessage}>
               You have successfully sent N10,000 from your Rhinoxpay NGN wallet
-            </Text>
+            </ThemedText>
             <View style={styles.successModalButtons}>
               <TouchableOpacity style={styles.viewTransactionButton} onPress={handleSuccessModalClose}>
-                <Text style={styles.viewTransactionButtonText}>View Transaction</Text>
+                <ThemedText style={styles.viewTransactionButtonText}>View Transaction</ThemedText>
               </TouchableOpacity>
               <View style={styles.successModalButtonDivider} />
               <TouchableOpacity style={styles.cancelSuccessButton} onPress={handleSuccessModalClose}>
-                <Text style={styles.cancelSuccessButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelSuccessButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -1245,7 +1245,7 @@ const BuyOrder = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.countryModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -1276,7 +1276,7 @@ const BuyOrder = () => {
                       style={styles.countryFlagModal}
                       resizeMode="contain"
                     />
-                    <Text style={styles.countryName}>{country.name}</Text>
+                    <ThemedText style={styles.countryName}>{country.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24 * SCALE}
@@ -1291,7 +1291,7 @@ const BuyOrder = () => {
                 style={styles.applyButton}
                 onPress={() => setShowCountryModal(false)}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>

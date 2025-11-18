@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -20,6 +19,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -258,14 +258,17 @@ const SendFundsDirectScreen = () => {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              // Navigate back to Home tab instead of Settings tab
+              (navigation as any).navigate('Home', { screen: 'HomeMain' });
+            }}
           >
             <View style={styles.iconCircle}>
               <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Send Funds</Text>
+            <ThemedText style={styles.headerTitle}>Send Funds</ThemedText>
           </View>
         </View>
 
@@ -278,7 +281,7 @@ const SendFundsDirectScreen = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -308,7 +311,7 @@ const SendFundsDirectScreen = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -319,7 +322,7 @@ const SendFundsDirectScreen = () => {
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <Text style={styles.amountInputLabel}>N</Text>
+              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
@@ -342,7 +345,7 @@ const SendFundsDirectScreen = () => {
                   style={styles.quickAmountButton}
                   onPress={() => handleAmountSelect(quickAmount)}
                 >
-                  <Text style={styles.quickAmountText}>{quickAmount}</Text>
+                  <ThemedText style={styles.quickAmountText}>{quickAmount}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -355,9 +358,9 @@ const SendFundsDirectScreen = () => {
               style={styles.bankField}
               onPress={() => setShowBankModal(true)}
             >
-              <Text style={[styles.bankFieldText, !selectedBank && styles.placeholder]}>
+              <ThemedText style={[styles.bankFieldText, !selectedBank && styles.placeholder]}>
                 {selectedBank ? selectedBank.name : 'Select Bank'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -377,8 +380,8 @@ const SendFundsDirectScreen = () => {
             {accountName && (
               <View style={[styles.inputField, {backgroundColor: '#020C19', borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                 <View style={styles.accountNameContainer}>
-                  <Text style={styles.accountNameLabel}>Account Name</Text>
-                  <Text style={styles.accountNameValue}>{accountName}</Text>
+                  <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
                 </View>
               </View>
             )}
@@ -390,7 +393,7 @@ const SendFundsDirectScreen = () => {
             onPress={handleProceed}
             disabled={!accountNumber || !accountName || !selectedBank}
           >
-            <Text style={styles.proceedButtonText}>Proceed</Text>
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
           </TouchableOpacity>
         </View>
 
@@ -401,15 +404,15 @@ const SendFundsDirectScreen = () => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <Text style={styles.feeText}>Fee : N200</Text>
+          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
         {/* Recent Transactions Card */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
-            <Text style={styles.recentTransactionsTitle}>Recent Transactions</Text>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
             <TouchableOpacity>
-              <Text style={styles.viewAllText}>View All</Text>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -418,13 +421,13 @@ const SendFundsDirectScreen = () => {
               <View key={transaction.id} style={styles.transactionItem}>
                 <Image source={transaction.avatar} style={styles.transactionIcon} resizeMode="cover" />
                 <View style={styles.transactionDetails}>
-                  <Text style={styles.transactionPhone}>{transaction.name}</Text>
+                  <ThemedText style={styles.transactionPhone}>{transaction.name}</ThemedText>
                   <View style={styles.transactionMeta}>
-                    <Text style={styles.transactionPlan}>{transaction.accountNumber} • {transaction.bank}</Text>
+                    <ThemedText style={styles.transactionPlan}>{transaction.accountNumber} • {transaction.bank}</ThemedText>
                   </View>
                 </View>
                 <View style={styles.transactionRight}>
-                  <Text style={styles.transactionDate}>Last Transfer: {transaction.date}</Text>
+                  <ThemedText style={styles.transactionDate}>Last Transfer: {transaction.date}</ThemedText>
                 </View>
               </View>
             ))}
@@ -444,7 +447,7 @@ const SendFundsDirectScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -464,7 +467,7 @@ const SendFundsDirectScreen = () => {
                     style={styles.countryFlagModal}
                     resizeMode="cover"
                   />
-                  <Text style={styles.countryNameModal}>{country.name}</Text>
+                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -477,7 +480,7 @@ const SendFundsDirectScreen = () => {
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -493,7 +496,7 @@ const SendFundsDirectScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.paymentModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Bank</Text>
+              <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
               <TouchableOpacity onPress={() => setShowBankModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -515,7 +518,7 @@ const SendFundsDirectScreen = () => {
                   style={styles.paymentMethodItem}
                   onPress={() => handleBankSelect(method)}
                 >
-                  <Text style={styles.paymentMethodItemText}>{method.name}</Text>
+                  <ThemedText style={styles.paymentMethodItemText}>{method.name}</ThemedText>
                   {tempSelectedBank?.id === method.id ? (
                     <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
                   ) : (
@@ -531,7 +534,7 @@ const SendFundsDirectScreen = () => {
                 onPress={handleApplyBank}
                 disabled={!tempSelectedBank}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -548,7 +551,7 @@ const SendFundsDirectScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.summaryModalContent}>
             <View style={styles.summaryModalHeader}>
-              <Text style={styles.summaryModalTitle}>Summary</Text>
+              <ThemedText style={styles.summaryModalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <View style={styles.summaryCloseCircle}>
                   <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -560,7 +563,7 @@ const SendFundsDirectScreen = () => {
               {/* Transfer Details Card */}
               <View style={styles.summaryTransferCard}>
                 {/* You Send Section */}
-                <Text style={styles.summarySectionLabel}>You send</Text>
+                <ThemedText style={styles.summarySectionLabel}>You send</ThemedText>
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryRowLeft}>
                     <Image
@@ -568,10 +571,10 @@ const SendFundsDirectScreen = () => {
                       style={styles.summaryFlag}
                       resizeMode="cover"
                     />
-                    <Text style={styles.summaryCountryText}>{selectedCountryName}</Text>
+                    <ThemedText style={styles.summaryCountryText}>{selectedCountryName}</ThemedText>
                     <MaterialCommunityIcons name="chevron-down" size={16 * SCALE} color="#FFFFFF" />
                   </View>
-                  <Text style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</Text>
+                  <ThemedText style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</ThemedText>
                 </View>
 
                 {/* Transfer Icon Divider */}
@@ -588,7 +591,7 @@ const SendFundsDirectScreen = () => {
                 </View>
 
                 {/* User Receives Section */}
-                <Text style={styles.summarySectionLabel}>User Receives</Text>
+                <ThemedText style={styles.summarySectionLabel}>User Receives</ThemedText>
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryRowLeft}>
                     <Image
@@ -596,33 +599,33 @@ const SendFundsDirectScreen = () => {
                       style={styles.summaryFlag}
                       resizeMode="cover"
                     />
-                    <Text style={styles.summaryCountryText}>{selectedCountryName}</Text>
+                    <ThemedText style={styles.summaryCountryText}>{selectedCountryName}</ThemedText>
                   </View>
-                  <Text style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</Text>
+                  <ThemedText style={styles.summaryAmount}>₦{amount.replace(/,/g, '')}.00</ThemedText>
                 </View>
               </View>
 
               {/* Details Card */}
               <View style={styles.summaryDetailsCard}>
                 <View style={[styles.summaryDetailRow, {borderTopRightRadius: 10, borderTopLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
-                  <Text style={styles.summaryDetailLabel}>Country</Text>
-                  <Text style={styles.summaryDetailValue}>{selectedCountryName}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Country</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{selectedCountryName}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Bank</Text>
-                  <Text style={styles.summaryDetailValue}>{selectedBank?.name || ''}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Bank</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{selectedBank?.name || ''}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Account Number</Text>
-                  <Text style={styles.summaryDetailValue}>{accountNumber}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Account Number</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{accountNumber}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Account Name</Text>
-                  <Text style={styles.summaryDetailValue}>{accountName}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{accountName}</ThemedText>
                 </View>
                 <View style={[styles.summaryDetailRow, {borderBottomRightRadius: 10, borderBottomLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
-                  <Text style={styles.summaryDetailLabel}>Fee</Text>
-                  <Text style={styles.summaryDetailValue}>N0</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Fee</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>N0</ThemedText>
                 </View>
               </View>
             </ScrollView>
@@ -631,7 +634,7 @@ const SendFundsDirectScreen = () => {
               style={styles.summaryProceedButton}
               onPress={handleSummaryProceed}
             >
-              <Text style={styles.summaryProceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.summaryProceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -647,7 +650,7 @@ const SendFundsDirectScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
             <View style={styles.pinModalHeader}>
-              <Text style={styles.pinModalTitle}>Verification</Text>
+              <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowPinModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -664,8 +667,8 @@ const SendFundsDirectScreen = () => {
             </View>
 
             <View style={styles.pinModalTextContainer}>
-              <Text style={styles.pinInstruction}>Input Pin to Complete Transaction</Text>
-              <Text style={styles.pinAmount}>N{amount}</Text>
+              <ThemedText style={styles.pinInstruction}>Input Pin to Complete Transaction</ThemedText>
+              <ThemedText style={styles.pinAmount}>N{amount}</ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -676,9 +679,9 @@ const SendFundsDirectScreen = () => {
                   return (
                     <View key={index} style={styles.pinSlot}>
                       {hasValue ? (
-                        <Text style={styles.pinSlotText}>{digit}</Text>
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                       ) : (
-                        <Text style={styles.pinSlotAsterisk}>*</Text>
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                       )}
                     </View>
                   );
@@ -700,14 +703,14 @@ const SendFundsDirectScreen = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -725,14 +728,14 @@ const SendFundsDirectScreen = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -750,14 +753,14 @@ const SendFundsDirectScreen = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -778,14 +781,14 @@ const SendFundsDirectScreen = () => {
                       lastPressedButton === '0' && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === '0' && styles.numpadTextPressed,
                       ]}
                     >
                       0
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -812,7 +815,7 @@ const SendFundsDirectScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.securityModalContentBottom}>
             <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Security Verification</Text>
+              <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -828,11 +831,11 @@ const SendFundsDirectScreen = () => {
               </View>
             </View>
 
-            <Text style={styles.securityTitle}>Security Verification</Text>
-            <Text style={styles.securitySubtitle}>Verify via email and your authenticator app</Text>
+            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Email Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -847,20 +850,20 @@ const SendFundsDirectScreen = () => {
 
             {!isAuthenticatorSetup ? (
               <View style={[styles.securityInputWrapper, {backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: 10, borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)', paddingHorizontal: 10, paddingVertical: 10}]}>
-                <Text style={[styles.securityInputLabel, {textAlign: 'center'}]}>Set Up Authenticator</Text>
-                <Text style={styles.setupAuthenticatorText}>
+                <ThemedText style={[styles.securityInputLabel, {textAlign: 'center'}]}>Set Up Authenticator</ThemedText>
+                <ThemedText style={styles.setupAuthenticatorText}>
                   You are yet to setup your authenticator app, kindly set it up to proceed
-                </Text>
+                </ThemedText>
                 <TouchableOpacity
                   style={styles.setupAuthenticatorButton}
                   onPress={handleSetupAuthenticator}
                 >
-                  <Text style={styles.setupAuthenticatorButtonText}>Setup</Text>
+                  <ThemedText style={styles.setupAuthenticatorButtonText}>Setup</ThemedText>
                 </TouchableOpacity>
               </View>
             ) : (
               <View style={styles.securityInputWrapper}>
-                <Text style={styles.securityInputLabel}>Authenticator App Code</Text>
+                <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
                 <View style={styles.securityInputField}>
                   <TextInput
                     style={styles.securityInput}
@@ -879,7 +882,7 @@ const SendFundsDirectScreen = () => {
               onPress={handleSecurityComplete}
               disabled={!emailCode || !authenticatorCode || !isAuthenticatorSetup}
             >
-              <Text style={styles.proceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -896,7 +899,7 @@ const SendFundsDirectScreen = () => {
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Setup Authenticator</Text>
+              <ThemedText style={styles.modalTitle}>Setup Authenticator</ThemedText>
               <TouchableOpacity onPress={() => setShow2FAModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
               </TouchableOpacity>
@@ -915,26 +918,26 @@ const SendFundsDirectScreen = () => {
 
             {/* Authenticator Setup Section */}
             <View style={styles.authenticatorSetupSection}>
-              <Text style={styles.authenticatorSetupTitle}>Authenticator Setup</Text>
-              <Text style={styles.authenticatorSetupSubtitle}>
+              <ThemedText style={styles.authenticatorSetupTitle}>Authenticator Setup</ThemedText>
+              <ThemedText style={styles.authenticatorSetupSubtitle}>
                 Paste the code below in your authenticator app
-              </Text>
+              </ThemedText>
 
               {/* Code Display Box */}
               <View style={styles.codeDisplayBox}>
-                <Text style={styles.codeDisplayText}>{authenticatorSetupCode}</Text>
+                <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode}</ThemedText>
                 <TouchableOpacity
                   style={styles.copyCodeButton}
                   onPress={handleCopyAuthenticatorCode}
                 >
-                  <Text style={styles.copyCodeButtonText}>Copy Code</Text>
+                  <ThemedText style={styles.copyCodeButtonText}>Copy Code</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* Authenticator Code Input */}
             <View style={styles.modalSection}>
-              <Text style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</Text>
+              <ThemedText style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
                   style={styles.modalInput}
@@ -958,7 +961,7 @@ const SendFundsDirectScreen = () => {
               onPress={handleProceed2FA}
               disabled={authenticatorCode.length === 0}
             >
-              <Text style={styles.modalActionButtonText}>Proceed</Text>
+              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -1124,6 +1127,8 @@ const styles = StyleSheet.create({
     paddingBottom: 80 * 1,
     padding: 0,
     margin: 0,
+     fontFamily: 'Agbalumo-Regular',
+
   },
   quickAmountsContainer: {
     flexDirection: 'row',

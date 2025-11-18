@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SCALE = 1;
@@ -234,7 +234,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
               </View>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Transaction Receipt</Text>
+            <ThemedText style={styles.headerTitle}>Transaction Receipt</ThemedText>
             <TouchableOpacity style={styles.helpButton}>
               <View style={styles.iconCircle}>
                 <MaterialCommunityIcons name="headset" size={24 * SCALE} color="#FFFFFF" />
@@ -254,12 +254,12 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           </View>
 
           {/* Success Message */}
-          <Text style={styles.successTitle}>
+          <ThemedText style={styles.successTitle}>
             {getTitleText()}
-          </Text>
-          <Text style={styles.successMessage}>
+          </ThemedText>
+          <ThemedText style={styles.successMessage}>
             {getMessageText()}
-          </Text>
+          </ThemedText>
 
           {/* Transfer Details Card - Show for deposit/convert transactions */}
           {(transactionType === 'deposit' || transactionType === 'convert') && (
@@ -267,32 +267,32 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               {transactionType === 'deposit' && (
                 <>
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
-                    <Text style={styles.detailLabel}>Deposit Amount</Text>
-                    <Text style={styles.detailValue}>{amount}</Text>
+                    <ThemedText style={styles.detailLabel}>Deposit Amount</ThemedText>
+                    <ThemedText style={styles.detailValue}>{amount}</ThemedText>
                   </View>
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
-                    <Text style={styles.detailLabel}>Fee</Text>
-                    <Text style={styles.detailValue}>{transaction.fee || 'Ksh20'}</Text>
+                    <ThemedText style={styles.detailLabel}>Fee</ThemedText>
+                    <ThemedText style={styles.detailValue}>{transaction.fee || 'Ksh20'}</ThemedText>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Credited Amount</Text>
-                    <Text style={styles.detailValue}>{amount}</Text>
+                    <ThemedText style={styles.detailLabel}>Credited Amount</ThemedText>
+                    <ThemedText style={styles.detailValue}>{amount}</ThemedText>
                   </View>
                 </>
               )}
               {transactionType === 'convert' && (
                 <>
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
-                    <Text style={styles.detailLabel}>Transaction Fee</Text>
-                    <Text style={styles.detailValue}>{transaction.fee || '500 NGN'}</Text>
+                    <ThemedText style={styles.detailLabel}>Transaction Fee</ThemedText>
+                    <ThemedText style={styles.detailValue}>{transaction.fee || '500 NGN'}</ThemedText>
                   </View>
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
-                    <Text style={styles.detailLabel}>Exchange Rate</Text>
-                    <Text style={styles.detailValue}>{transaction.route || 'N1 ~ Ksh1,110'}</Text>
+                    <ThemedText style={styles.detailLabel}>Exchange Rate</ThemedText>
+                    <ThemedText style={styles.detailValue}>{transaction.route || 'N1 ~ Ksh1,110'}</ThemedText>
                   </View>
                   <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Funding Route</Text>
-                    <Text style={styles.detailValue}>{transaction.fundingRoute || 'Conversion'}</Text>
+                    <ThemedText style={styles.detailLabel}>Funding Route</ThemedText>
+                    <ThemedText style={styles.detailValue}>{transaction.fundingRoute || 'Conversion'}</ThemedText>
                   </View>
                 </>
               )}
@@ -303,18 +303,18 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           {(transactionType === 'send' || transactionType === 'withdrawal') && (
             <View style={styles.detailsCard}>
               <View style={[styles.detailRow, styles.detailRowBorder]}>
-                <Text style={styles.detailLabel}>Transfer Amount</Text>
-                <Text style={styles.detailValue}>{amount}</Text>
+                <ThemedText style={styles.detailLabel}>Transfer Amount</ThemedText>
+                <ThemedText style={styles.detailValue}>{amount}</ThemedText>
               </View>
               <View style={[styles.detailRow, styles.detailRowBorder]}>
-                <Text style={styles.detailLabel}>Fee</Text>
-                <Text style={styles.detailValue}>{transaction.fee || 'N20'}</Text>
+                <ThemedText style={styles.detailLabel}>Fee</ThemedText>
+                <ThemedText style={styles.detailValue}>{transaction.fee || 'N20'}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Payment Amount</Text>
-                <Text style={styles.detailValue}>
+                <ThemedText style={styles.detailLabel}>Payment Amount</ThemedText>
+                <ThemedText style={styles.detailValue}>
                   {transaction.paymentAmount || amount}
-                </Text>
+                </ThemedText>
               </View>
             </View>
           )}
@@ -323,12 +323,12 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           {transactionType === 'billPayment' && (
             <View style={styles.detailsCard}>
               <View style={[styles.detailRow, styles.detailRowBorder]}>
-                <Text style={styles.detailLabel}>Amount</Text>
-                <Text style={styles.detailValue}>{amount}</Text>
+                <ThemedText style={styles.detailLabel}>Amount</ThemedText>
+                <ThemedText style={styles.detailValue}>{amount}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Fee</Text>
-                <Text style={styles.detailValue}>{transaction.fee || 'N0'}</Text>
+                <ThemedText style={styles.detailLabel}>Fee</ThemedText>
+                <ThemedText style={styles.detailValue}>{transaction.fee || 'N0'}</ThemedText>
               </View>
             </View>
           )}
@@ -337,13 +337,13 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           {transactionType === 'p2p' && (
             <View style={styles.detailsCard}>
               <View style={[styles.detailRow, styles.detailRowBorder]}>
-                <Text style={styles.detailLabel}>Merchant Name</Text>
-                <Text style={styles.detailValue}>{transaction.merchantName || transaction.recipientName || 'Qamar Malik'}</Text>
+                <ThemedText style={styles.detailLabel}>Merchant Name</ThemedText>
+                <ThemedText style={styles.detailValue}>{transaction.merchantName || transaction.recipientName || 'Qamar Malik'}</ThemedText>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Contact</Text>
+                <ThemedText style={styles.detailLabel}>Contact</ThemedText>
                 <TouchableOpacity style={styles.chatButton}>
-                  <Text style={styles.chatButtonText}>Chat</Text>
+                  <ThemedText style={styles.chatButtonText}>Chat</ThemedText>
                 </TouchableOpacity>
               </View>
             </View>
@@ -354,33 +354,33 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
             {(transactionType === 'cryptoDeposit' || transactionType === 'cryptoWithdrawal') ? (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Crypto Sent</Text>
-                  <Text style={styles.detailValue}>{transaction.cryptoType || 'Ethereum'}</Text>
+                  <ThemedText style={styles.detailLabel}>Crypto Sent</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.cryptoType || 'Ethereum'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Network</Text>
-                  <Text style={styles.detailValue}>{transaction.network || 'Ethereum'}</Text>
+                  <ThemedText style={styles.detailLabel}>Network</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.network || 'Ethereum'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Quantity</Text>
-                  <Text style={styles.detailValue}>{transaction.quantity || '0.25 ETH'}</Text>
+                  <ThemedText style={styles.detailLabel}>Quantity</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.quantity || '0.25 ETH'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Amount</Text>
-                  <Text style={styles.detailValue}>{transaction.amountUSDValue || '$2,550.50'}</Text>
+                  <ThemedText style={styles.detailLabel}>Amount</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.amountUSDValue || '$2,550.50'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Fee</Text>
-                  <Text style={styles.detailValue}>
+                  <ThemedText style={styles.detailLabel}>Fee</ThemedText>
+                  <ThemedText style={styles.detailValue}>
                     {transaction.feeCrypto || '0.000001 ETH'} ({transaction.feeUSD || '$2.50'})
-                  </Text>
+                  </ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Receiving Address</Text>
+                  <ThemedText style={styles.detailLabel}>Receiving Address</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.receivingAddress || '0x123edfgtrwe457kslwltkwflelwlvld'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.receivingAddress || '0x123edfgtrwe457kslwltkwflelwlvld', 'Receiving Address')}
                       style={{ marginLeft: 8 * SCALE }}
@@ -390,11 +390,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Sending Address</Text>
+                  <ThemedText style={styles.detailLabel}>Sending Address</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.sendingAddress || '0x123edfgtrwe457kslwltkwflelwlvld'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.sendingAddress || '0x123edfgtrwe457kslwltkwflelwlvld', 'Sending Address')}
                       style={{ marginLeft: 8 * SCALE }}
@@ -404,11 +404,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Tx Hash</Text>
+                  <ThemedText style={styles.detailLabel}>Tx Hash</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.txHash || '13ijksm219ef23e9fi3295h2nfi923rf9n92f9'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.txHash || '13ijksm219ef23e9fi3295h2nfi923rf9n92f9', 'Transaction Hash')}
                       style={{ marginLeft: 8 * SCALE }}
@@ -418,11 +418,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Transaction Id</Text>
+                  <ThemedText style={styles.detailLabel}>Transaction Id</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.transactionId || '12dwerkxywurcksc'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.transactionId || '12dwerkxywurcksc', 'Transaction ID')}
                       style={{ marginLeft: 8 * SCALE }}
@@ -432,66 +432,66 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Date</Text>
-                  <Text style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22 AM'}</Text>
+                  <ThemedText style={styles.detailLabel}>Date</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22 AM'}</ThemedText>
                 </View>
               </>
             ) : transactionType === 'p2p' ? (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>P2P Type</Text>
-                  <Text style={styles.detailValue}>{transaction.p2pType || 'Crypto Sell'}</Text>
+                  <ThemedText style={styles.detailLabel}>P2P Type</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.p2pType || 'Crypto Sell'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Amount</Text>
-                  <Text style={styles.detailValue}>{transaction.transferAmount || transaction.amountNGN || '10,000 NGN'}</Text>
+                  <ThemedText style={styles.detailLabel}>Amount</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.transferAmount || transaction.amountNGN || '10,000 NGN'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Price</Text>
-                  <Text style={styles.detailValue}>{transaction.price || '1,500 NGN'}</Text>
+                  <ThemedText style={styles.detailLabel}>Price</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.price || '1,500 NGN'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Total Qty</Text>
-                  <Text style={styles.detailValue}>{transaction.totalQty || '5.2 USDT'}</Text>
+                  <ThemedText style={styles.detailLabel}>Total Qty</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.totalQty || '5.2 USDT'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Tx Fee</Text>
-                  <Text style={styles.detailValue}>{transaction.txFee || transaction.fee || '0'}</Text>
+                  <ThemedText style={styles.detailLabel}>Tx Fee</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.txFee || transaction.fee || '0'}</ThemedText>
                 </View>
               </>
             ) : transactionType === 'billPayment' ? (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Biller Type</Text>
-                  <Text style={styles.detailValue}>{transaction.billerType || 'MTN'}</Text>
+                  <ThemedText style={styles.detailLabel}>Biller Type</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.billerType || 'MTN'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Mobile Number</Text>
-                  <Text style={styles.detailValue}>{transaction.mobileNumber || '08012456789'}</Text>
+                  <ThemedText style={styles.detailLabel}>Mobile Number</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.mobileNumber || '08012456789'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Plan</Text>
-                  <Text style={styles.detailValue}>{transaction.plan || '1.5 GB for 30 Days'}</Text>
+                  <ThemedText style={styles.detailLabel}>Plan</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.plan || '1.5 GB for 30 Days'}</ThemedText>
                 </View>
               </>
             ) : (
               <View style={[styles.detailRow, styles.detailRowBorder]}>
-                <Text style={styles.detailLabel}>Country</Text>
-                <Text style={styles.detailValue}>{transaction.country || 'Nigeria'}</Text>
+                <ThemedText style={styles.detailLabel}>Country</ThemedText>
+                <ThemedText style={styles.detailValue}>{transaction.country || 'Nigeria'}</ThemedText>
               </View>
             )}
             {(transactionType === 'send' || transactionType === 'withdrawal') && (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Bank</Text>
-                  <Text style={styles.detailValue}>{transaction.bank || 'Wema Bank'}</Text>
+                  <ThemedText style={styles.detailLabel}>Bank</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.bank || 'Wema Bank'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Account Number</Text>
+                  <ThemedText style={styles.detailLabel}>Account Number</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.accountNumber || '0123456789'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.accountNumber || '0123456789', 'Account Number')}
                     >
@@ -500,52 +500,52 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Account Name</Text>
-                  <Text style={styles.detailValue}>{transaction.accountName || 'Opay'}</Text>
+                  <ThemedText style={styles.detailLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.accountName || 'Opay'}</ThemedText>
                 </View>
               </>
             )}
             {transactionType === 'fund' && (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Amount Received</Text>
-                  <Text style={styles.detailValue}>{amount}</Text>
+                  <ThemedText style={styles.detailLabel}>Amount Received</ThemedText>
+                  <ThemedText style={styles.detailValue}>{amount}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Funding Route</Text>
-                  <Text style={styles.detailValue}>{transaction.fundingRoute || 'Bank Transfer'}</Text>
+                  <ThemedText style={styles.detailLabel}>Funding Route</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.fundingRoute || 'Bank Transfer'}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Route</Text>
-                  <Text style={styles.detailValue}>{transaction.route || 'Yellow Card'}</Text>
+                  <ThemedText style={styles.detailLabel}>Route</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.route || 'Yellow Card'}</ThemedText>
                 </View>
               </>
             )}
             {transactionType === 'deposit' && (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Provider</Text>
-                  <Text style={styles.detailValue}>{transaction.provider || 'MTN'}</Text>
+                  <ThemedText style={styles.detailLabel}>Provider</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.provider || 'MTN'}</ThemedText>
                 </View>
               </>
             )}
             {transactionType === 'convert' && (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Funding Route</Text>
-                  <Text style={styles.detailValue}>{transaction.fundingRoute || 'Conversion'}</Text>
+                  <ThemedText style={styles.detailLabel}>Funding Route</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.fundingRoute || 'Conversion'}</ThemedText>
                 </View>
               </>
             )}
             {transactionType === 'p2p' ? (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Tx id</Text>
+                  <ThemedText style={styles.detailLabel}>Tx id</ThemedText>
                   <View style={styles.detailValueRow}>
                     <MaterialCommunityIcons name="lock" size={12 * SCALE} color="rgba(255, 255, 255, 0.5)" style={{ marginRight: 4 * SCALE }} />
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.transactionId || '128DJ2I31IDJKQKCM'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.transactionId || '128DJ2I31IDJKQKCM', 'Transaction ID')}
                       style={{ marginLeft: 8 * SCALE }}
@@ -555,17 +555,17 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Payment method</Text>
+                  <ThemedText style={styles.detailLabel}>Payment method</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>{transaction.paymentMethod || 'Bank Transfer'}</Text>
+                    <ThemedText style={styles.detailValue}>{transaction.paymentMethod || 'Bank Transfer'}</ThemedText>
                     <TouchableOpacity style={{ marginLeft: 8 * SCALE }}>
-                      <Text style={styles.viewAccountLink}>View Account</Text>
+                      <ThemedText style={styles.viewAccountLink}>View Account</ThemedText>
                     </TouchableOpacity>
                   </View>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Order time</Text>
-                  <Text style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22AM'}</Text>
+                  <ThemedText style={styles.detailLabel}>Order time</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22AM'}</ThemedText>
                 </View>
               </>
             ) : (transactionType === 'cryptoDeposit' || transactionType === 'cryptoWithdrawal') ? (
@@ -574,11 +574,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
             ) : (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <Text style={styles.detailLabel}>Transaction Id</Text>
+                  <ThemedText style={styles.detailLabel}>Transaction Id</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <Text style={styles.detailValue}>
+                    <ThemedText style={styles.detailValue}>
                       {transaction.transactionId || '12dwerkxywurcksc'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity
                       onPress={() => copyToClipboard(transaction.transactionId || '12dwerkxywurcksc', 'Transaction ID')}
                     >
@@ -588,19 +588,19 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 </View>
                 {transactionType === 'billPayment' && (
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
-                    <Text style={styles.detailLabel}>Transaction type</Text>
-                    <Text style={styles.detailValue}>Bill Payment</Text>
+                    <ThemedText style={styles.detailLabel}>Transaction type</ThemedText>
+                    <ThemedText style={styles.detailValue}>Bill Payment</ThemedText>
                   </View>
                 )}
                 {(transactionType === 'send' || transactionType === 'deposit' || transactionType === 'withdrawal') && (
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
-                    <Text style={styles.detailLabel}>Payment Method</Text>
-                    <Text style={styles.detailValue}>{transaction.paymentMethod || 'Bank Transfer'}</Text>
+                    <ThemedText style={styles.detailLabel}>Payment Method</ThemedText>
+                    <ThemedText style={styles.detailValue}>{transaction.paymentMethod || 'Bank Transfer'}</ThemedText>
                   </View>
                 )}
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Date</Text>
-                  <Text style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22AM'}</Text>
+                  <ThemedText style={styles.detailLabel}>Date</ThemedText>
+                  <ThemedText style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22AM'}</ThemedText>
                 </View>
               </>
             )}
@@ -609,17 +609,17 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           {/* My Review Section - P2P Transactions */}
           {transactionType === 'p2p' && (
             <View style={styles.reviewSection}>
-              <Text style={styles.reviewSectionTitle}>My Review</Text>
+              <ThemedText style={styles.reviewSectionTitle}>My Review</ThemedText>
               <TouchableOpacity style={styles.likeButton}>
               <Image
                 source={require('../../assets/Group 41.png')}
                 style={[{ marginBottom: -1, width: 26, height: 26 }]}
                 resizeMode="cover"
-              />                <Text style={styles.likeButtonText}>You gave this order a like</Text>
+              />                <ThemedText style={styles.likeButtonText}>You gave this order a like</ThemedText>
               </TouchableOpacity>
               {transaction.reviewText && (
                 <View style={styles.reviewCard}>
-                  <Text style={styles.reviewText}>{transaction.reviewText}</Text>
+                  <ThemedText style={styles.reviewText}>{transaction.reviewText}</ThemedText>
                 </View>
               )}
               <View style={styles.reviewActions}>
@@ -635,7 +635,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
 
           {/* Share Receipt Button */}
           <TouchableOpacity style={styles.shareButton} onPress={shareReceipt}>
-            <Text style={styles.shareButtonText}>Share Receipt</Text>
+            <ThemedText style={styles.shareButtonText}>Share Receipt</ThemedText>
           </TouchableOpacity>
 
           {/* Bottom spacing */}

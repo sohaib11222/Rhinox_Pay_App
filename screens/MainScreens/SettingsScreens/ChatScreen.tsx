@@ -1,7 +1,6 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -151,8 +151,8 @@ const ChatScreen = () => {
           style={styles.headerAvatar}
         />
         <View style={styles.headerInfo}>
-          <Text style={styles.headerName}>Rhinox Agent</Text>
-          <Text style={styles.headerStatus}>Online</Text>
+          <ThemedText style={styles.headerName}>Rhinox Agent</ThemedText>
+          <ThemedText style={styles.headerStatus}>Online</ThemedText>
         </View>
       </View>
 
@@ -164,22 +164,22 @@ const ChatScreen = () => {
       >
         {/* Chat Start Indicator */}
         <View style={styles.chatStartIndicator}>
-          <Text style={styles.chatStartText}>You started a chat</Text>
+          <ThemedText style={styles.chatStartText}>You started a chat</ThemedText>
         </View>
 
         {/* User Details Card */}
         <View style={styles.detailsCard}>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Name</Text>
-            <Text style={styles.detailValue}>{chatName || 'Qamardeen AbdulMalik'}</Text>
+            <ThemedText style={styles.detailLabel}>Name</ThemedText>
+            <ThemedText style={styles.detailValue}>{chatName || 'Qamardeen AbdulMalik'}</ThemedText>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Email</Text>
-            <Text style={styles.detailValue}>{chatEmail || 'abcdefgh@gmail.com'}</Text>
+            <ThemedText style={styles.detailLabel}>Email</ThemedText>
+            <ThemedText style={styles.detailValue}>{chatEmail || 'abcdefgh@gmail.com'}</ThemedText>
           </View>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Reason</Text>
-            <Text style={styles.detailValue}>{reason || 'Payment Support'}</Text>
+            <ThemedText style={styles.detailLabel}>Reason</ThemedText>
+            <ThemedText style={styles.detailValue}>{reason || 'Payment Support'}</ThemedText>
           </View>
         </View>
 
@@ -198,23 +198,23 @@ const ChatScreen = () => {
                 msg.sender === 'user' ? styles.userBubble : styles.agentBubble,
               ]}
             >
-              <Text
+              <ThemedText
                 style={[
                   styles.messageText,
                   msg.sender === 'user' ? styles.userMessageText : styles.agentMessageText,
                 ]}
               >
                 {msg.text}
-              </Text>
+              </ThemedText>
             </View>
-            <Text style={styles.messageTimestamp}>{msg.timestamp}</Text>
+            <ThemedText style={styles.messageTimestamp}>{msg.timestamp}</ThemedText>
           </View>
         ))}
 
         {/* Resolution Indicator */}
         <View style={styles.resolutionIndicator}>
           <MaterialCommunityIcons name="check-circle" size={12 * SCALE} color="#fff" />
-          <Text style={styles.resolutionText}>This issue was marked as resolved</Text>
+          <ThemedText style={styles.resolutionText}>This issue was marked as resolved</ThemedText>
         </View>
       </ScrollView>
 

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -19,6 +18,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -200,20 +200,23 @@ const SendFundCrypto = () => {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.goBack()}
+            onPress={() => {
+              // Navigate back to Home tab instead of Settings tab
+              (navigation as any).navigate('Home', { screen: 'HomeMain' });
+            }}
           >
             <View style={styles.iconCircle}>
               <MaterialCommunityIcons name="chevron-left" size={24 * SCALE} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Send Funds</Text>
+            <ThemedText style={styles.headerTitle}>Send Funds</ThemedText>
           </View>
         </View>
 
         {/* Balance Section with Linear Gradient */}
         <View style={styles.balanceSectionContainer}>
-          {/* <Text style={styles.balanceSectionTitle}>Bitcoin Balance</Text> */}
+          {/* <ThemedText style={styles.balanceSectionTitle}>Bitcoin Balance</ThemedText> */}
           <LinearGradient
             colors={['#A9EF4533', '#FFFFFF0D']}
             start={{ x: 1, y: 0 }}
@@ -221,14 +224,14 @@ const SendFundCrypto = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>Bitcoin Balance</Text>
+              <ThemedText style={styles.balanceLabel}>Bitcoin Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
                   style={styles.walletIcon}
                   resizeMode="cover"
                 />
-                <Text style={styles.balanceAmount}>{balance} {selectedAsset.name}</Text>
+                <ThemedText style={styles.balanceAmount}>{balance} {selectedAsset.name}</ThemedText>
               </View>
             </View>
             <TouchableOpacity
@@ -240,7 +243,7 @@ const SendFundCrypto = () => {
                 style={styles.assetSelectorIcon}
                 resizeMode="cover"
               />
-              <Text style={styles.assetSelectorText}>{selectedAsset.name}</Text>
+              <ThemedText style={styles.assetSelectorText}>{selectedAsset.name}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -256,13 +259,13 @@ const SendFundCrypto = () => {
               style={[styles.amountTypeToggleButton, amountType === 'BTC' && styles.amountTypeToggleButtonActive]}
               onPress={() => setAmountType('BTC')}
             >
-              <Text style={[styles.amountTypeToggleText, amountType === 'BTC' && styles.amountTypeToggleTextActive]}>BTC</Text>
+              <ThemedText style={[styles.amountTypeToggleText, amountType === 'BTC' && styles.amountTypeToggleTextActive]}>BTC</ThemedText>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.amountTypeToggleButton, amountType === 'USD' && styles.amountTypeToggleButtonActive]}
               onPress={() => setAmountType('USD')}
             >
-              <Text style={[styles.amountTypeToggleText, amountType === 'USD' && styles.amountTypeToggleTextActive]}>USD</Text>
+              <ThemedText style={[styles.amountTypeToggleText, amountType === 'USD' && styles.amountTypeToggleTextActive]}>USD</ThemedText>
             </TouchableOpacity>
           </View>
 
@@ -280,7 +283,7 @@ const SendFundCrypto = () => {
                 placeholder="0"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
               />
-              <Text style={styles.amountCurrencyLabel}>BTC</Text>
+              <ThemedText style={styles.amountCurrencyLabel}>BTC</ThemedText>
             </View>
             <View style={styles.quickAmountsContainer}>
               {quickAmounts.map((quickAmount) => {
@@ -291,9 +294,9 @@ const SendFundCrypto = () => {
                     style={[styles.quickAmountButton, isSelected && styles.quickAmountButtonSelected]}
                     onPress={() => handleAmountSelect(quickAmount)}
                   >
-                    <Text style={[styles.quickAmountText, isSelected && styles.quickAmountTextSelected]}>
+                    <ThemedText style={[styles.quickAmountText, isSelected && styles.quickAmountTextSelected]}>
                       {quickAmount}
-                    </Text>
+                    </ThemedText>
                   </TouchableOpacity>
                 );
               })}
@@ -308,9 +311,9 @@ const SendFundCrypto = () => {
               style={styles.networkField}
               onPress={() => setShowNetworkModal(true)}
             >
-              <Text style={[styles.networkFieldText, !selectedNetwork && styles.placeholder]}>
+              <ThemedText style={[styles.networkFieldText, !selectedNetwork && styles.placeholder]}>
                 {getSelectedNetworkData().name}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -334,16 +337,16 @@ const SendFundCrypto = () => {
         <View style={styles.warningSection}>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <Text style={styles.warningText}>
-              Make sure to send tokens in the Ethereum blockchain only            </Text>
+            <ThemedText style={styles.warningText}>
+              Make sure to send tokens in the Ethereum blockchain only            </ThemedText>
           </View>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <Text style={styles.warningText}>Withdrawal take 10-15 mins</Text>
+            <ThemedText style={styles.warningText}>Withdrawal take 10-15 mins</ThemedText>
           </View>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <Text style={styles.warningText}>Incase of loss of funds contact support</Text>
+            <ThemedText style={styles.warningText}>Incase of loss of funds contact support</ThemedText>
           </View>
         </View>
         <View style={styles.proceedButtonContainer}>
@@ -352,7 +355,7 @@ const SendFundCrypto = () => {
             onPress={handleProceed}
             disabled={!walletAddress || !selectedNetwork}
           >
-            <Text style={styles.proceedButtonText}>Proceed</Text>
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -367,7 +370,7 @@ const SendFundCrypto = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Asset</Text>
+              <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
               <TouchableOpacity onPress={() => setShowAssetModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -391,8 +394,8 @@ const SendFundCrypto = () => {
                       resizeMode="cover"
                     />
                     <View style={styles.assetItemInfo}>
-                      <Text style={styles.assetItemName}>{asset.name}</Text>
-                      <Text style={styles.assetItemBalance}>Bal : {asset.balance}</Text>
+                      <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                      <ThemedText style={styles.assetItemBalance}>Bal : {asset.balance}</ThemedText>
                     </View>
                     <MaterialCommunityIcons
                       name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
@@ -407,7 +410,7 @@ const SendFundCrypto = () => {
               style={styles.applyButton}
               onPress={() => setShowAssetModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -423,7 +426,7 @@ const SendFundCrypto = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Network</Text>
+              <ThemedText style={styles.modalTitle}>Select Network</ThemedText>
               <TouchableOpacity onPress={() => setShowNetworkModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
@@ -440,7 +443,7 @@ const SendFundCrypto = () => {
                       setShowNetworkModal(false);
                     }}
                   >
-                    <Text style={styles.networkItemName}>{network.name}</Text>
+                    <ThemedText style={styles.networkItemName}>{network.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24}
@@ -454,7 +457,7 @@ const SendFundCrypto = () => {
               style={styles.applyButton}
               onPress={() => setShowNetworkModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -470,7 +473,7 @@ const SendFundCrypto = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.summaryModalContent}>
             <View style={styles.summaryModalHeader}>
-              <Text style={styles.summaryModalTitle}>Summary</Text>
+              <ThemedText style={styles.summaryModalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <View style={styles.summaryCloseCircle}>
                   <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
@@ -481,42 +484,42 @@ const SendFundCrypto = () => {
             <ScrollView style={styles.summaryScrollContent} showsVerticalScrollIndicator={false}>
               <View style={styles.summaryDetailsCard}>
                 <View style={[styles.summaryDetailRow, styles.summaryDetailRowFirst]}>
-                  <Text style={styles.summaryDetailLabel}>Crypto Sent</Text>
-                  <Text style={styles.summaryDetailValue}>{selectedAsset.name}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Crypto Sent</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{selectedAsset.name}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Network</Text>
-                  <Text style={styles.summaryDetailValue}>{selectedNetwork?.name || 'Ethereum'}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Network</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{selectedNetwork?.name || 'Ethereum'}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Quantity</Text>
-                  <Text style={styles.summaryDetailValue}>{amount} {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Quantity</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{amount} {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Amount</Text>
-                  <Text style={styles.summaryDetailValue}>$2,550.50</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Amount</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>$2,550.50</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Fee</Text>
-                  <Text style={styles.summaryDetailValue}>0.000001 {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'} ($2.50)</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Fee</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>0.000001 {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'} ($2.50)</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <Text style={styles.summaryDetailLabel}>Receiving Address</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Receiving Address</ThemedText>
                   <View style={styles.summaryAddressRow}>
-                    <Text style={styles.summaryAddressText} numberOfLines={1} ellipsizeMode="middle">
+                    <ThemedText style={styles.summaryAddressText} numberOfLines={1} ellipsizeMode="middle">
                       {walletAddress || '0x123edfgtrwe457kslwltkwflelwlvld'}
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity onPress={() => copyToClipboard(walletAddress || '0x123edfgtrwe457kslwltkwflelwlvld')}>
                       <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                     </TouchableOpacity>
                   </View>
                 </View>
                 <View style={[styles.summaryDetailRow, styles.summaryDetailRowLast]}>
-                  <Text style={styles.summaryDetailLabel}>Sending Address</Text>
+                  <ThemedText style={styles.summaryDetailLabel}>Sending Address</ThemedText>
                   <View style={styles.summaryAddressRow}>
-                    <Text style={styles.summaryAddressText} numberOfLines={1} ellipsizeMode="middle">
+                    <ThemedText style={styles.summaryAddressText} numberOfLines={1} ellipsizeMode="middle">
                       0x123edfgtrwe457kslwltkwflelwlvld
-                    </Text>
+                    </ThemedText>
                     <TouchableOpacity onPress={() => copyToClipboard('0x123edfgtrwe457kslwltkwflelwlvld')}>
                       <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                     </TouchableOpacity>
@@ -529,7 +532,7 @@ const SendFundCrypto = () => {
               style={styles.summaryCompleteButton}
               onPress={handleSummaryComplete}
             >
-              <Text style={styles.summaryCompleteButtonText}>Complete</Text>
+              <ThemedText style={styles.summaryCompleteButtonText}>Complete</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -545,7 +548,7 @@ const SendFundCrypto = () => {
         <View style={styles.modalOverlay}>
           <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
             <View style={styles.pinModalHeader}>
-              <Text style={styles.pinModalTitle}>Verification</Text>
+              <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowPinModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -562,8 +565,8 @@ const SendFundCrypto = () => {
             </View>
 
             <View style={styles.pinModalTextContainer}>
-              <Text style={styles.pinInstruction}>Input Pin to Complete Transaction</Text>
-              <Text style={styles.pinAmount}>{amount} {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}</Text>
+              <ThemedText style={styles.pinInstruction}>Input Pin to Complete Transaction</ThemedText>
+              <ThemedText style={styles.pinAmount}>{amount} {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}</ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -574,9 +577,9 @@ const SendFundCrypto = () => {
                   return (
                     <View key={index} style={styles.pinSlot}>
                       {hasValue ? (
-                        <Text style={styles.pinSlotText}>{digit}</Text>
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
                       ) : (
-                        <Text style={styles.pinSlotAsterisk}>*</Text>
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
                       )}
                     </View>
                   );
@@ -598,14 +601,14 @@ const SendFundCrypto = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -623,14 +626,14 @@ const SendFundCrypto = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -648,14 +651,14 @@ const SendFundCrypto = () => {
                         lastPressedButton === num.toString() && styles.numpadCirclePressed,
                       ]}
                     >
-                      <Text
+                      <ThemedText
                         style={[
                           styles.numpadText,
                           lastPressedButton === num.toString() && styles.numpadTextPressed,
                         ]}
                       >
                         {num}
-                      </Text>
+                      </ThemedText>
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -676,14 +679,14 @@ const SendFundCrypto = () => {
                       lastPressedButton === '0' && styles.numpadCirclePressed,
                     ]}
                   >
-                    <Text
+                    <ThemedText
                       style={[
                         styles.numpadText,
                         lastPressedButton === '0' && styles.numpadTextPressed,
                       ]}
                     >
                       0
-                    </Text>
+                    </ThemedText>
                   </View>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -710,7 +713,7 @@ const SendFundCrypto = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.securityModalContentBottom}>
             <View style={styles.securityModalHeader}>
-              <Text style={styles.securityModalTitle}>Security Verification</Text>
+              <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
               <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -726,11 +729,11 @@ const SendFundCrypto = () => {
               </View>
             </View>
 
-            <Text style={styles.securityTitle}>Security Verification</Text>
-            <Text style={styles.securitySubtitle}>Verify via email and your authenticator app</Text>
+            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Email Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -744,7 +747,7 @@ const SendFundCrypto = () => {
             </View>
 
             <View style={styles.securityInputWrapper}>
-              <Text style={styles.securityInputLabel}>Authenticator App Code</Text>
+              <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
               <View style={styles.securityInputField}>
                 <TextInput
                   style={styles.securityInput}
@@ -762,7 +765,7 @@ const SendFundCrypto = () => {
               onPress={handleSecurityComplete}
               disabled={!emailCode || !authenticatorCode}
             >
-              <Text style={styles.securityProceedButtonText}>Proceed</Text>
+              <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -969,6 +972,7 @@ const styles = StyleSheet.create({
     fontSize: 50 * 1,
     fontWeight: '600',
     color: '#FFFFFF',
+    fontFamily: 'Agbalumo-Regular',
     textAlign: 'center',
     minHeight: 50 * SCALE,
   },

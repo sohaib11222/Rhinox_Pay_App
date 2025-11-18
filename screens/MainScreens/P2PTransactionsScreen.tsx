@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
+import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -235,7 +235,7 @@ const P2PTransactionsScreen = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>P2P Transactions</Text>
+            <ThemedText style={styles.headerTitle}>P2P Transactions</ThemedText>
           </View>
         </View>
 
@@ -249,7 +249,7 @@ const P2PTransactionsScreen = () => {
                 setShowCurrencyDropdown(false);
               }}
             >
-              <Text style={styles.filterButtonText}>Status</Text>
+              <ThemedText style={styles.filterButtonText}>Status</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
             <View style={styles.filterDivider} />
@@ -260,7 +260,7 @@ const P2PTransactionsScreen = () => {
                 setShowStatusDropdown(false);
               }}
             >
-              <Text style={styles.filterButtonText}>Currency</Text>
+              <ThemedText style={styles.filterButtonText}>Currency</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
             <View style={styles.filterDivider} />
@@ -270,7 +270,7 @@ const P2PTransactionsScreen = () => {
                 setSelectedCompleted(!selectedCompleted);
               }}
             >
-              <Text style={[styles.filterButtonText, selectedCompleted && styles.filterButtonTextActive]}>Completed</Text>
+              <ThemedText style={[styles.filterButtonText, selectedCompleted && styles.filterButtonTextActive]}>Completed</ThemedText>
             </TouchableOpacity>
             <View style={styles.filterDivider} />
             <TouchableOpacity
@@ -279,7 +279,7 @@ const P2PTransactionsScreen = () => {
                 setSelectedBuy(!selectedBuy);
               }}
             >
-              <Text style={[styles.filterButtonText, selectedBuy && styles.filterButtonTextActive]}>Buy</Text>
+              <ThemedText style={[styles.filterButtonText, selectedBuy && styles.filterButtonTextActive]}>Buy</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -300,15 +300,15 @@ const P2PTransactionsScreen = () => {
                   resizeMode="cover"
                 />
               </View>
-              <Text style={styles.summaryLabel}>Incoming</Text>
+              <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <Text style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</Text>
-                <Text style={styles.summaryAmountCurrency}>NGN</Text>
+                <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
+                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
               </View>
             </View>
-            <Text style={styles.summaryUSD}>{summaryData.incoming.usd}</Text>
+            <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
           </LinearGradient>
 
           <View style={styles.summaryCardWhite}>
@@ -320,15 +320,15 @@ const P2PTransactionsScreen = () => {
                   resizeMode="cover"
                 />
               </View>
-              <Text style={styles.summaryLabelWhite}>Outgoing</Text>
+              <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <Text style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</Text>
-                <Text style={styles.summaryAmountCurrencyWhite}>NGN</Text>
+                <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
+                <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
               </View>
             </View>
-            <Text style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</Text>
+            <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
           </View>
         </View>
 
@@ -345,7 +345,7 @@ const P2PTransactionsScreen = () => {
                     setShowStatusDropdown(false);
                   }}
                 >
-                  <Text style={styles.dropdownItemText}>{status}</Text>
+                  <ThemedText style={styles.dropdownItemText}>{status}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -364,7 +364,7 @@ const P2PTransactionsScreen = () => {
                     setShowCurrencyDropdown(false);
                   }}
                 >
-                  <Text style={styles.dropdownItemText}>{currency}</Text>
+                  <ThemedText style={styles.dropdownItemText}>{currency}</ThemedText>
                 </TouchableOpacity>
               ))}
             </View>
@@ -373,7 +373,7 @@ const P2PTransactionsScreen = () => {
 
         {/* Transaction List Card */}
         <View style={styles.transactionCard}>
-          <Text style={styles.cardTitle}>Today</Text>
+          <ThemedText style={styles.cardTitle}>Today</ThemedText>
           <View style={styles.transactionList}>
             {filteredTransactions.map((transaction) => (
               <TouchableOpacity
@@ -391,7 +391,7 @@ const P2PTransactionsScreen = () => {
                   </View>
                 </View>
                 <View style={styles.transactionDetails}>
-                  <Text style={styles.transactionTitle}>{transaction.recipientName}</Text>
+                  <ThemedText style={styles.transactionTitle}>{transaction.recipientName}</ThemedText>
                   <View style={styles.transactionStatusRow}>
                     <View
                       style={[
@@ -399,15 +399,15 @@ const P2PTransactionsScreen = () => {
                         { backgroundColor: getStatusColor(transaction.status) },
                       ]}
                     />
-                    <Text style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
+                    <ThemedText style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
                       {transaction.status}
                       {transaction.p2pType && ` • ${transaction.p2pType}`}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </View>
                 <View style={styles.transactionAmountContainer}>
-                  <Text style={styles.transactionAmountNGN}>{transaction.amountNGN}</Text>
-                  <Text style={styles.transactionAmountUSD}>{transaction.date}</Text>
+                  <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
+                  <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
                 </View>
               </TouchableOpacity>
             ))}

@@ -27,9 +27,12 @@ const OnboardingScreen2 = () => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Background Decorative Elements */}
-      <View style={[styles.decorativeCircle, styles.circleTop]} />
-      <View style={[styles.decorativeCircle, styles.circleBottom]} />
+      {/* Background Image */}
+      <Image
+        source={require('../../assets/onboarding2_background.png')}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      />
       
       {/* Progress Indicator */}
       <View style={styles.progressContainer}>
@@ -43,52 +46,15 @@ const OnboardingScreen2 = () => {
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
 
-      {/* Main Illustration */}
-      <View style={styles.illustrationContainer}>
-        <Image
-          source={require('../../assets/onboarding/main-illustration-2.png')}
-          style={styles.illustration}
-          resizeMode="contain"
-        />
-        
-        {/* Decorative Stars */}
-        <View style={[styles.star, { top: 50, left: 20 }]} />
-        <View style={[styles.star, { top: 260, left: 60 }]} />
-        <View style={[styles.star, { top: 461, left: 17 }]} />
-        <View style={[styles.starSmall, { top: 77, right: 60 }]} />
-        <View style={[styles.starSmall, { top: 0, right: 120 }]} />
-        
-        {/* Decorative Dots */}
-        <View style={[styles.dot, { top: 394, left: 75 }]} />
-        <View style={[styles.dot, { top: 223, right: 42 }]} />
-        <View style={[styles.dotSmall, { top: 132, left: 92 }]} />
-      </View>
-
-      {/* Bottom Section */}
+      {/* Bottom Section with Next Button */}
       <View style={styles.bottomSection}>
-        <View style={styles.topBorder} />
-        
-        <Text style={styles.title}>
-          Get Dedicated <Text style={styles.highlight}>Crypto</Text> and{'\n'}
-          <Text style={styles.highlight}>Fiat</Text> Wallets
-        </Text>
-
-        <Text style={styles.description}>
-          Once you register dedicated fiat wallets for currencies in Africa and crypto{'\n'}
-          wallets will be created for you
-        </Text>
-
-        {/* Navigation Controls */}
-        <View style={styles.controlsContainer}>
-          <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>Next</Text>
-          </TouchableOpacity>
-
-          {/* Navigation Dots */}
-          <View style={styles.navDotsContainer}>
-            <View style={styles.navDotHome} />
-          </View>
-        </View>
+        <TouchableOpacity style={styles.nextButtonContainer} onPress={handleNext}>
+          <Image
+            source={require('../../assets/onboarding2_next_button.png')}
+            style={styles.nextButtonImage}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -101,21 +67,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#020c19',
   },
-  decorativeCircle: {
+  backgroundImage: {
     position: 'absolute',
-    width: 216,
-    height: 216,
-    borderRadius: 108,
-    backgroundColor: 'rgba(169, 239, 69, 0.1)',
-    opacity: 0.5,
-  },
-  circleTop: {
-    top: 119,
-    right: -72,
-  },
-  circleBottom: {
-    bottom: -50,
-    left: -14,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: '100%',
+    height: '100%',
   },
   progressContainer: {
     flexDirection: 'row',
@@ -123,11 +82,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 60,
     gap: 10,
+    zIndex: 10,
   },
   progressBar: {
     flex: 1,
     height: 7,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#D9D9D9',
     borderRadius: 100,
   },
   progressActive: {
@@ -135,7 +95,7 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     position: 'absolute',
-    top: height * 0.6,
+    top: height * 0.59,
     alignSelf: 'center',
     borderWidth: 0.3,
     borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -149,111 +109,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '300',
   },
-  illustrationContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  illustration: {
-    width: 320,
-    height: 480,
-    marginTop: -20,
-  },
-  star: {
-    position: 'absolute',
-    width: 15,
-    height: 15,
-    backgroundColor: '#A9EF45',
-    transform: [{ rotate: '45deg' }],
-  },
-  starSmall: {
-    position: 'absolute',
-    width: 8,
-    height: 8,
-    backgroundColor: '#A9EF45',
-    transform: [{ rotate: '45deg' }],
-  },
-  dot: {
-    position: 'absolute',
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  dotSmall: {
-    position: 'absolute',
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
   bottomSection: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    borderTopWidth: 3,
-    borderTopColor: '#A9EF45',
-    paddingHorizontal: 24,
-    paddingTop: 40,
-    paddingBottom: 40,
-  },
-  topBorder: {
     position: 'absolute',
-    top: -31,
+    bottom: 0,
     left: 0,
     right: 0,
-    height: 65,
-    backgroundColor: 'transparent',
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    lineHeight: 44,
-    marginBottom: 16,
-  },
-  highlight: {
-    color: '#A9EF45',
-  },
-  description: {
-    fontSize: 14,
-    fontWeight: '300',
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 20,
-  },
-  controlsContainer: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    paddingBottom: 20,
+    zIndex: 10,
   },
-  nextButton: {
-    flex: 1,
-    backgroundColor: '#A9EF45',
-    borderRadius: 100,
-    paddingVertical: 20,
+  nextButtonContainer: {
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex:10
   },
-  nextButtonText: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#000000',
-  },
-  navDotsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  navDotHome: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(169, 239, 69, 0.2)',
-    borderWidth: 2,
-    borderColor: '#A9EF45',
+  nextButtonImage: {
+    width: '80%',
+    height: 70,
+    // marginTop:30,
   },
 });
 

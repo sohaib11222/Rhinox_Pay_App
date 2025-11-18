@@ -10,7 +10,7 @@ const RootStack = createNativeStackNavigator();
 export default function RootNavigator() {
   // NOTE: We register all stacks so we can navigate between them programmatically
   // (e.g. navigate to `Main` after login). Adjust initialRouteName as needed.
-  const initialRouteName: keyof any = "Auth"; // set to 'Onboarding' if needed
+  const initialRouteName: keyof any = "Onboarding"; // Shows onboarding screen first on app reload
 
   return (
     <NavigationContainer>

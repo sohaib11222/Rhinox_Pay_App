@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   StyleSheet,
-  Text,
   View,
   TouchableOpacity,
   StatusBar,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../components';
 
 const Verification = () => {
   const navigation = useNavigation();
@@ -38,7 +38,7 @@ const Verification = () => {
           </View>
         </TouchableOpacity>
         <View style={styles.headerTitleWrapper}>
-          <Text style={styles.headerTitle}>Verification</Text>
+          <ThemedText style={styles.headerTitle}>Verification</ThemedText>
         </View>
       </View>
 
@@ -54,23 +54,23 @@ const Verification = () => {
 
         {/* Title Section */}
         <View style={styles.titleSection}>
-          <Text style={styles.title}>Complete Registration</Text>
-          <Text style={styles.subtitle}>
+          <ThemedText style={styles.title}>Complete Registration</ThemedText>
+          <ThemedText style={styles.subtitle}>
             Complete your registration to unlock full access
-          </Text>
+          </ThemedText>
         </View>
 
         {/* General Registration Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>General Registration</Text>
+            <ThemedText style={styles.sectionTitle}>General Registration</ThemedText>
 
           </View>
           <View style={styles.completedTag}>
             <View style={styles.completedIcon}>
               <MaterialCommunityIcons name="check" size={10} color="#FFFFFF" />
             </View>
-            <Text style={styles.completedTagText}>Completed</Text>
+            <ThemedText style={styles.completedTagText}>Completed</ThemedText>
           </View>
 
           {/* Progress Bars - Vertical Segments */}
@@ -97,7 +97,7 @@ const Verification = () => {
           {/* Status Row */}
           <View style={styles.statusRow}>
             <MaterialCommunityIcons name="check-circle" size={14} color="#A9EF45" />
-            <Text style={styles.statusText}>Primary registration completed</Text>
+            <ThemedText style={styles.statusText}>Primary registration completed</ThemedText>
           </View>
         </View>
 
@@ -105,15 +105,15 @@ const Verification = () => {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <View style={styles.kycHeaderLeft}>
-              <Text style={styles.sectionTitle}>KYC Registration</Text>
+              <ThemedText style={styles.sectionTitle}>KYC Registration</ThemedText>
             </View>
             <TouchableOpacity style={styles.proceedButton} onPress={handleProceedToKYC}>
-              <Text style={styles.proceedButtonText}>Proceed to KYC</Text>
+              <ThemedText style={styles.proceedButtonText}>Proceed to KYC</ThemedText>
             </TouchableOpacity>
           </View>
           <View style={styles.pendingTag}>
             <MaterialCommunityIcons name="timer-sand" size={12} color="#FFA500" />
-            <Text style={styles.pendingTagText}>Pending</Text>
+            <ThemedText style={styles.pendingTagText}>Pending</ThemedText>
           </View>
           {/* Progress Bars - Vertical Segments (Incomplete) */}
           <View style={styles.progressBarsContainer}>
@@ -137,12 +137,12 @@ const Verification = () => {
           {/* Status Rows */}
           <View style={styles.statusRow}>
             <View style={styles.greyDot} />
-            <Text style={styles.statusText}>KYC Details registration</Text>
+            <ThemedText style={styles.statusText}>KYC Details registration</ThemedText>
           </View>
 
           <View style={styles.statusRow}>
             <View style={styles.greyDot} />
-            <Text style={styles.statusText}>Selfie Registration</Text>
+            <ThemedText style={styles.statusText}>Selfie Registration</ThemedText>
           </View>
         </View>
       </ScrollView>
@@ -150,7 +150,7 @@ const Verification = () => {
       {/* Continue Later Button */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.continueButton} onPress={handleContinueLater}>
-          <Text style={styles.continueButtonText}>Continue Later</Text>
+          <ThemedText style={styles.continueButtonText}>Continue Later</ThemedText>
         </TouchableOpacity>
       </View>
 

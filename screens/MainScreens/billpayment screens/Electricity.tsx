@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -16,6 +15,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -156,7 +156,7 @@ const Electricity = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Electricity</Text>
+            <ThemedText style={styles.headerTitle}>Electricity</ThemedText>
           </View>
         </View>
 
@@ -168,7 +168,7 @@ const Electricity = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <Text style={styles.balanceLabel}>My Balance</Text>
+              <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
               <View style={styles.balanceRow}>
                 <Image
                   source={require('../../../assets/Vector (34).png')}
@@ -198,7 +198,7 @@ const Electricity = () => {
                 style={styles.countryFlagImage}
                 resizeMode="cover"
               />
-              <Text style={styles.countryNameText}>{selectedCountryName}</Text>
+              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -213,11 +213,11 @@ const Electricity = () => {
               style={styles.inputField}
               onPress={() => setShowBillerTypeModal(true)}
             >
-              <Text style={[styles.inputLabel, !selectedBillerType && styles.inputPlaceholder]}>
+              <ThemedText style={[styles.inputLabel, !selectedBillerType && styles.inputPlaceholder]}>
                 {selectedBillerType
                   ? BILLER_TYPES.find((b) => b.id === selectedBillerType)?.name || 'Select Biller Type'
                   : 'Select Biller Type'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -226,11 +226,11 @@ const Electricity = () => {
               style={styles.inputField}
               onPress={() => setShowAccountTypeModal(true)}
             >
-              <Text style={[styles.inputLabel, !selectedAccountType && styles.inputPlaceholder]}>
+              <ThemedText style={[styles.inputLabel, !selectedAccountType && styles.inputPlaceholder]}>
                 {selectedAccountType
                   ? ACCOUNT_TYPES.find((a) => a.id === selectedAccountType)?.name || 'Select Account Type'
                   : 'Select Account Type'}
-              </Text>
+              </ThemedText>
               <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
 
@@ -275,8 +275,8 @@ const Electricity = () => {
             {accountName && (
               <View style={[styles.inputField, { backgroundColor: '#020C19', justifyContent: 'center', alignItems: 'center' }]}>
                 <View style={styles.accountNameContainer}>
-                  <Text style={styles.accountNameLabel}>Account Name</Text>
-                  <Text style={styles.accountNameValue}>{accountName}</Text>
+                  <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
                 </View>
               </View>
             )}
@@ -290,7 +290,7 @@ const Electricity = () => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <Text style={styles.feeText}>Fee : N200</Text>
+          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
         {/* Bottom spacing for proceed button */}
@@ -304,7 +304,7 @@ const Electricity = () => {
           onPress={handleProceed}
           disabled={!selectedBillerType || !selectedAccountType || !meterNumber || !amount || !accountName}
         >
-          <Text style={styles.proceedButtonText}>Proceed</Text>
+          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -319,7 +319,7 @@ const Electricity = () => {
           <View style={styles.billerModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Biller Type</Text>
+              <ThemedText style={styles.modalTitle}>Select Biller Type</ThemedText>
               <TouchableOpacity onPress={() => setShowBillerTypeModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -346,7 +346,7 @@ const Electricity = () => {
                   onPress={() => handleBillerTypeSelect(biller.id)}
                 >
                   <Image source={biller.icon} style={styles.billerIcon} resizeMode="cover" />
-                  <Text style={styles.billerName}>{biller.name}</Text>
+                  <ThemedText style={styles.billerName}>{biller.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedBillerType === biller.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -361,7 +361,7 @@ const Electricity = () => {
               style={styles.applyButton}
               onPress={() => setShowBillerTypeModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -378,7 +378,7 @@ const Electricity = () => {
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Account Type</Text>
+              <ThemedText style={styles.modalTitle}>Select Account Type</ThemedText>
               <TouchableOpacity onPress={() => setShowAccountTypeModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -392,7 +392,7 @@ const Electricity = () => {
                   style={styles.accountTypeItem}
                   onPress={() => handleAccountTypeSelect(accountType.id)}
                 >
-                  <Text style={styles.accountTypeName}>{accountType.name}</Text>
+                  <ThemedText style={styles.accountTypeName}>{accountType.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedAccountType === accountType.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -407,7 +407,7 @@ const Electricity = () => {
               style={styles.applyButton}
               onPress={() => setShowAccountTypeModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -423,7 +423,7 @@ const Electricity = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Country</Text>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
               <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -438,8 +438,8 @@ const Electricity = () => {
                     setSelectedCountryName(country.name);
                   }}
                 >
-                  <Text style={styles.countryFlagEmoji}>{country.flag}</Text>
-                  <Text style={styles.countryNameModal}>{country.name}</Text>
+                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
                   <MaterialCommunityIcons
                     name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
@@ -452,7 +452,7 @@ const Electricity = () => {
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
-              <Text style={styles.applyButtonText}>Apply</Text>
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -469,7 +469,7 @@ const Electricity = () => {
           <View style={styles.summaryModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Summary</Text>
+              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -478,32 +478,32 @@ const Electricity = () => {
             {/* Summary Details */}
             <View style={styles.summaryDetails}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Country</Text>
-                <Text style={styles.summaryValue}>{selectedCountryName}</Text>
+                <ThemedText style={styles.summaryLabel}>Country</ThemedText>
+                <ThemedText style={styles.summaryValue}>{selectedCountryName}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Biller Type</Text>
-                <Text style={styles.summaryValue}>
+                <ThemedText style={styles.summaryLabel}>Biller Type</ThemedText>
+                <ThemedText style={styles.summaryValue}>
                   {BILLER_TYPES.find((b) => b.id === selectedBillerType)?.name || ''}
-                </Text>
+                </ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Account Type</Text>
-                <Text style={styles.summaryValue}>
+                <ThemedText style={styles.summaryLabel}>Account Type</ThemedText>
+                <ThemedText style={styles.summaryValue}>
                   {ACCOUNT_TYPES.find((a) => a.id === selectedAccountType)?.name || ''}
-                </Text>
+                </ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Meter Number</Text>
-                <Text style={styles.summaryValue}>{meterNumber}</Text>
+                <ThemedText style={styles.summaryLabel}>Meter Number</ThemedText>
+                <ThemedText style={styles.summaryValue}>{meterNumber}</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Fee</Text>
-                <Text style={styles.summaryValue}>N200</Text>
+                <ThemedText style={styles.summaryLabel}>Fee</ThemedText>
+                <ThemedText style={styles.summaryValue}>N200</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Amount</Text>
-                <Text style={styles.summaryValue}>N{amount}</Text>
+                <ThemedText style={styles.summaryLabel}>Amount</ThemedText>
+                <ThemedText style={styles.summaryValue}>N{amount}</ThemedText>
               </View>
             </View>
 
@@ -512,7 +512,7 @@ const Electricity = () => {
               style={styles.completeButton}
               onPress={handleComplete}
             >
-              <Text style={styles.completeButtonText}>Proceed</Text>
+              <ThemedText style={styles.completeButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

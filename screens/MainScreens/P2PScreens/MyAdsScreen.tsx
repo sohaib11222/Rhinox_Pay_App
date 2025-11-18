@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -12,6 +11,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -117,7 +117,7 @@ const MyAdsScreen = () => {
             <MaterialCommunityIcons name="chevron-left" size={20 * SCALE} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Ads</Text>
+        <ThemedText style={styles.headerTitle}>My Ads</ThemedText>
         <View style={styles.headerRight} />
       </View>
 
@@ -142,15 +142,15 @@ const MyAdsScreen = () => {
                   resizeMode="cover"
                 />
               </View>
-              <Text style={styles.summaryLabel}>Orders</Text>
+              <ThemedText style={styles.summaryLabel}>Orders</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <Text style={styles.summaryAmountMain}>2,000,000.00</Text>
-                <Text style={styles.summaryAmountCurrency}>NGN</Text>
+                <ThemedText style={styles.summaryAmountMain}>2,000,000.00</ThemedText>
+                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
               </View>
             </View>
-            <Text style={styles.summaryUSD}>$20,000</Text>
+            <ThemedText style={styles.summaryUSD}>$20,000</ThemedText>
           </LinearGradient>
 
           {/* Completion Rate Card - Same as Outgoing Card */}
@@ -163,15 +163,15 @@ const MyAdsScreen = () => {
                   resizeMode="cover"
                 />
               </View>
-              <Text style={styles.summaryLabelWhite}>Completion Rate</Text>
+              <ThemedText style={styles.summaryLabelWhite}>Completion Rate</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <Text style={styles.summaryAmountMainWhite}>100</Text>
-                <Text style={styles.summaryAmountCurrencyWhite}>%</Text>
+                <ThemedText style={styles.summaryAmountMainWhite}>100</ThemedText>
+                <ThemedText style={styles.summaryAmountCurrencyWhite}>%</ThemedText>
               </View>
             </View>
-            <Text style={styles.summaryUSDWhite}>200 Orders</Text>
+            <ThemedText style={styles.summaryUSDWhite}>200 Orders</ThemedText>
           </View>
         </View>
 
@@ -185,14 +185,14 @@ const MyAdsScreen = () => {
               ]}
               onPress={() => setActiveTab('Buy')}
             >
-              <Text
+              <ThemedText
                 style={[
                   styles.toggleButtonText,
                   activeTab === 'Buy' && styles.toggleButtonTextActive,
                 ]}
               >
                 Buy
-              </Text>
+              </ThemedText>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -201,14 +201,14 @@ const MyAdsScreen = () => {
               ]}
               onPress={() => setActiveTab('Sell')}
             >
-              <Text
+              <ThemedText
                 style={[
                   styles.toggleButtonText,
                   activeTab === 'Sell' && styles.toggleButtonTextActive,
                 ]}
               >
                 Sell
-              </Text>
+              </ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -217,7 +217,7 @@ const MyAdsScreen = () => {
 
         <View style={{ backgroundColor: '#FFFFFF08', marginHorizontal: 15 * SCALE, borderRadius: 15 * SCALE, borderWidth: 0.3, borderColor: '#FFFFFF33', paddingBottom:50 }}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Ads</Text>
+            <ThemedText style={styles.sectionTitle}>My Ads</ThemedText>
             <TouchableOpacity
               style={styles.fab}
               onPress={() => {
@@ -259,8 +259,8 @@ const MyAdsScreen = () => {
                       resizeMode="cover"
                     />
                     <View style={styles.adHeaderText}>
-                      <Text style={styles.adType}>{ad.asset} {ad.type} AD</Text>
-                      <Text style={styles.adStatus}>{ad.status}</Text>
+                      <ThemedText style={styles.adType}>{ad.asset} {ad.type} AD</ThemedText>
+                      <ThemedText style={styles.adStatus}>{ad.status}</ThemedText>
                     </View>
                   </View>
                   <View style={styles.adStateTag}>
@@ -269,7 +269,7 @@ const MyAdsScreen = () => {
                       style={[{ marginBottom: -1, width: 10, height: 10 }]}
                       resizeMode="cover"
                     />
-                    <Text style={styles.adStateText}>{ad.adState}</Text>
+                    <ThemedText style={styles.adStateText}>{ad.adState}</ThemedText>
                   </View>
                 </View>
 
@@ -281,9 +281,9 @@ const MyAdsScreen = () => {
                       style={[{ marginBottom: -1, width: 10, height: 10 }]}
                       resizeMode="cover"
                     />
-                    <Text style={styles.metricText}>
+                    <ThemedText style={styles.metricText}>
                       Orders Received : {ad.ordersReceived.toLocaleString()}
-                    </Text>
+                    </ThemedText>
                   </View>
                   <View style={styles.metricRow}>
                   <Image
@@ -291,7 +291,7 @@ const MyAdsScreen = () => {
                       style={[{ marginBottom: -1, width: 10, height: 10 }]}
                       resizeMode="cover"
                     />
-                    <Text style={styles.metricText}>Response Time : {ad.responseTime}</Text>
+                    <ThemedText style={styles.metricText}>Response Time : {ad.responseTime}</ThemedText>
                   </View>
                   <View style={styles.metricRow}>
                   <Image
@@ -299,37 +299,37 @@ const MyAdsScreen = () => {
                       style={[{ marginBottom: -1, width: 10, height: 10 }]}
                       resizeMode="cover"
                     />
-                    <Text style={styles.metricText}>Score : {ad.score}</Text>
+                    <ThemedText style={styles.metricText}>Score : {ad.score}</ThemedText>
                   </View>
                 </View>
 
                 {/* Ad Specifications */}
                 <View style={styles.adSpecs}>
                   <View style={[styles.specRow, { borderTopRightRadius: 7 * SCALE, borderTopLeftRadius: 7, borderWidth: 0.5 }]}>
-                    <Text style={styles.specLabel}>Quantity to buy</Text>
-                    <Text style={styles.specValue}>{ad.quantity}</Text>
+                    <ThemedText style={styles.specLabel}>Quantity to buy</ThemedText>
+                    <ThemedText style={styles.specValue}>{ad.quantity}</ThemedText>
                   </View>
                   <View style={styles.specRow}>
-                    <Text style={styles.specLabel}>Limits</Text>
-                    <Text style={styles.specValue}>{ad.limits}</Text>
+                    <ThemedText style={styles.specLabel}>Limits</ThemedText>
+                    <ThemedText style={styles.specValue}>{ad.limits}</ThemedText>
                   </View>
                   <View style={[styles.specRow, { borderBottomRightRadius: 7 * SCALE, borderBottomLeftRadius: 7, borderWidth: 0.5 }]}>
-                    <Text style={styles.specLabel}>Payment Methods</Text>
-                    <Text style={styles.specValue}>
+                    <ThemedText style={styles.specLabel}>Payment Methods</ThemedText>
+                    <ThemedText style={styles.specValue}>
                       {ad.paymentMethods.join(', ')}
-                    </Text>
+                    </ThemedText>
                   </View>
                 </View>
 
                 {/* Price and Action Buttons */}
                 <View style={styles.adFooter}>
                   <View style={styles.priceContainer}>
-                    <Text style={styles.priceLabel}>Price / 1 {ad.asset}</Text>
-                    <Text style={styles.priceValue}>{ad.price} NGN</Text>
+                    <ThemedText style={styles.priceLabel}>Price / 1 {ad.asset}</ThemedText>
+                    <ThemedText style={styles.priceValue}>{ad.price} NGN</ThemedText>
                   </View>
                   <View style={styles.actionButtons}>
                     <TouchableOpacity style={styles.newOrderButton}>
-                      <Text style={styles.newOrderButtonText}>New Order</Text>
+                      <ThemedText style={styles.newOrderButtonText}>New Order</ThemedText>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.openAdButton}
@@ -340,7 +340,7 @@ const MyAdsScreen = () => {
                         });
                       }}
                     >
-                      <Text style={styles.openAdButtonText}>Open AD</Text>
+                      <ThemedText style={styles.openAdButtonText}>Open AD</ThemedText>
                     </TouchableOpacity>
                   </View>
                 </View>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,7 +12,9 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useLayoutEffect } from 'react';
 import * as Clipboard from 'expo-clipboard';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -52,23 +53,29 @@ const PaymentSettings = () => {
   // Hide bottom tab bar when focused
   useFocusEffect(
     React.useCallback(() => {
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.setOptions({
+      // PaymentSettings -> SettingsStack -> TabNavigator
+      // Go up 2 levels to reach the Tab Navigator
+      const settingsStack = navigation.getParent();
+      const tabNavigator = settingsStack?.getParent();
+
+      if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+        tabNavigator.setOptions({
           tabBarStyle: { display: 'none' },
         });
       }
+
       return () => {
-        if (parent) {
-          parent.setOptions({
+        // Restore tab bar when leaving this screen
+        if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+          tabNavigator.setOptions({
             tabBarStyle: {
               backgroundColor: 'rgba(0, 0, 0, 0.2)',
               borderTopWidth: 0,
-              height: 75 * 0.8,
+              height: 75 * SCALE,
               paddingBottom: 10,
               paddingTop: 0,
               position: 'absolute',
-              bottom: 26 * 0.8,
+              bottom: 26 * SCALE,
               borderRadius: 100,
               overflow: 'hidden',
               elevation: 0,
@@ -81,6 +88,18 @@ const PaymentSettings = () => {
       };
     }, [navigation])
   );
+
+  // Also hide on mount to ensure it's hidden immediately
+  useLayoutEffect(() => {
+    const settingsStack = navigation.getParent();
+    const tabNavigator = settingsStack?.getParent();
+
+    if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+      tabNavigator.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+    }
+  }, [navigation]);
 
   // Mock payment methods data - TODO: Replace with API call
   const [paymentMethods] = useState<PaymentMethod[]>([
@@ -191,7 +210,7 @@ const PaymentSettings = () => {
           </View>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle}>My Payment Method</Text>
+          <ThemedText style={styles.headerTitle}>My Payment Method</ThemedText>
         </View>
         <View style={styles.backButton} />
       </View>
@@ -200,7 +219,7 @@ const PaymentSettings = () => {
       <View style={styles.filterContainer}>
         <View style={styles.filterBackground}>
           <TouchableOpacity style={styles.filterButton}>
-            <Text style={styles.filterText}>{selectedFilter}</Text>
+            <ThemedText style={styles.filterText}>{selectedFilter}</ThemedText>
             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
           </TouchableOpacity>
           <Image
@@ -220,24 +239,24 @@ const PaymentSettings = () => {
         <View style={styles.paymentMethodsCard}>
           {/* Bank Transfer Title - Show only once */}
           {paymentMethods.length > 0 && (
-            <Text style={styles.paymentMethodType}>{paymentMethods[0].type}</Text>
+            <ThemedText style={styles.paymentMethodType}>{paymentMethods[0].type}</ThemedText>
           )}
           {paymentMethods.map((method, index) => (
             <View key={method.id} style={styles.paymentMethodItem}>
               {method.isSelected && (
                 <View style={styles.selectedBadge}>
-                  <Text style={styles.selectedBadgeText}>Selected</Text>
+                  <ThemedText style={styles.selectedBadgeText}>Selected</ThemedText>
                 </View>
               )}
               <View style={styles.paymentMethodDetails}>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Bank Name</Text>
-                  <Text style={styles.detailValue}>{method.bankName}</Text>
+                  <ThemedText style={styles.detailLabel}>Bank Name</ThemedText>
+                  <ThemedText style={styles.detailValue}>{method.bankName}</ThemedText>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Account Number</Text>
+                  <ThemedText style={styles.detailLabel}>Account Number</ThemedText>
                   <View style={styles.accountNumberRow}>
-                    <Text style={styles.detailValue}>{method.accountNumber}</Text>
+                    <ThemedText style={styles.detailValue}>{method.accountNumber}</ThemedText>
                     <TouchableOpacity
                       onPress={() => handleCopyAccountNumber(method.accountNumber)}
                       style={styles.copyButton}
@@ -247,8 +266,8 @@ const PaymentSettings = () => {
                   </View>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Account Name</Text>
-                  <Text style={styles.detailValue}>{method.accountName}</Text>
+                  <ThemedText style={styles.detailLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.detailValue}>{method.accountName}</ThemedText>
                 </View>
               </View>
               <View style={styles.actionButtons}>
@@ -280,7 +299,7 @@ const PaymentSettings = () => {
         style={styles.addNewButton}
         onPress={() => setShowAddNewModal(true)}
       >
-        <Text style={styles.addNewButtonText}>Add New</Text>
+        <ThemedText style={styles.addNewButtonText}>Add New</ThemedText>
       </TouchableOpacity>
 
       {/* Add New Full Screen Modal */}
@@ -304,9 +323,9 @@ const PaymentSettings = () => {
               </View>
             </TouchableOpacity>
             <View style={styles.modalHeaderTitleContainer}>
-              <Text style={styles.modalHeaderTitle}>
+              <ThemedText style={styles.modalHeaderTitle}>
                 {editingMethodId ? 'Edit' : 'Add New'}
-              </Text>
+              </ThemedText>
             </View>
             <View style={styles.backButton} />
           </View>
@@ -320,21 +339,21 @@ const PaymentSettings = () => {
             <View style={styles.formCard}>
               {/* Account Type */}
               <View style={styles.formField}>
-                <Text style={styles.fieldLabel}>Account type</Text>
+                <ThemedText style={styles.fieldLabel}>Account type</ThemedText>
                 <TouchableOpacity
                   style={styles.inputField}
                   onPress={() => setShowBankModal(true)}
                 >
-                  <Text style={[styles.inputText, !accountType && styles.inputPlaceholder]}>
+                  <ThemedText style={[styles.inputText, !accountType && styles.inputPlaceholder]}>
                     {accountType || 'Select Account type'}
-                  </Text>
+                  </ThemedText>
                   <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
 
               {/* Bank Name */}
               <View style={styles.formField}>
-                <Text style={styles.fieldLabel}>Bank Name</Text>
+                <ThemedText style={styles.fieldLabel}>Bank Name</ThemedText>
                 <View style={styles.inputField}>
                   <TextInput
                     style={styles.inputText}
@@ -348,7 +367,7 @@ const PaymentSettings = () => {
 
               {/* Account Number */}
               <View style={styles.formField}>
-                <Text style={styles.fieldLabel}>Account Number</Text>
+                <ThemedText style={styles.fieldLabel}>Account Number</ThemedText>
                 <View style={styles.inputField}>
                   <TextInput
                     style={styles.inputText}
@@ -363,7 +382,7 @@ const PaymentSettings = () => {
 
               {/* Account Name */}
               <View style={styles.formField}>
-                <Text style={styles.fieldLabel}>Account Name</Text>
+                <ThemedText style={styles.fieldLabel}>Account Name</ThemedText>
                 <View style={styles.inputField}>
                   <TextInput
                     style={styles.inputText}
@@ -382,7 +401,7 @@ const PaymentSettings = () => {
             style={styles.saveAccountButton}
             onPress={handleSaveAccount}
           >
-            <Text style={styles.saveAccountButtonText}>Save Account</Text>
+            <ThemedText style={styles.saveAccountButtonText}>Save Account</ThemedText>
           </TouchableOpacity>
         </View>
       </Modal>
@@ -398,7 +417,7 @@ const PaymentSettings = () => {
           <View style={styles.bankModalContent}>
             {/* Modal Header */}
             <View style={styles.bankModalHeader}>
-              <Text style={styles.bankModalTitle}>Select Bank</Text>
+              <ThemedText style={styles.bankModalTitle}>Select Bank</ThemedText>
               <TouchableOpacity onPress={() => setShowBankModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -428,7 +447,7 @@ const PaymentSettings = () => {
                   style={styles.bankListItem}
                   onPress={() => handleBankTypeSelect(bank)}
                 >
-                  <Text style={styles.bankListItemText}>{bank.name}</Text>
+                  <ThemedText style={styles.bankListItemText}>{bank.name}</ThemedText>
                   {selectedBankType === bank.id ? (
                     <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
                   ) : (
@@ -445,7 +464,7 @@ const PaymentSettings = () => {
                 onPress={handleApplyBank}
                 disabled={!selectedBankType}
               >
-                <Text style={styles.applyButtonText}>Apply</Text>
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
             </View>
           </View>

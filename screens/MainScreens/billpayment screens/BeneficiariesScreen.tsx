@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -15,6 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -123,7 +123,7 @@ const BeneficiariesScreen = () => {
             </View>
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Beneficiaries</Text>
+            <ThemedText style={styles.headerTitle}>Beneficiaries</ThemedText>
           </View>
         </View>
 
@@ -140,8 +140,8 @@ const BeneficiariesScreen = () => {
                 onPress={() => setSelectedBeneficiary(beneficiary)}
               >
                 <View style={styles.beneficiaryInfo}>
-                  <Text style={styles.beneficiaryName}>{beneficiary.name}</Text>
-                  <Text style={styles.beneficiaryPhone}>{beneficiary.phoneNumber}</Text>
+                  <ThemedText style={styles.beneficiaryName}>{beneficiary.name}</ThemedText>
+                  <ThemedText style={styles.beneficiaryPhone}>{beneficiary.phoneNumber}</ThemedText>
                 </View>
                 <Image
                 source={require('../../../assets/PencilSimpleLine (1).png')}
@@ -158,7 +158,7 @@ const BeneficiariesScreen = () => {
             style={styles.proceedButton}
             onPress={handleProceed}
           >
-            <Text style={styles.proceedButtonText}>Proceed</Text>
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
           </TouchableOpacity>
         )}
 
@@ -172,7 +172,7 @@ const BeneficiariesScreen = () => {
           style={styles.addNewButton}
           onPress={() => setShowAddBeneficiaryModal(true)}
         >
-          <Text style={styles.addNewButtonText}>Add New</Text>
+          <ThemedText style={styles.addNewButtonText}>Add New</ThemedText>
         </TouchableOpacity>
       </View>
 
@@ -187,7 +187,7 @@ const BeneficiariesScreen = () => {
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Beneficiary</Text>
+              <ThemedText style={styles.modalTitle}>Add New Beneficiary</ThemedText>
               <TouchableOpacity onPress={() => setShowAddBeneficiaryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -197,7 +197,7 @@ const BeneficiariesScreen = () => {
             <View style={styles.formContainer}>
               {/* Name Field */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Name</Text>
+                <ThemedText style={styles.inputLabel}>Name</ThemedText>
                 <TextInput
                   style={[styles.textInput, { fontSize: 14 * 1 }]}
                   placeholder="Enter beneficiary name"
@@ -209,7 +209,7 @@ const BeneficiariesScreen = () => {
 
               {/* Phone Number Field */}
               <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>Phone Number</Text>
+                <ThemedText style={styles.inputLabel}>Phone Number</ThemedText>
                 <TextInput
                   style={[styles.textInput, { fontSize: 14 * 1 }]}
                   placeholder="Enter phone number"
@@ -227,7 +227,7 @@ const BeneficiariesScreen = () => {
               onPress={handleAddBeneficiary}
               disabled={!newBeneficiaryName || !newBeneficiaryPhone}
             >
-              <Text style={styles.saveButtonText}>Save</Text>
+              <ThemedText style={styles.saveButtonText}>Save</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -244,7 +244,7 @@ const BeneficiariesScreen = () => {
           <View style={styles.summaryModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Summary</Text>
+              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
               <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -253,24 +253,24 @@ const BeneficiariesScreen = () => {
             {/* Summary Details */}
             <View style={styles.summaryDetails}>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Country</Text>
-                <Text style={styles.summaryValue}>Nigeria</Text>
+                <ThemedText style={styles.summaryLabel}>Country</ThemedText>
+                <ThemedText style={styles.summaryValue}>Nigeria</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Network Provider</Text>
-                <Text style={styles.summaryValue}>MTN</Text>
+                <ThemedText style={styles.summaryLabel}>Network Provider</ThemedText>
+                <ThemedText style={styles.summaryValue}>MTN</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Phone Number</Text>
-                <Text style={styles.summaryValue}>0701245678</Text>
+                <ThemedText style={styles.summaryLabel}>Phone Number</ThemedText>
+                <ThemedText style={styles.summaryValue}>0701245678</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Fee</Text>
-                <Text style={styles.summaryValue}>N20</Text>
+                <ThemedText style={styles.summaryLabel}>Fee</ThemedText>
+                <ThemedText style={styles.summaryValue}>N20</ThemedText>
               </View>
               <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Amount</Text>
-                <Text style={styles.summaryValue}>N2,000</Text>
+                <ThemedText style={styles.summaryLabel}>Amount</ThemedText>
+                <ThemedText style={styles.summaryValue}>N2,000</ThemedText>
               </View>
             </View>
 
@@ -290,7 +290,7 @@ const BeneficiariesScreen = () => {
                 setShowSuccessModal(true);
               }}
             >
-              <Text style={styles.completeButtonText}>Complete</Text>
+              <ThemedText style={styles.completeButtonText}>Complete</ThemedText>
             </TouchableOpacity>
           </View>
         </View>

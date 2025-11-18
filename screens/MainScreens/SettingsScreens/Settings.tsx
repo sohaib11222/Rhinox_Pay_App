@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { ThemedText } from '../../../components';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -195,7 +195,7 @@ const Settings = () => {
               />
             </View>
             <View style={styles.userNameRow}>
-              <Text style={styles.userName}>{userData.name}</Text>
+              <ThemedText style={styles.userName}>{userData.name}</ThemedText>
               {userData.isVerified && (
                 <Image
                   source={require('../../../assets/Vector (36).png')}
@@ -211,7 +211,7 @@ const Settings = () => {
         <View style={styles.sectionsContainer}>
           {settingsSections.map((section) => (
             <View key={section.id} style={styles.sectionCard}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
+              <ThemedText style={styles.sectionTitle}>{section.title}</ThemedText>
               <View style={styles.sectionItems}>
                 {section.items.map((item) => (
                   <TouchableOpacity
@@ -226,7 +226,7 @@ const Settings = () => {
                         resizeMode="contain"
                       />
                     </View>
-                    <Text style={styles.itemTitle}>{item.title}</Text>
+                    <ThemedText style={styles.itemTitle}>{item.title}</ThemedText>
                     {item.hasBadge && (
                       <View style={styles.itemBadge}>
                         <MaterialCommunityIcons
@@ -234,7 +234,7 @@ const Settings = () => {
                           size={10 * SCALE}
                           color="#008000"
                         />
-                        <Text style={styles.itemBadgeText}>{item.badgeText}</Text>
+                        <ThemedText style={styles.itemBadgeText}>{item.badgeText}</ThemedText>
                       </View>
                     )}
                     {item.hasToggle && (
@@ -255,15 +255,15 @@ const Settings = () => {
 
         {/* Delete Account Button */}
         <TouchableOpacity style={styles.deleteAccountButton} onPress={handleDeleteAccount}>
-          <Text style={styles.deleteAccountText}>Delete Account</Text>
+          <ThemedText style={styles.deleteAccountText}>Delete Account</ThemedText>
         </TouchableOpacity>
 
         {/* App Version Info */}
         <View style={styles.versionContainer}>
-          <Text style={styles.appName}>
-            Rhinox <Text style={styles.appNameHighlight}>Pay</Text>
-          </Text>
-          <Text style={styles.versionText}>Version 1.00</Text>
+          <ThemedText style={styles.appName}>
+            Rhinox <ThemedText style={styles.appNameHighlight}>Pay</ThemedText>
+          </ThemedText>
+          <ThemedText style={styles.versionText}>Version 1.00</ThemedText>
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -291,10 +291,10 @@ const Settings = () => {
             </View>
 
             {/* Warning Title */}
-            <Text style={styles.warningTitle}>Warning</Text>
+            <ThemedText style={styles.warningTitle}>Warning</ThemedText>
 
             {/* Agreement Text */}
-            <Text style={styles.agreementText}>By proceeding with this action i agree that</Text>
+            <ThemedText style={styles.agreementText}>By proceeding with this action i agree that</ThemedText>
 
             {/* Agreement Checkboxes */}
             <View style={styles.agreementsContainer}>
@@ -302,7 +302,7 @@ const Settings = () => {
                 style={styles.agreementItem}
                 onPress={() => toggleAgreement('loseAccess')}
               >
-                <Text style={styles.agreementTextItem}>I will lose access to this account</Text>
+                <ThemedText style={styles.agreementTextItem}>I will lose access to this account</ThemedText>
                 <View style={[
                   styles.checkbox,
                   agreements.loseAccess && styles.checkboxChecked
@@ -317,7 +317,7 @@ const Settings = () => {
                 style={styles.agreementItem}
                 onPress={() => toggleAgreement('cannotLogin')}
               >
-                <Text style={styles.agreementTextItem}>I will not be able to login with my details</Text>
+                <ThemedText style={styles.agreementTextItem}>I will not be able to login with my details</ThemedText>
                 <View style={[
                   styles.checkbox,
                   agreements.cannotLogin && styles.checkboxChecked
@@ -332,7 +332,7 @@ const Settings = () => {
                 style={styles.agreementItem}
                 onPress={() => toggleAgreement('balancesDeleted')}
               >
-                <Text style={styles.agreementTextItem}>Your balances will be deleted</Text>
+                <ThemedText style={styles.agreementTextItem}>Your balances will be deleted</ThemedText>
                 <View style={[
                   styles.checkbox,
                   agreements.balancesDeleted && styles.checkboxChecked
@@ -351,13 +351,13 @@ const Settings = () => {
                 onPress={handleProceedWarning}
                 disabled={!agreements.loseAccess || !agreements.cannotLogin || !agreements.balancesDeleted}
               >
-                <Text style={styles.proceedButtonText}>Proceed</Text>
+                <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setShowDeleteWarningModal(false)}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
           </View>
@@ -385,10 +385,10 @@ const Settings = () => {
             </View>
 
             {/* Warning Title */}
-            <Text style={styles.confirmWarningTitle}>Warning</Text>
+            <ThemedText style={styles.confirmWarningTitle}>Warning</ThemedText>
 
             {/* Confirmation Text */}
-            <Text style={styles.confirmText}>Are you sure you want to delete your account</Text>
+            <ThemedText style={styles.confirmText}>Are you sure you want to delete your account</ThemedText>
 
             {/* Action Buttons */}
             <View style={styles.modalButtonsContainer}>
@@ -396,13 +396,13 @@ const Settings = () => {
                 style={styles.deleteAccountButtonModal}
                 onPress={handleDeleteConfirm}
               >
-                <Text style={styles.deleteAccountButtonText}>Delete Account</Text>
+                <ThemedText style={styles.deleteAccountButtonText}>Delete Account</ThemedText>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.cancelButton}
                 onPress={() => setShowDeleteConfirmModal(false)}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
           </View>

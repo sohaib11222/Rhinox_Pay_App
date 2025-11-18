@@ -1,7 +1,7 @@
 import React from "react";
 import { createBottomTabNavigator, BottomTabBar } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { useNavigationState } from "@react-navigation/native";
+import { useNavigationState, CommonActions } from "@react-navigation/native";
 import HomeScreen from "../screens/MainScreens/HomeScreen";
 import NotificationsScreen from "../screens/MainScreens/NotificationsScreen";
 import TransactionsScreen from "../screens/MainScreens/TransactionsScreen";
@@ -43,9 +43,11 @@ import SendFundsDirectScreen from "../screens/MainScreens/SendFundScreens/SendFu
 import SendFundCrypto from "../screens/MainScreens/SendFundScreens/SendFundCrypto";
 import FundWalletScreen from "../screens/MainScreens/SendFundScreens/FundWalletScreen";
 import MobileFundScreen from "../screens/MainScreens/SendFundScreens/MobileFundScreen";
+import Conversion from "../screens/MainScreens/SendFundScreens/Conversion";
+import AssetsScreen from "../screens/MainScreens/SendFundScreens/AssetsScreen";
+import P2PFundScreen from "../screens/MainScreens/SendFundScreens/P2PFundScreen";
 import { View, StyleSheet, Dimensions, Image } from "react-native";
 import { BlurView } from "expo-blur";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.8;
@@ -121,6 +123,9 @@ const SettingsStackNavigator = () => {
       <SettingsStack.Screen name="SendFundCrypto" component={SendFundCrypto} />
       <SettingsStack.Screen name="FundWallet" component={FundWalletScreen} />
       <SettingsStack.Screen name="MobileFund" component={MobileFundScreen} />
+      <SettingsStack.Screen name="Conversion" component={Conversion} />
+      <SettingsStack.Screen name="Assets" component={AssetsScreen} />
+      <SettingsStack.Screen name="P2PFund" component={P2PFundScreen} />
       <SettingsStack.Screen name="AccountSecurity" component={AccountSecurity} />
       <SettingsStack.Screen name="Support" component={Support} />
       <SettingsStack.Screen name="ChatScreen" component={ChatScreen} />
@@ -132,36 +137,39 @@ const SettingsStackNavigator = () => {
 
 
 
-// Tab icon component - Replace MaterialCommunityIcons with Image components once images are extracted from Figma
-// See assets/tab-icons/README.md for required images
+// Tab icon component using image assets
 const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }) => {
   const iconSize = 30 * SCALE;
   
-  // TODO: Replace these with actual image requires once images are extracted from Figma
-  // Example: const homeActiveIcon = require('../assets/tab-icons/home-active.png');
-  
-  let iconName: any = "home";
+  let iconSource: any;
   
   if (routeName === "Home") {
-    iconName = "home";
+    iconSource = require("../assets/home_tabicon.png");
   } else if (routeName === "Transactions") {
-    iconName = "credit-card";
+    iconSource = require("../assets/transaction_tabicon.png");
   } else if (routeName === "Call") {
-    iconName = "phone"; // Keep phone icon for bill payments tab
+    iconSource = require("../assets/billpayment_tabicon.png");
   } else if (routeName === "Wallet") {
-    iconName = "wallet";
+    iconSource = require("../assets/wallet_tabicon.png");
   } else if (routeName === "Settings") {
-    iconName = "cog";
+    iconSource = require("../assets/setting_tabicon.png");
+  } else {
+    // Default fallback
+    iconSource = require("../assets/home_tabicon.png");
   }
 
-  // Dark icon color when active (on green background), light gray when inactive
-  const iconColor = focused ? "#000000" : "rgba(255, 255, 255, 0.5)";
+  // Black tint when active, no tint when inactive
+  const tintColor = focused ? "#000000" : undefined;
 
   return (
-    <MaterialCommunityIcons
-      name={iconName}
-      size={iconSize}
-      color={iconColor}
+    <Image
+      source={iconSource}
+      style={{
+        width: iconSize,
+        height: iconSize,
+        tintColor: tintColor,
+      }}
+      resizeMode="contain"
     />
   );
 };
@@ -169,7 +177,7 @@ const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }
 // Custom Tab Bar Component that checks navigation state
 const CustomTabBar = (props: any) => {
   // Screens that should hide the tab bar
-  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund'];
+  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings'];
   
   // Get the current navigation state
   const navigationState = useNavigationState((state) => state);
@@ -337,19 +345,33 @@ export default function MainNavigator() {
         component={SettingsStackNavigator}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
-            // Get the Settings stack navigator
+            // Always check and navigate to SettingsMain if not already there
             const state = navigation.getState();
             const settingsTab = state.routes.find((r) => r.name === 'Settings');
             
+            let shouldNavigateToMain = false;
+            
             if (settingsTab && settingsTab.state) {
               const settingsState = settingsTab.state;
-              // If we're not on the initial screen (SettingsMain), navigate to it
-              if (settingsState.index !== undefined && settingsState.index > 0) {
-                // Navigate to SettingsMain within the Settings stack
-                navigation.navigate('Settings', {
-                  screen: 'SettingsMain',
-                });
+              const currentRoute = settingsState.routes[settingsState.index ?? 0];
+              
+              // Check if we're not on SettingsMain
+              if (!currentRoute || currentRoute.name !== 'SettingsMain') {
+                shouldNavigateToMain = true;
               }
+            } else {
+              // If Settings tab state doesn't exist, navigate to SettingsMain
+              shouldNavigateToMain = true;
+            }
+            
+            if (shouldNavigateToMain) {
+              // Prevent default tab navigation
+              e.preventDefault();
+              
+              // Navigate to SettingsMain
+              navigation.navigate('Settings', {
+                screen: 'SettingsMain',
+              });
             }
           },
         })}
