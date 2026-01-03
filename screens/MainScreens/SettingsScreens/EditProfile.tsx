@@ -9,10 +9,12 @@ import {
   StatusBar,
   TextInput,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -122,6 +124,20 @@ const EditProfile = () => {
     setShowCountryModal(false);
   };
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.log('Refreshing profile data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
 
   return (
     <View style={styles.container}>
@@ -129,6 +145,15 @@ const EditProfile = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

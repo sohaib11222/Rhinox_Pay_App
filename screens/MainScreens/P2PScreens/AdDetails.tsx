@@ -7,11 +7,13 @@ import {
   Image,
   Dimensions,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -121,6 +123,21 @@ const AdDetails = () => {
     }
   };
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.log('Refreshing ad details data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
@@ -142,6 +159,15 @@ const AdDetails = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Summary Cards */}
         <View style={styles.summaryCardsContainer}>

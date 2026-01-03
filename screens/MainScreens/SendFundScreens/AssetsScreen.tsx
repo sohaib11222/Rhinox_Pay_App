@@ -10,11 +10,13 @@ import {
     TextInput,
     Modal,
     FlatList,
+    RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -179,6 +181,27 @@ const AssetsScreen = () => {
         }
     };
 
+    // Pull-to-refresh functionality
+    const handleRefresh = async () => {
+        // Simulate data fetching - replace with actual API calls
+        return new Promise<void>((resolve) => {
+            setTimeout(() => {
+                // Here you would typically:
+                // - Fetch latest assets
+                // - Fetch latest asset balances
+                // - Fetch latest asset prices
+                // - Update any other data that needs refreshing
+                console.log('Refreshing assets data...');
+                resolve();
+            }, 1000);
+        });
+    };
+
+    const { refreshing, onRefresh } = usePullToRefresh({
+        onRefresh: handleRefresh,
+        refreshDelay: 2000,
+    });
+
     const renderAssetCard = ({ item }: { item: Asset }) => (
         <TouchableOpacity
             style={styles.assetCard}
@@ -251,6 +274,15 @@ const AssetsScreen = () => {
                 contentContainerStyle={styles.assetsGrid}
                 columnWrapperStyle={styles.assetsRow}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor="#A9EF45"
+                        colors={['#A9EF45']}
+                        progressBackgroundColor="#020c19"
+                    />
+                }
             />
 
 

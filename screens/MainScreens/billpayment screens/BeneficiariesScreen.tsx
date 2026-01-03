@@ -9,12 +9,14 @@ import {
   StatusBar,
   TextInput,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -46,6 +48,26 @@ const BeneficiariesScreen = () => {
     mobileNumber: '0701245678',
     networkProvider: 'MTN',
     country: 'Nigeria',
+  });
+
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    // Simulate data fetching - replace with actual API calls
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // Here you would typically:
+        // - Fetch latest beneficiaries list
+        // - Fetch updated transaction details
+        // - Update any other data that needs refreshing
+        console.log('Refreshing beneficiaries data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
   });
 
   // Hide tab bar when this screen is focused
@@ -111,6 +133,15 @@ const BeneficiariesScreen = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

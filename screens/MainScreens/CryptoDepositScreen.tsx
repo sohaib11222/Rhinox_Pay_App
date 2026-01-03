@@ -8,6 +8,7 @@ import {
   Dimensions,
   StatusBar,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +16,7 @@ import { useNavigation } from '@react-navigation/native';
 import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -61,6 +63,26 @@ const CryptoDepositScreen = () => {
   const [selectedTransaction, setSelectedTransaction] = useState<CryptoDepositTransaction | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
+
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    // Simulate data fetching - replace with actual API calls
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // Here you would typically:
+        // - Fetch latest crypto deposit transactions
+        // - Fetch updated summary data
+        // - Update any other data that needs refreshing
+        console.log('Refreshing crypto deposit data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
 
   // Mock data - Replace with API calls later
   const cryptoDepositTransactions: CryptoDepositTransaction[] = [
@@ -238,6 +260,15 @@ const CryptoDepositScreen = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

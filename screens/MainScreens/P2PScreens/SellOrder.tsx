@@ -10,11 +10,13 @@ import {
   Modal,
   TextInput,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -83,6 +85,21 @@ const SellOrder = () => {
     }
   };
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.log('Refreshing sell order data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
@@ -111,6 +128,24 @@ const SellOrder = () => {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Vendor Info Card */}
         <View style={styles.vendorCard}>

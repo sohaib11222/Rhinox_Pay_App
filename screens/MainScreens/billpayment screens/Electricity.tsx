@@ -9,6 +9,7 @@ import {
   StatusBar,
   TextInput,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -16,6 +17,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -101,6 +103,21 @@ const Electricity = () => {
     country: '',
   });
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.log('Refreshing electricity data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
+
   const handleBillerTypeSelect = (billerId: string) => {
     setSelectedBillerType(billerId);
     setShowBillerTypeModal(false);
@@ -140,6 +157,15 @@ const Electricity = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

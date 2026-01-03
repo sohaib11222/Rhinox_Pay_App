@@ -7,11 +7,13 @@ import {
   Image,
   Dimensions,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -65,6 +67,21 @@ const CryptoAssetDetails = () => {
 
   const [selectedTimeRange, setSelectedTimeRange] = useState<string>('1H');
   const [balanceVisible, setBalanceVisible] = useState(true);
+
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        console.log('Refreshing crypto asset details data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
 
   const timeRanges: TimeRange[] = [
     { id: '1H', label: '1H' },
@@ -261,6 +278,15 @@ const CryptoAssetDetails = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

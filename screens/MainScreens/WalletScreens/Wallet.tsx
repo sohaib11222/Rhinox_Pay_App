@@ -7,12 +7,14 @@ import {
   Image,
   Dimensions,
   StatusBar,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -336,6 +338,28 @@ const Wallet = () => {
 
   const currentWallets = activeTab === 'fiat' ? fiatWallets : [];
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    // Simulate data fetching - replace with actual API calls
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // Here you would typically:
+        // - Fetch latest wallet balances
+        // - Fetch latest fiat wallets
+        // - Fetch latest crypto assets
+        // - Fetch latest recent transactions
+        // - Update any other data that needs refreshing
+        console.log('Refreshing wallet data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
+
   // Simple line graph component
   const SimpleLineGraph = ({ data, trend, width = 40, height = 20 }: { data: number[]; trend: 'up' | 'down'; width?: number; height?: number }) => {
     const maxValue = Math.max(...data);
@@ -406,6 +430,15 @@ const Wallet = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header */}
         <View style={styles.header}>

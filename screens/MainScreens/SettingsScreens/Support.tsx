@@ -9,11 +9,13 @@ import {
     Modal,
     Dimensions,
     TextInput,
+    RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -162,6 +164,21 @@ const Support = () => {
 
     const filteredChats = chats.filter((chat) => chat.status === activeTab);
 
+    // Pull-to-refresh functionality
+    const handleRefresh = async () => {
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.log('Refreshing support chats data...');
+          resolve();
+        }, 1000);
+      });
+    };
+
+    const { refreshing, onRefresh } = usePullToRefresh({
+      onRefresh: handleRefresh,
+      refreshDelay: 2000,
+    });
+
     const handleNewChat = () => {
         setChatName('Qamardeen Abdul Malik');
         setChatEmail('abcdfgett@gmail.com');
@@ -268,7 +285,19 @@ const Support = () => {
 
             {/* Chat List */}
             {filteredChats.length > 0 ? (
-                <ScrollView style={styles.chatList} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    style={styles.chatList}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor="#A9EF45"
+                        colors={['#A9EF45']}
+                        progressBackgroundColor="#020c19"
+                      />
+                    }
+                >
                     <ThemedText style={styles.sectionTitle}>Active Chats</ThemedText>
                     {filteredChats.map((chat) => (
                         <TouchableOpacity

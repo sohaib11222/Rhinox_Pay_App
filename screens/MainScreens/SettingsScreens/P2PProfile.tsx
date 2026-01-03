@@ -8,11 +8,13 @@ import {
   Dimensions,
   StatusBar,
   Modal,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -167,6 +169,21 @@ const P2PProfile = () => {
     const filteredOrders = selectedTab === 'All'
         ? orders
         : orders.filter(order => order.type === selectedTab);
+
+    // Pull-to-refresh functionality
+    const handleRefresh = async () => {
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.log('Refreshing P2P orders data...');
+          resolve();
+        }, 1000);
+      });
+    };
+
+    const { refreshing, onRefresh } = usePullToRefresh({
+      onRefresh: handleRefresh,
+      refreshDelay: 2000,
+    });
 
     return (
         <View style={styles.container}>
@@ -422,6 +439,15 @@ const P2PProfile = () => {
                     contentContainerStyle={styles.ordersListContent}
                     showsVerticalScrollIndicator={false}
                     nestedScrollEnabled={true}
+                    refreshControl={
+                      <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor="#A9EF45"
+                        colors={['#A9EF45']}
+                        progressBackgroundColor="#020c19"
+                      />
+                    }
                 >
                     {filteredOrders.map((order) => (
                         <View key={order.id} style={styles.orderItem}>

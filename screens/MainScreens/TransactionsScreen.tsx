@@ -7,11 +7,13 @@ import {
     Image,
     StatusBar,
     Dimensions,
+    RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
 
@@ -165,6 +167,26 @@ const TransactionsScreen = () => {
         return iconMap[icon] || null;
     };
 
+    // Pull-to-refresh functionality
+    const handleRefresh = async () => {
+        // Simulate data fetching - replace with actual API calls
+        return new Promise<void>((resolve) => {
+            setTimeout(() => {
+                // Here you would typically:
+                // - Fetch latest transactions
+                // - Fetch latest chart data
+                // - Fetch latest summary data
+                // - Update any other data that needs refreshing
+                console.log('Refreshing transactions data...');
+                resolve();
+            }, 1000);
+        });
+    };
+
+    const { refreshing, onRefresh } = usePullToRefresh({
+        onRefresh: handleRefresh,
+        refreshDelay: 2000,
+    });
 
     return (
         <View style={styles.container}>
@@ -172,6 +194,15 @@ const TransactionsScreen = () => {
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor="#A9EF45"
+                        colors={['#A9EF45']}
+                        progressBackgroundColor="#020c19"
+                    />
+                }
             >
                 {/* Header */}
                 <View style={styles.header}>

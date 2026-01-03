@@ -10,11 +10,13 @@ import {
   FlatList,
   Modal,
   TextInput,
+  RefreshControl,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
@@ -68,12 +70,42 @@ const HomeScreen = () => {
     { id: 3, title: 'Fund Wallet', subtitle: 'From Bank', amount: '+N20,000', date: 'Oct 15,2025', icon: 'arrow-up-circle', status: 'Successful' },
   ];
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    // Simulate data fetching - replace with actual API calls
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // Here you would typically:
+        // - Fetch latest balance
+        // - Fetch latest transactions
+        // - Fetch latest wallet data
+        // - Update any other data that needs refreshing
+        console.log('Refreshing data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
       >
         {/* Header Section */}
         <View style={styles.header}>
