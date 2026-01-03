@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 20 * SCALE,
     position: 'relative',
   },

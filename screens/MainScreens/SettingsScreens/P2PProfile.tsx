@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     topSectionGradient: {
-        paddingTop: 15 * SCALE,
+        paddingTop: 30* SCALE,
         paddingBottom: 20 * SCALE,
     },
     header: {

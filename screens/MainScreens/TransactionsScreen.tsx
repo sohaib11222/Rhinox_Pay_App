@@ -502,7 +502,7 @@ const styles = StyleSheet.create({
     },
     header: {
         alignItems: 'center',
-        paddingTop: 15 * SCALE,
+        paddingTop: 30* SCALE,
         paddingBottom: 13 * SCALE,
     },
     headerTitle: {

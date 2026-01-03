@@ -947,7 +947,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 20 * SCALE,
   },
   headerTitle: {
@@ -1099,7 +1099,7 @@ const styles = StyleSheet.create({
   },
   offerDetails: {
     marginBottom: 15 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     gap: 0,
   },
   offerDetailRow: {
@@ -1247,7 +1247,7 @@ const styles = StyleSheet.create({
   },
   applyButtonContainer: {
     paddingHorizontal: 20 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 20 * SCALE,
   },
   applyButton: {
@@ -1440,7 +1440,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 18 * SCALE,
     borderBottomWidth: 0.3,
     borderBottomColor: '#484848',

@@ -640,7 +640,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SCREEN_WIDTH * 0.047,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30 * SCALE,
     paddingBottom: 20 * SCALE,
   },
   backButton: {
@@ -1001,7 +1001,7 @@ const styles = StyleSheet.create({
   filterTabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 15 * SCALE,
     gap: 8 * SCALE,
   },

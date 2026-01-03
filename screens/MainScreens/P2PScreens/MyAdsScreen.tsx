@@ -397,7 +397,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SCREEN_WIDTH * 0.047,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 20 * SCALE,
   },
   backButton: {
@@ -671,7 +671,7 @@ const styles = StyleSheet.create({
   },
   adSpecs: {
     marginBottom: 15 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     gap: 0,
   },
   specRow: {
@@ -702,7 +702,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
-    // paddingTop: 15 * SCALE,
+    // paddingTop: 30* SCALE,
   },
   priceContainer: {
     flex: 1,

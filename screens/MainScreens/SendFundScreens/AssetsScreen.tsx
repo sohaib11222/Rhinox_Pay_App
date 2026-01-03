@@ -366,7 +366,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: SCREEN_WIDTH * 0.047,
-        paddingTop: 15 * SCALE,
+        paddingTop: 30* SCALE,
         paddingBottom: 20 * SCALE,
     },
     headerTitle: {

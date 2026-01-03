@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100 * SCALE,
   },
   header: {
-    paddingTop: 15 * SCALE,
+    paddingTop: 30 * SCALE,
     paddingBottom: 20 * SCALE,
     paddingHorizontal: SCREEN_WIDTH * 0.047,
     alignItems: 'center',

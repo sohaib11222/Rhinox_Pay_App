@@ -2100,7 +2100,7 @@ const styles = StyleSheet.create({
   },
   applyButtonContainer: {
     paddingHorizontal: 20 * SCALE,
-    paddingTop: 15 * SCALE,
+    paddingTop: 30* SCALE,
     paddingBottom: 20 * SCALE,
   },
   sendFundsOptionsSection: {
