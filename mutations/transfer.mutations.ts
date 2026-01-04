@@ -14,7 +14,7 @@ export interface InitiateTransferRequest {
   amount: string;
   currency: string;
   countryCode: string;
-  channel: 'rhionx_user' | 'bank_transfer' | 'mobile_money';
+  channel: 'rhionx_user' | 'bank_account' | 'mobile_money';
   recipientEmail?: string;
   recipientUserId?: string;
   accountNumber?: string;

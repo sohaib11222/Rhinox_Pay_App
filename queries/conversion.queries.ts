@@ -50,7 +50,7 @@ export const getConversionReceipt = async (
   conversionReference: string
 ): Promise<ApiResponse> => {
   try {
-    const route = buildRouteWithParams(`/conversion/receipt/{conversionReference}`, {
+    const route = buildRouteWithParams(API_ROUTES.CONVERSION.RECEIPT + '/{conversionReference}', {
       conversionReference,
     });
     const response = await apiClient.get(route);

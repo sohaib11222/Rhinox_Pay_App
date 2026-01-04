@@ -6,6 +6,9 @@
 // Auth
 export * from './auth.mutations';
 
+// Bill Payment
+export * from './billPayment.mutations';
+
 // Conversion
 export * from './conversion.mutations';
 

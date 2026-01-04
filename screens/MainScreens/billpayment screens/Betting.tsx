@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,29 +20,34 @@ import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetBillPaymentProviders, useGetBillPaymentBeneficiaries } from '../../../queries/billPayment.queries';
+import { useValidateAccount, useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬' },
-  { id: 2, name: 'Botswana', flag: '🇧🇼' },
-  { id: 3, name: 'Ghana', flag: '🇬🇭' },
-  { id: 4, name: 'Kenya', flag: '🇰🇪' },
-  { id: 5, name: 'South Africa', flag: '🇿🇦' },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿' },
-  { id: 7, name: 'Uganda', flag: '🇺🇬' },
-];
-
-const BETTING_PLATFORMS = [
-  { id: '1', name: 'Bet9ja', icon: require('../../../assets/Ellipse 20.png') },
-  { id: '2', name: 'SportyBet', icon: require('../../../assets/Ellipse 21.png') },
-  { id: '3', name: '1xBet', icon: require('../../../assets/Ellipse 21 (2).png') },
-  { id: '4', name: 'NairaBet', icon: require('../../../assets/Ellipse 22.png') },
-];
-
-const Betting = () => {
+const Betting = ({ route }: any) => {
   const navigation = useNavigation();
+  
+  // Handle beneficiary selection from BeneficiariesScreen
+  React.useEffect(() => {
+    if (route?.params?.selectedBeneficiary) {
+      const beneficiary = route.params.selectedBeneficiary;
+      setUserId(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+      // Set provider if available
+      if (beneficiary.provider?.id) {
+        setSelectedBettingPlatform(beneficiary.provider.id);
+        setSelectedProviderCode(beneficiary.provider.code);
+      }
+      // Clear the params to avoid re-applying on re-render
+      // @ts-ignore - navigation params typing
+      navigation.setParams({ selectedBeneficiary: undefined });
+    }
+  }, [route?.params?.selectedBeneficiary, navigation]);
   
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -75,16 +82,20 @@ const Betting = () => {
     }, [navigation])
   );
 
-  const [balance, setBalance] = useState('200,000');
-  const [amount, setAmount] = useState('2,000');
-  const [selectedBettingPlatform, setSelectedBettingPlatform] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  const [selectedBettingPlatform, setSelectedBettingPlatform] = useState<number | null>(null);
+  const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
   const [userId, setUserId] = useState('');
+  const [accountName, setAccountName] = useState('');
   const [showBettingPlatformModal, setShowBettingPlatformModal] = useState(false);
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState(1);
+  const [selectedCountry, setSelectedCountry] = useState<string>('NG');
   const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
+  const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState({
@@ -95,14 +106,301 @@ const Betting = () => {
     country: '',
   });
 
+  // Fetch beneficiaries for betting
+  const {
+    data: beneficiariesData,
+    isLoading: isLoadingBeneficiaries,
+    refetch: refetchBeneficiaries,
+  } = useGetBillPaymentBeneficiaries({ categoryCode: 'betting' });
+
+  // Fetch recent transactions
+  const {
+    data: transactionsData,
+    isLoading: isLoadingTransactions,
+    refetch: refetchTransactions,
+  } = useGetBillPayments({
+    categoryCode: 'betting',
+    limit: 10,
+  });
+
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalance,
+    refetch: refetchBalances,
+  } = useGetWalletBalances();
+
+  // Get NGN balance from wallet balances
+  const ngnBalance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+    const ngnWallet = balancesData.data.fiat.find((w: any) => w.currency === 'NGN');
+    return ngnWallet?.balance || '0';
+  }, [balancesData?.data?.fiat]);
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬', flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼', flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭', flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪', flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦', flagUrl: null },
+        { id: 6, name: 'Tanzania', code: 'TZ', flag: '🇹🇿', flagUrl: null },
+        { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬', flagUrl: null },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => {
+      // Check if flag is a URL path (starts with /) or an emoji
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: flagEmoji,
+        flagUrl: flagUrl,
+      };
+    });
+  }, [countriesData?.data]);
+
+  // Fetch providers based on category and country
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useGetBillPaymentProviders({
+    categoryCode: 'betting',
+    countryCode: selectedCountry,
+  });
+
+  // Transform providers to platforms format
+  const bettingPlatforms = useMemo(() => {
+    if (!providersData?.data || !Array.isArray(providersData.data)) {
+      return [];
+    }
+    
+    return providersData.data.map((provider: any) => {
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'BET9JA') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'SPORTBET' || provider.code === 'SPORTYBET') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === '1XBET' || provider.code === '1xBet') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      return {
+        id: String(provider.id),
+        name: provider.name || provider.code || '',
+        code: provider.code || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+        rawData: provider,
+      };
+    });
+  }, [providersData]);
+
+  // Validate account mutation
+  const validateAccountMutation = useValidateAccount({
+    onSuccess: (data: any) => {
+      console.log('[Betting] Account validated successfully:', data);
+      if (data?.data?.accountName) {
+        setAccountName(data.data.accountName);
+      }
+    },
+    onError: (error: any) => {
+      console.error('[Betting] Error validating account:', error);
+      setAccountName('');
+    },
+  });
+
+  // Initiate bill payment mutation
+  const initiateMutation = useInitiateBillPayment({
+    onSuccess: (data: any) => {
+      console.log('[Betting] Payment initiated successfully:', JSON.stringify(data, null, 2));
+      
+      const transactionId = 
+        data?.data?.transactionId || 
+        data?.data?.id || 
+        data?.data?.transaction?.id ||
+        (data?.data as any)?.transactionId ||
+        (data as any)?.transactionId ||
+        (data as any)?.id;
+      
+      setPendingTransactionData(data?.data);
+      
+      if (transactionId) {
+        setPendingTransactionId(transactionId);
+        setShowPinModal(true);
+      } else {
+        setShowPinModal(true);
+      }
+    },
+    onError: (error: any) => {
+      console.error('[Betting] Error initiating payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+    },
+  });
+
+  // Confirm bill payment mutation
+  const confirmMutation = useConfirmBillPayment({
+    onSuccess: (data) => {
+      console.log('[Betting] Payment confirmed successfully:', data);
+      setShowPinModal(false);
+      setPin('');
+      setPendingTransactionId(null);
+      setPendingTransactionData(null);
+      
+      // Set transaction details for success modal
+      const numericAmount = parseFloat(amount.replace(/,/g, ''));
+      setTransactionDetails({
+        amount: `N${formatBalance(numericAmount)}`,
+        fee: pendingTransactionData?.fee ? `N${formatBalance(pendingTransactionData.fee)}` : 'N200',
+        bettingPlatform: bettingPlatforms.find((p) => p.id === String(selectedBettingPlatform))?.name || '',
+        userId: userId,
+        country: selectedCountryName,
+      });
+      
+      // Reset form
+      setAmount('');
+      setUserId('');
+      setAccountName('');
+      setSelectedBettingPlatform(null);
+      setSelectedProviderCode(null);
+      
+      // Refresh data
+      refetchBalances();
+      refetchProviders();
+      refetchBeneficiaries();
+      refetchTransactions();
+      
+      // Show success modal
+      setShowSuccessModal(true);
+    },
+    onError: (error: any) => {
+      console.error('[Betting] Error confirming payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+    },
+  });
+
+  // Get recent beneficiaries for quick selection
+  const recentBeneficiaries = useMemo(() => {
+    if (!beneficiariesData?.data || !Array.isArray(beneficiariesData.data)) {
+      return [];
+    }
+    return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
+      const provider = beneficiary.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'BET9JA') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'SPORTBET' || provider.code === 'SPORTYBET') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === '1XBET' || provider.code === '1xBet') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      return {
+        id: String(beneficiary.id),
+        userId: beneficiary.accountNumber || '',
+        platform: provider.name || provider.code || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [beneficiariesData?.data]);
+
+  // Transform transactions to UI format
+  const recentTransactions = useMemo(() => {
+    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+      return [];
+    }
+
+    return transactionsData.data.map((tx: any) => {
+      const provider = tx.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'BET9JA') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'SPORTBET' || provider.code === 'SPORTYBET') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === '1XBET' || provider.code === '1xBet') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      const amount = parseFloat(tx.amount || '0');
+      const date = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        : 'N/A';
+
+      return {
+        id: String(tx.id),
+        userId: tx.accountNumber || '',
+        platform: provider.name || provider.code || '',
+        amount: `N${formatBalance(amount)}`,
+        date: date,
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [transactionsData?.data]);
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing betting data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[Betting] Refreshing betting data...');
+    try {
+      await Promise.all([
+        refetchBalances(),
+        refetchProviders(),
+        refetchBeneficiaries(),
+        refetchTransactions(),
+      ]);
+      console.log('[Betting] Betting data refreshed successfully');
+    } catch (error) {
+      console.error('[Betting] Error refreshing betting data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -110,9 +408,50 @@ const Betting = () => {
     refreshDelay: 2000,
   });
 
+  // Initialize selected country from API data when it first loads
+  useEffect(() => {
+    if (countriesData?.data && Array.isArray(countriesData.data) && countriesData.data.length > 0) {
+      // Only initialize if we still have default values and API data is available
+      if (selectedCountry === 'NG' && selectedCountryName === 'Nigeria') {
+        const defaultCountry = countries.find((c: any) => c.code === 'NG') || countries[0];
+        if (defaultCountry && (defaultCountry.code !== selectedCountry || defaultCountry.name !== selectedCountryName)) {
+          setSelectedCountry(defaultCountry.code);
+          setSelectedCountryName(defaultCountry.name);
+        }
+      }
+    }
+  }, [countriesData?.data, countries, selectedCountry, selectedCountryName]);
+
+  // Validate account when userId changes and provider is selected
+  useEffect(() => {
+    if (selectedBettingPlatform && userId && userId.length >= 3) {
+      const timeoutId = setTimeout(() => {
+        validateAccountMutation.mutate({
+          providerId: selectedBettingPlatform,
+          accountNumber: userId,
+        });
+      }, 500); // Debounce validation
+
+      return () => clearTimeout(timeoutId);
+    } else {
+      setAccountName('');
+    }
+  }, [userId, selectedBettingPlatform]);
+
   const handleBettingPlatformSelect = (platformId: string) => {
-    setSelectedBettingPlatform(platformId);
-    setShowBettingPlatformModal(false);
+    const platform = bettingPlatforms.find((p) => p.id === platformId);
+    if (platform) {
+      setSelectedBettingPlatform(parseInt(platformId));
+      setSelectedProviderCode(platform.code);
+      setShowBettingPlatformModal(false);
+      // Re-validate account if userId is already entered
+      if (userId && userId.length >= 3) {
+        validateAccountMutation.mutate({
+          providerId: parseInt(platformId),
+          accountNumber: userId,
+        });
+      }
+    }
   };
 
   const quickAmounts = ['N100', 'N200', 'N500', 'N1,000'];
@@ -123,26 +462,65 @@ const Betting = () => {
   };
 
   const handleProceed = () => {
-    if (selectedBettingPlatform && userId && amount) {
-      setShowSummaryModal(true);
+    if (!selectedBettingPlatform || !userId || !amount) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate amount
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    // Validate user ID
+    if (userId.length < 3) {
+      Alert.alert('Error', 'Please enter a valid user ID');
+      return;
+    }
+
+    // Initiate payment
+    initiateMutation.mutate({
+      categoryCode: 'betting',
+      providerId: selectedBettingPlatform,
+      currency: 'NGN',
+      amount: numericAmount.toString(),
+      accountNumber: userId,
+    });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pin || pin.length < 4) {
+      Alert.alert('Error', 'Please enter your PIN');
+      return;
+    }
+
+    if (pendingTransactionId) {
+      confirmMutation.mutate({
+        transactionId: pendingTransactionId,
+        pin: pin,
+      });
+    } else {
+      Alert.alert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
-  const handleComplete = () => {
-    setTransactionDetails({
-      amount: amount,
-      fee: 'N200',
-      bettingPlatform: BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || '',
-      userId: userId,
-      country: selectedCountryName,
-    });
-    setShowSummaryModal(false);
-    setShowSuccessModal(true);
-  };
-
-  const filteredPlatforms = BETTING_PLATFORMS.filter((platform) =>
+  const filteredPlatforms = bettingPlatforms.filter((platform) =>
     platform.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Check if proceed button should be enabled
+  const isProceedEnabled = useMemo(() => {
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    return (
+      selectedBettingPlatform !== null &&
+      userId.length >= 3 &&
+      !isNaN(numericAmount) &&
+      numericAmount > 0 &&
+      !initiateMutation.isPending
+    );
+  }, [selectedBettingPlatform, userId, amount, initiateMutation.isPending]);
 
   return (
     <View style={styles.container}>
@@ -195,30 +573,48 @@ const Betting = () => {
                   style={[{ marginBottom: -1, width: 18, height: 16 }]}
                   resizeMode="cover"
                 />
-                <TextInput
-                  style={styles.balanceAmountInput}
-                  value={`N${balance}`}
-                  onChangeText={(text) => {
-                    const numericValue = text.replace(/[N,]/g, '');
-                    setBalance(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Enter amount"
-                  placeholderTextColor="rgba(169, 239, 69, 0.5)"
-                />
+                {isLoadingBalance ? (
+                  <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                ) : (
+                  <ThemedText style={styles.balanceAmountInput}>
+                    N{formatBalance(ngnBalance)}
+                  </ThemedText>
+                )}
               </View>
             </View>
             <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryModal(true)}
             >
-              <Image
-                source={require('../../../assets/login/nigeria-flag.png')}
-                style={styles.countryFlagImage}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+              {isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (() => {
+                const selectedCountryData = countries.find((c: any) => c.code === selectedCountry);
+                const flagUrl = selectedCountryData?.flagUrl;
+                const flagEmoji = selectedCountryData?.flag;
+                
+                return (
+                  <>
+                    {flagUrl ? (
+                      <Image
+                        source={{ uri: flagUrl }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : flagEmoji ? (
+                      <ThemedText style={styles.countryFlagEmojiSmall}>{flagEmoji}</ThemedText>
+                    ) : (
+                      <Image
+                        source={require('../../../assets/login/nigeria-flag.png')}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                    <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                  </>
+                );
+              })()}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -261,14 +657,28 @@ const Betting = () => {
             {/* Betting Platform */}
             <TouchableOpacity
               style={styles.inputField}
-              onPress={() => setShowBettingPlatformModal(true)}
+              onPress={() => {
+                setShowBettingPlatformModal(true);
+              }}
+              disabled={isLoadingProviders}
             >
-              <ThemedText style={[styles.inputLabel, !selectedBettingPlatform && styles.inputPlaceholder]}>
-                {selectedBettingPlatform
-                  ? BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || 'Select Betting Platform'
-                  : 'Select Betting Platform'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              {isLoadingProviders ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading platforms...</ThemedText>
+                </View>
+              ) : (
+                <>
+                  <ThemedText style={[styles.inputLabel, !selectedBettingPlatform && styles.inputPlaceholder]}>
+                    {selectedBettingPlatform
+                      ? bettingPlatforms.find((p) => p.id === String(selectedBettingPlatform))?.name || 'Select Betting Platform'
+                      : bettingPlatforms.length > 0 
+                        ? 'Select Betting Platform' 
+                        : 'No platforms available'}
+                  </ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
 
             {/* User ID */}
@@ -281,7 +691,56 @@ const Betting = () => {
                 onChangeText={setUserId}
                 keyboardType="default"
               />
+              <TouchableOpacity
+                onPress={() => {
+                  // Only navigate if a provider is selected
+                  if (!selectedBettingPlatform) {
+                    Alert.alert('Provider Required', 'Please select a betting platform first before viewing beneficiaries.');
+                    return;
+                  }
+                  
+                  // Navigate to BeneficiariesScreen with current form data
+                  // @ts-ignore - allow parent route name
+                  navigation.navigate('Beneficiaries' as never, {
+                    categoryCode: 'betting',
+                    selectedProvider: selectedBettingPlatform,
+                    selectedProviderCode: selectedProviderCode,
+                    onSelectBeneficiary: (beneficiary: any) => {
+                      // Populate form with selected beneficiary
+                      setUserId(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+                      setAccountName(beneficiary.name || '');
+                      // Set provider if available
+                      if (beneficiary.provider?.id) {
+                        setSelectedBettingPlatform(beneficiary.provider.id);
+                        setSelectedProviderCode(beneficiary.provider.code);
+                      }
+                    },
+                  });
+                }}
+                disabled={!selectedBettingPlatform}
+                style={!selectedBettingPlatform ? { opacity: 0.5 } : {}}
+              >
+                {validateAccountMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                ) : (
+                  <Image
+                    source={require('../../../assets/AddressBook.png')}
+                    style={[{ marginBottom: -1, width: 19, height: 19 }]}
+                    resizeMode="cover"
+                  />
+                )}
+              </TouchableOpacity>
             </View>
+
+            {/* Account Name (Auto-filled after validation) */}
+            {accountName && (
+              <View style={styles.inputField}>
+                <View style={styles.accountNameContainer}>
+                  <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>
+                  <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
@@ -295,6 +754,86 @@ const Betting = () => {
           <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
+        {/* Recent Section */}
+        <View style={styles.recentSection}>
+          <ThemedText style={styles.recentTitle}>Recent</ThemedText>
+          {isLoadingBeneficiaries ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentBeneficiaries.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScrollContent}
+            >
+              {recentBeneficiaries.map((beneficiary) => (
+                <TouchableOpacity
+                  key={beneficiary.id}
+                  style={styles.recentItem}
+                  onPress={() => {
+                    setUserId(beneficiary.userId);
+                    // Find and set the provider
+                    const provider = bettingPlatforms.find((p) => p.name === beneficiary.platform || p.code === beneficiary.platform);
+                    if (provider) {
+                      setSelectedBettingPlatform(parseInt(provider.id));
+                      setSelectedProviderCode(provider.code);
+                    }
+                  }}
+                >
+                  <Image source={beneficiary.icon} style={styles.recentIcon} resizeMode="cover" />
+                  <ThemedText style={styles.recentUserId}>{beneficiary.userId}</ThemedText>
+                  <ThemedText style={styles.recentPlatform}>{beneficiary.platform}</ThemedText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent beneficiaries
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
+        {/* Recent Transactions Card */}
+        <View style={styles.recentTransactionsCard}>
+          <View style={styles.recentTransactionsHeader}>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
+            <TouchableOpacity>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
+            </TouchableOpacity>
+          </View>
+
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentTransactions.length > 0 ? (
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction) => (
+                <View key={transaction.id} style={styles.transactionItem}>
+                  <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionUserId}>{transaction.userId}</ThemedText>
+                    <ThemedText style={styles.transactionPlatform}>{transaction.platform}</ThemedText>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent transactions
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
         {/* Bottom spacing for proceed button */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -302,11 +841,15 @@ const Betting = () => {
       {/* Proceed Button - Fixed at bottom */}
       <View style={styles.proceedButtonContainer}>
         <TouchableOpacity
-          style={[styles.proceedButton, (!selectedBettingPlatform || !userId || !amount) && styles.proceedButtonDisabled]}
+          style={[styles.proceedButton, !isProceedEnabled && styles.proceedButtonDisabled]}
           onPress={handleProceed}
-          disabled={!selectedBettingPlatform || !userId || !amount}
+          disabled={!isProceedEnabled || initiateMutation.isPending}
         >
-          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          {initiateMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -340,23 +883,52 @@ const Betting = () => {
             </View>
 
             {/* Platform List */}
-            <ScrollView style={styles.platformList}>
-              {filteredPlatforms.map((platform) => (
+            {isLoadingProviders ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading platforms...
+                </ThemedText>
+              </View>
+            ) : isProvidersError ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {providersError?.message || 'Failed to load platforms. Please try again.'}
+                </ThemedText>
                 <TouchableOpacity
-                  key={platform.id}
-                  style={styles.platformItem}
-                  onPress={() => handleBettingPlatformSelect(platform.id)}
+                  style={[styles.applyButton, { marginTop: 20, backgroundColor: '#A9EF45' }]}
+                  onPress={() => refetchProviders()}
                 >
-                  <Image source={platform.icon} style={styles.platformIcon} resizeMode="cover" />
-                  <ThemedText style={styles.platformName}>{platform.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedBettingPlatform === platform.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedBettingPlatform === platform.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
+                  <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            ) : filteredPlatforms.length > 0 ? (
+              <ScrollView style={styles.platformList}>
+                {filteredPlatforms.map((platform) => (
+                  <TouchableOpacity
+                    key={platform.id}
+                    style={styles.platformItem}
+                    onPress={() => handleBettingPlatformSelect(platform.id)}
+                  >
+                    <Image source={platform.icon} style={styles.platformIcon} resizeMode="cover" />
+                    <ThemedText style={styles.platformName}>{platform.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedBettingPlatform === parseInt(platform.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedBettingPlatform === parseInt(platform.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="information" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {searchQuery ? 'No platforms found matching your search' : `No platforms available for ${selectedCountryName}. Please try a different country.`}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -384,26 +956,48 @@ const Betting = () => {
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((country) => (
-                <TouchableOpacity
-                  key={country.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(country.id);
-                    setSelectedCountryName(country.name);
-                  }}
-                >
-                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
-                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedCountry === country.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((country) => (
+                  <TouchableOpacity
+                    key={country.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(country.code);
+                      setSelectedCountryName(country.name);
+                      // Refetch providers when country changes
+                      refetchProviders();
+                    }}
+                  >
+                    {country.flagUrl ? (
+                      <Image
+                        source={{ uri: country.flagUrl }}
+                        style={styles.countryFlagImageModal}
+                        resizeMode="cover"
+                      />
+                    ) : country.flag ? (
+                      <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                    ) : (
+                      <Image
+                        source={require('../../../assets/login/nigeria-flag.png')}
+                        style={styles.countryFlagImageModal}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === country.code ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedCountry === country.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
@@ -414,55 +1008,69 @@ const Betting = () => {
         </View>
       </Modal>
 
-      {/* Summary Modal */}
+      {/* PIN Confirmation Modal */}
       <Modal
-        visible={showSummaryModal}
+        visible={showPinModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowSummaryModal(false)}
+        onRequestClose={() => {
+          setShowPinModal(false);
+          setPin('');
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.summaryModalContent}>
-            {/* Modal Header */}
+          <View style={styles.pinModalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
-              <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
+              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPinModal(false);
+                  setPin('');
+                }}
+              >
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-
-            {/* Summary Details */}
-            <View style={styles.summaryDetails}>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Country</ThemedText>
-                <ThemedText style={styles.summaryValue}>{selectedCountryName}</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Betting Platform</ThemedText>
-                <ThemedText style={styles.summaryValue}>
-                  {BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || ''}
-                </ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>User ID</ThemedText>
-                <ThemedText style={styles.summaryValue}>{userId}</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Fee</ThemedText>
-                <ThemedText style={styles.summaryValue}>N200</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Amount</ThemedText>
-                <ThemedText style={styles.summaryValue}>N{amount}</ThemedText>
-              </View>
+            <View style={styles.pinInputContainer}>
+              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+              {pendingTransactionData && (
+                <View style={styles.paymentSummaryContainer}>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || amount}</ThemedText>
+                  </View>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                  </View>
+                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || amount}</ThemedText>
+                  </View>
+                </View>
+              )}
+              <TextInput
+                style={styles.pinInput}
+                value={pin}
+                onChangeText={setPin}
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter PIN"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                autoFocus
+              />
             </View>
-
-            {/* Complete Button */}
             <TouchableOpacity
-              style={styles.completeButton}
-              onPress={handleComplete}
+              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+              onPress={handleConfirmPayment}
+              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
             >
-              <ThemedText style={styles.completeButtonText}>Proceed</ThemedText>
+              {confirmMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -475,7 +1083,7 @@ const Betting = () => {
           amount: `N${amount}`,
           fee: 'N200',
           mobileNumber: userId,
-          networkProvider: BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || '',
+          networkProvider: bettingPlatforms.find((p) => p.id === String(selectedBettingPlatform))?.name || '',
           country: selectedCountryName,
           transactionType: 'billPayment',
         }}
@@ -497,7 +1105,7 @@ const Betting = () => {
           amountNGN: `N${amount}`,
           fee: 'N200',
           mobileNumber: userId,
-          billerType: BETTING_PLATFORMS.find((p) => p.id === selectedBettingPlatform)?.name || '',
+          billerType: bettingPlatforms.find((p) => p.id === String(selectedBettingPlatform))?.name || '',
           plan: `Betting - ${userId}`,
           recipientName: 'Betting Payment',
           country: selectedCountryName,
@@ -699,6 +1307,21 @@ const styles = StyleSheet.create({
     fontSize: 14 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
+    marginRight: 12 * SCALE,
+  },
+  accountNameContainer: {
+    flex: 1,
+  },
+  accountNameLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginBottom: 4 * SCALE,
+  },
+  accountNameValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
   },
   proceedButton: {
     backgroundColor: '#A9EF45',
@@ -760,13 +1383,6 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   platformModalContent: {
-    backgroundColor: '#020C19',
-    borderTopLeftRadius: 20 * SCALE,
-    borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    maxHeight: '80%',
-  },
-  summaryModalContent: {
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
@@ -847,6 +1463,14 @@ const styles = StyleSheet.create({
   countryFlagEmoji: {
     fontSize: 24 * 1,
   },
+  countryFlagEmojiSmall: {
+    fontSize: 20 * 1,
+  },
+  countryFlagImageModal: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+  },
   countryNameModal: {
     flex: 1,
     fontSize: 14 * 1,
@@ -866,45 +1490,191 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#000000',
   },
-  summaryDetails: {
+  pinModalContent: {
+    backgroundColor: '#020C19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    maxHeight: '50%',
+  },
+  pinInputContainer: {
     paddingHorizontal: 20 * SCALE,
-    marginTop: 20 * SCALE,
-    marginBottom: 20 * SCALE,
+    paddingVertical: 20 * SCALE,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12 * SCALE,
-    borderBottomWidth: 0.3,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: '#FFFFFF0D',
-    borderRadius: 10 * SCALE,
-    padding: 12 * SCALE,
-    marginBottom: 10 * SCALE,
-  },
-  summaryLabel: {
-    fontSize: 12 * 1,
-    fontWeight: '300',
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-  summaryValue: {
-    fontSize: 14 * 1,
+  pinLabel: {
+    fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#FFFFFF',
+    marginBottom: 15 * SCALE,
+    textAlign: 'center',
   },
-  completeButton: {
+  pinInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 15 * SCALE,
+    fontSize: 18 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 8,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  confirmButton: {
     backgroundColor: '#A9EF45',
     borderRadius: 100,
-    paddingVertical: 18 * SCALE,
+    paddingVertical: 22 * SCALE,
     marginHorizontal: 20 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  completeButtonText: {
-    fontSize: 14 * 1,
+  confirmButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+  },
+  confirmButtonText: {
+    fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#000000',
+  },
+  paymentSummaryContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  paymentSummaryTotal: {
+    marginTop: 8 * SCALE,
+    paddingTop: 8 * SCALE,
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  paymentSummaryValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  recentSection: {
+    paddingHorizontal: SCREEN_WIDTH * 0.047,
+    marginTop: 20 * SCALE,
+    marginBottom: 10 * SCALE,
+  },
+  recentTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 12 * SCALE,
+  },
+  recentScrollContent: {
+    gap: 12 * SCALE,
+    paddingRight: SCREEN_WIDTH * 0.047,
+  },
+  recentItem: {
+    alignItems: 'center',
+    marginRight: 8 * SCALE,
+  },
+  recentIcon: {
+    width: 71 * SCALE,
+    height: 71 * SCALE,
+    borderRadius: 35.5 * SCALE,
+    marginBottom: 4 * SCALE,
+  },
+  recentUserId: {
+    fontSize: 10 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 2 * SCALE,
+    textAlign: 'center',
+  },
+  recentPlatform: {
+    fontSize: 6 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+  },
+  recentTransactionsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 15 * SCALE,
+    padding: 14 * SCALE,
+    marginTop: 10 * SCALE,
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+  },
+  recentTransactionsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20 * SCALE,
+  },
+  recentTransactionsTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  viewAllText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#A9EF45',
+  },
+  transactionsList: {
+    gap: 8 * SCALE,
+  },
+  transactionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10 * SCALE,
+    backgroundColor: '#FFFFFF08',
+    borderRadius: 10 * SCALE,
+    padding: 10 * SCALE,
+  },
+  transactionIcon: {
+    width: 40 * SCALE,
+    height: 40 * SCALE,
+    borderRadius: 20 * SCALE,
+    marginRight: 12 * SCALE,
+  },
+  transactionDetails: {
+    flex: 1,
+    marginRight: 12 * SCALE,
+  },
+  transactionUserId: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  transactionPlatform: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  transactionRight: {
+    alignItems: 'flex-end',
+  },
+  transactionAmount: {
+    fontSize: 12 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  transactionDate: {
+    fontSize: 8 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 });
 

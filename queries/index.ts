@@ -9,6 +9,9 @@ export * from './auth.queries';
 // Bank Accounts
 export * from './bankAccounts.queries';
 
+// Bill Payment
+export * from './billPayment.queries';
+
 // Conversion
 export * from './conversion.queries';
 

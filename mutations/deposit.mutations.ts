@@ -43,7 +43,7 @@ export const useInitiateDeposit = (
  * Confirm and complete deposit transaction with PIN
  */
 export interface ConfirmDepositRequest {
-  transactionId: string;
+  transactionId: number;
   pin: string;
 }
 

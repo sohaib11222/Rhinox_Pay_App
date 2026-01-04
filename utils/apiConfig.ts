@@ -54,6 +54,18 @@ export const API_ROUTES = {
     GET_ALL: '/bank-accounts',
   },
 
+  // Bill Payment Routes
+  BILL_PAYMENT: {
+    CATEGORIES: '/bill-payment/categories',
+    PROVIDERS: '/bill-payment/providers',
+    PLANS: '/bill-payment/plans',
+    VALIDATE_METER: '/bill-payment/validate-meter',
+    VALIDATE_ACCOUNT: '/bill-payment/validate-account',
+    INITIATE: '/bill-payment/initiate',
+    CONFIRM: '/bill-payment/confirm',
+    BENEFICIARIES: '/bill-payment/beneficiaries',
+  },
+
   // Conversion Routes
   CONVERSION: {
     CALCULATE: '/conversion/calculate',
@@ -105,6 +117,7 @@ export const API_ROUTES = {
   HOME: {
     DASHBOARD: '/home',
     WALLETS: '/home/wallets',
+    TRANSACTIONS: '/home/transactions',
   },
 
   // KYC Routes
@@ -201,8 +214,19 @@ export const API_ROUTES = {
     GET_ALL: '/wallets',
     GET_BY_CURRENCY: '/wallets',
     GET_BALANCE: '/wallets',
+    GET_BALANCES: '/wallets/balances',
     GET_TRANSACTIONS: '/wallets',
     CREATE: '/wallets/create',
+  },
+
+  // Transaction History Routes
+  TRANSACTION_HISTORY: {
+    GET_ALL: '/transaction-history',
+    GET_DEPOSITS: '/transaction-history/deposits',
+    GET_WITHDRAWALS: '/transaction-history/withdrawals',
+    GET_P2P: '/transaction-history/p2p',
+    GET_BILL_PAYMENTS: '/transaction-history/bill-payments',
+    GET_DETAILS: '/transaction-history',
   },
 } as const;
 

@@ -98,9 +98,12 @@ export const useGetDepositAddress = (
  */
 export const getVirtualAccounts = async (): Promise<ApiResponse> => {
   try {
+    console.log('[getVirtualAccounts] Fetching virtual accounts...');
     const response = await apiClient.get(API_ROUTES.CRYPTO.VIRTUAL_ACCOUNTS);
+    console.log('[getVirtualAccounts] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
+    console.error('[getVirtualAccounts] Error:', error);
     throw handleApiError(error);
   }
 };

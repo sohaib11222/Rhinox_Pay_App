@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { useGetWithdrawals } from '../../queries/transactionHistory.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -52,101 +54,144 @@ const WithdrawalsScreen = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
-  // Mock data - Replace with API calls later
-  const withdrawalTransactions: WithdrawalTransaction[] = [
-    {
-      id: '1',
-      recipientName: 'Adebisi Lateefat',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      transferAmount: 'N200,000',
-      fee: 'N20',
-      paymentAmount: 'N200,000',
-      country: 'Nigeria',
-      bank: 'Wema Bank',
-      accountNumber: '0123456789',
-      accountName: 'Opay',
-      transactionId: '12dwerkxywurcksc',
-      dateTime: 'Oct 16, 2025 - 07:22AM',
-    },
-    {
-      id: '2',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '3',
-      recipientName: 'Ibrahim Musa',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Pending',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '4',
-      recipientName: 'Chukwuemeka Nneka',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Failed',
-      paymentMethod: 'Bank Transfer',
-    },
-    {
-      id: '5',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '6',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '7',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '8',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-  ];
-
-  const summaryData = {
-    incoming: {
-      ngn: '2,000,000.00',
-      usd: '$20,000',
-    },
-    outgoing: {
-      ngn: '500.00',
-      usd: '$0.001',
-    },
+  // Format amount for display
+  const formatAmount = (amount: string | number, currency: string) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0.00';
+    const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return currency === 'NGN' ? `N${formatted}` : currency === 'USD' ? `$${formatted}` : `${currency} ${formatted}`;
   };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Map API status to UI status
+  const mapStatusToUI = (status: string): 'Successful' | 'Pending' | 'Failed' => {
+    switch (status?.toLowerCase()) {
+      case 'completed':
+        return 'Successful';
+      case 'pending':
+        return 'Pending';
+      case 'failed':
+        return 'Failed';
+      default:
+        return 'Pending';
+    }
+  };
+
+  // Map API channel/paymentMethod to UI payment method
+  const mapPaymentMethodToUI = (channel: string, paymentMethod: string | null): 'Bank Transfer' | 'Mobile Money' | undefined => {
+    if (paymentMethod) {
+      if (paymentMethod.toLowerCase().includes('bank')) return 'Bank Transfer';
+      if (paymentMethod.toLowerCase().includes('mobile')) return 'Mobile Money';
+    }
+    if (channel) {
+      if (channel.toLowerCase().includes('bank')) return 'Bank Transfer';
+      if (channel.toLowerCase().includes('mobile')) return 'Mobile Money';
+    }
+    return undefined;
+  };
+
+  // Fetch withdrawals from API
+  const {
+    data: withdrawalsData,
+    isLoading: isLoadingWithdrawals,
+    isError: isWithdrawalsError,
+    error: withdrawalsError,
+    refetch: refetchWithdrawals,
+  } = useGetWithdrawals({
+    currency: selectedCurrency !== 'All' ? selectedCurrency : undefined,
+    status: selectedStatus !== 'All' ? (selectedStatus as 'Completed' | 'Pending' | 'Failed') : undefined,
+    period: 'M', // Default to monthly
+    limit: 50,
+    offset: 0,
+  });
+
+  // Transform API data to UI format
+  const withdrawalTransactions: WithdrawalTransaction[] = useMemo(() => {
+    if (!withdrawalsData?.data?.transactions || !Array.isArray(withdrawalsData.data.transactions)) {
+      return [];
+    }
+
+    return withdrawalsData.data.transactions.map((tx: any) => {
+      const status = mapStatusToUI(tx.status);
+      const paymentMethod = mapPaymentMethodToUI(tx.channel, tx.paymentMethod);
+      const amount = parseFloat(tx.amount || '0');
+      const currency = tx.currency || 'NGN';
+      
+      // Format amounts
+      const amountFormatted = formatAmount(amount, currency);
+      const feeFormatted = tx.fee ? formatAmount(tx.fee, currency) : '0.00';
+      const totalAmount = tx.totalAmount ? parseFloat(tx.totalAmount) : amount;
+
+      // Format date
+      const date = formatDate(tx.createdAt || tx.completedAt || new Date().toISOString());
+      const dateTime = tx.completedAt || tx.createdAt
+        ? new Date(tx.completedAt || tx.createdAt).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '';
+
+      // Get recipient name from recipientInfo or description
+      let recipientName = 'Unknown';
+      if (tx.recipientInfo?.name) {
+        recipientName = tx.recipientInfo.name;
+      } else if (tx.description) {
+        // Try to extract name from description like "Transfer 25 NGN to Name Hajah"
+        const match = tx.description.match(/to\s+([^,]+)/i);
+        if (match) {
+          recipientName = match[1].trim();
+        }
+      }
+
+      return {
+        id: String(tx.id),
+        recipientName: recipientName,
+        amountNGN: amountFormatted,
+        amountUSD: currency === 'USD' ? amountFormatted : `$${formatAmount(amount * 0.001, 'USD').replace('$', '')}`, // Approximate conversion
+        date: date,
+        status: status,
+        paymentMethod: paymentMethod,
+        transferAmount: amountFormatted,
+        fee: feeFormatted,
+        paymentAmount: formatAmount(totalAmount, currency),
+        country: tx.country || undefined,
+        bank: tx.metadata?.bankAccount?.bankName || undefined,
+        accountNumber: tx.metadata?.bankAccount?.accountNumber || undefined,
+        accountName: tx.metadata?.bankAccount?.accountName || tx.recipientInfo?.name || undefined,
+        transactionId: tx.reference || String(tx.id),
+        dateTime: dateTime,
+      };
+    });
+  }, [withdrawalsData?.data?.transactions]);
+
+  // Get summary data from API
+  const summaryData = useMemo(() => {
+    const outgoing = withdrawalsData?.data?.summary?.outgoing || '0';
+    const outgoingNum = parseFloat(outgoing);
+    
+    return {
+      incoming: {
+        ngn: '0.00', // Withdrawals don't have incoming
+        usd: '$0.00',
+      },
+      outgoing: {
+        ngn: formatAmount(outgoingNum, 'NGN').replace('N', ''),
+        usd: `$${formatAmount(outgoingNum * 0.001, 'USD').replace('$', '')}`, // Approximate conversion
+      },
+    };
+  }, [withdrawalsData?.data?.summary]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -171,27 +216,29 @@ const WithdrawalsScreen = () => {
     }
   };
 
-  const filteredTransactions = withdrawalTransactions.filter((transaction) => {
-    if (selectedStatus !== 'All' && transaction.status !== selectedStatus) {
-      return false;
-    }
-    // Add more filters as needed
-    return true;
-  });
+  const filteredTransactions = useMemo(() => {
+    return withdrawalTransactions.filter((transaction) => {
+      if (selectedStatus !== 'All') {
+        // Map 'Completed' to 'Successful' for comparison
+        const statusToCompare = selectedStatus === 'Completed' ? 'Successful' : selectedStatus;
+        if (transaction.status !== statusToCompare) {
+          return false;
+        }
+      }
+      // Currency filter would be handled by API, but we can add client-side filtering if needed
+      return true;
+    });
+  }, [withdrawalTransactions, selectedStatus]);
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest withdrawal transactions
-        // - Fetch latest summary data
-        // - Update any other data that needs refreshing
-        console.log('Refreshing withdrawal transactions data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[WithdrawalsScreen] Refreshing withdrawal transactions data...');
+    try {
+      await refetchWithdrawals();
+      console.log('[WithdrawalsScreen] Withdrawal transactions data refreshed successfully');
+    } catch (error) {
+      console.error('[WithdrawalsScreen] Error refreshing withdrawal transactions data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -276,12 +323,18 @@ const WithdrawalsScreen = () => {
               <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
-              </View>
+              {isLoadingWithdrawals ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <View style={styles.summaryAmountRow}>
+                  <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
+                  <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
+                </View>
+              )}
             </View>
-            <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
+            {!isLoadingWithdrawals && (
+              <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
+            )}
           </LinearGradient>
 
           <View style={styles.summaryCardWhite}>
@@ -296,12 +349,18 @@ const WithdrawalsScreen = () => {
               <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
             </View>
             <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
-              </View>
+              {isLoadingWithdrawals ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <View style={styles.summaryAmountRow}>
+                  <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
+                  <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
+                </View>
+              )}
             </View>
-            <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
+            {!isLoadingWithdrawals && (
+              <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
+            )}
           </View>
         </View>
 
@@ -346,45 +405,73 @@ const WithdrawalsScreen = () => {
 
         {/* Transaction List Card */}
         <View style={styles.transactionCard}>
-          <ThemedText style={styles.cardTitle}>Today</ThemedText>
-          <View style={styles.transactionList}>
-            {filteredTransactions.map((transaction) => (
+          <ThemedText style={styles.cardTitle}>Transactions</ThemedText>
+          {isLoadingWithdrawals ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading transactions...
+              </ThemedText>
+            </View>
+          ) : isWithdrawalsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                {withdrawalsError?.message || 'Failed to load transactions. Please try again.'}
+              </ThemedText>
               <TouchableOpacity
-                key={transaction.id}
-                style={styles.transactionItem}
-                onPress={() => handleTransactionPress(transaction)}
+                style={[styles.retryButton, { marginTop: 20 }]}
+                onPress={() => refetchWithdrawals()}
               >
-                <View style={styles.transactionIconContainer}>
-                  <View style={styles.transactionIconCircle}>
-                    <Image
-                      source={require('../../assets/send-2.png')}
-                      style={styles.transactionIconImage}
-                      resizeMode="contain"
-                    />
-                  </View>
-                </View>
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionTitle}>{transaction.recipientName}</ThemedText>
-                  <View style={styles.transactionStatusRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: getStatusColor(transaction.status) },
-                      ]}
-                    />
-                    <ThemedText style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
-                      {transaction.status}
-                      {transaction.paymentMethod && ` via ${transaction.paymentMethod}`}
-                    </ThemedText>
-                  </View>
-                </View>
-                <View style={styles.transactionAmountContainer}>
-                  <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
-                  <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
-                </View>
+                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
               </TouchableOpacity>
-            ))}
-          </View>
+            </View>
+          ) : filteredTransactions.length > 0 ? (
+            <View style={styles.transactionList}>
+              {filteredTransactions.map((transaction) => (
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={styles.transactionItem}
+                  onPress={() => handleTransactionPress(transaction)}
+                >
+                  <View style={styles.transactionIconContainer}>
+                    <View style={styles.transactionIconCircle}>
+                      <Image
+                        source={require('../../assets/send-2.png')}
+                        style={styles.transactionIconImage}
+                        resizeMode="contain"
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionTitle}>{transaction.recipientName}</ThemedText>
+                    <View style={styles.transactionStatusRow}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: getStatusColor(transaction.status) },
+                        ]}
+                      />
+                      <ThemedText style={[styles.transactionStatus, { color: getStatusColor(transaction.status) }]}>
+                        {transaction.status}
+                        {transaction.paymentMethod && ` via ${transaction.paymentMethod}`}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionAmountContainer}>
+                    <ThemedText style={styles.transactionAmountNGN}>{transaction.amountNGN}</ThemedText>
+                    <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No transactions found
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -707,6 +794,19 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100 * SCALE,
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 10 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
   },
 });
 

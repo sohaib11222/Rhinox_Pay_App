@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,59 +10,156 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetBillPaymentBeneficiaries } from '../../../queries/billPayment.queries';
+import { useCreateBeneficiary, useUpdateBeneficiary, useDeleteBeneficiary } from '../../../mutations/billPayment.mutations';
+import { useGetBillPaymentProviders } from '../../../queries/billPayment.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
 
 interface Beneficiary {
-  id: string;
+  id: string | number;
   name: string;
-  phoneNumber: string;
+  phoneNumber?: string;
+  accountNumber?: string;
+  accountType?: string;
+  provider?: any;
+  providerId?: number;
+  categoryCode?: string;
 }
 
 const BeneficiariesScreen = () => {
   const navigation = useNavigation();
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([
-    { id: '1', name: 'Adebisi Lateefat', phoneNumber: '091234567' },
-    { id: '2', name: 'Adebisi Lateefat', phoneNumber: '091234567' },
-    { id: '3', name: 'Adebisi Lateefat', phoneNumber: '091234567' },
-  ]);
+  const route = useRoute();
+  const categoryCode = (route.params as any)?.categoryCode || 'airtime';
+  const selectedProvider = (route.params as any)?.selectedProvider;
+  const onSelectBeneficiary = (route.params as any)?.onSelectBeneficiary;
+  
   const [selectedBeneficiary, setSelectedBeneficiary] = useState<Beneficiary | null>(null);
   const [showAddBeneficiaryModal, setShowAddBeneficiaryModal] = useState(false);
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showEditBeneficiaryModal, setShowEditBeneficiaryModal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [editingBeneficiary, setEditingBeneficiary] = useState<Beneficiary | null>(null);
   const [newBeneficiaryName, setNewBeneficiaryName] = useState('');
   const [newBeneficiaryPhone, setNewBeneficiaryPhone] = useState('');
-  // Transaction details from summary modal
-  const [transactionDetails, setTransactionDetails] = useState({
-    amount: 'N2,000',
-    fee: 'N20',
-    mobileNumber: '0701245678',
-    networkProvider: 'MTN',
-    country: 'Nigeria',
+  const [selectedProviderForNew, setSelectedProviderForNew] = useState<number | null>(selectedProvider || null);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+
+  // Fetch beneficiaries from API
+  const {
+    data: beneficiariesData,
+    isLoading: isLoadingBeneficiaries,
+    refetch: refetchBeneficiaries,
+  } = useGetBillPaymentBeneficiaries({ categoryCode });
+
+  // Fetch providers for the category
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+  } = useGetBillPaymentProviders({
+    categoryCode: categoryCode,
+    countryCode: 'NG', // Default to Nigeria, can be made dynamic
+  });
+
+  // Transform providers
+  const providers = useMemo(() => {
+    if (!providersData?.data || !Array.isArray(providersData.data)) {
+      return [];
+    }
+    return providersData.data.map((provider: any) => ({
+      id: provider.id,
+      name: provider.name || provider.code || '',
+      code: provider.code || '',
+      logoUrl: provider.logoUrl,
+    }));
+  }, [providersData?.data]);
+
+  // Transform beneficiaries from API
+  const beneficiaries: Beneficiary[] = useMemo(() => {
+    if (!beneficiariesData?.data || !Array.isArray(beneficiariesData.data)) {
+      return [];
+    }
+    return beneficiariesData.data.map((beneficiary: any) => ({
+      id: beneficiary.id,
+      name: beneficiary.name || '',
+      phoneNumber: beneficiary.accountNumber || '',
+      accountNumber: beneficiary.accountNumber || '',
+      accountType: beneficiary.accountType || '',
+      provider: beneficiary.provider,
+      providerId: beneficiary.providerId || beneficiary.provider?.id,
+      categoryCode: beneficiary.categoryCode || categoryCode,
+    }));
+  }, [beneficiariesData?.data, categoryCode]);
+
+  // Create beneficiary mutation
+  const createMutation = useCreateBeneficiary({
+    onSuccess: (data) => {
+      console.log('[BeneficiariesScreen] Beneficiary created successfully:', data);
+      setNewBeneficiaryName('');
+      setNewBeneficiaryPhone('');
+      setSelectedProviderForNew(null);
+      setShowAddBeneficiaryModal(false);
+      refetchBeneficiaries();
+      Alert.alert('Success', 'Beneficiary added successfully!');
+    },
+    onError: (error: any) => {
+      console.error('[BeneficiariesScreen] Error creating beneficiary:', error);
+      Alert.alert('Error', error?.message || 'Failed to create beneficiary');
+    },
+  });
+
+  // Update beneficiary mutation
+  const updateMutation = useUpdateBeneficiary({
+    onSuccess: (data) => {
+      console.log('[BeneficiariesScreen] Beneficiary updated successfully:', data);
+      setEditingBeneficiary(null);
+      setNewBeneficiaryName('');
+      setNewBeneficiaryPhone('');
+      setSelectedProviderForNew(null);
+      setShowEditBeneficiaryModal(false);
+      refetchBeneficiaries();
+      Alert.alert('Success', 'Beneficiary updated successfully!');
+    },
+    onError: (error: any) => {
+      console.error('[BeneficiariesScreen] Error updating beneficiary:', error);
+      Alert.alert('Error', error?.message || 'Failed to update beneficiary');
+    },
+  });
+
+  // Delete beneficiary mutation
+  const deleteMutation = useDeleteBeneficiary({
+    onSuccess: (data) => {
+      console.log('[BeneficiariesScreen] Beneficiary deleted successfully:', data);
+      setEditingBeneficiary(null);
+      setShowDeleteConfirmModal(false);
+      refetchBeneficiaries();
+      Alert.alert('Success', 'Beneficiary deleted successfully!');
+    },
+    onError: (error: any) => {
+      console.error('[BeneficiariesScreen] Error deleting beneficiary:', error);
+      Alert.alert('Error', error?.message || 'Failed to delete beneficiary');
+    },
   });
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest beneficiaries list
-        // - Fetch updated transaction details
-        // - Update any other data that needs refreshing
-        console.log('Refreshing beneficiaries data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[BeneficiariesScreen] Refreshing beneficiaries data...');
+    try {
+      await refetchBeneficiaries();
+      console.log('[BeneficiariesScreen] Beneficiaries data refreshed successfully');
+    } catch (error) {
+      console.error('[BeneficiariesScreen] Error refreshing beneficiaries data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -73,18 +170,24 @@ const BeneficiariesScreen = () => {
   // Hide tab bar when this screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      // Get parent navigator and hide tab bar
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.setOptions({
+      // BeneficiariesScreen -> TransactionsStack -> TabNavigator
+      // Go up 2 levels to reach the Tab Navigator
+      const transactionsStack = navigation.getParent();
+      const tabNavigator = transactionsStack?.getParent();
+
+      if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+        tabNavigator.setOptions({
           tabBarStyle: { display: 'none' },
         });
       }
 
       return () => {
-        // Show tab bar when leaving this screen
-        if (parent) {
-          parent.setOptions({
+        // Restore tab bar when leaving this screen
+        const transactionsStackNav = navigation.getParent();
+        const tabNavigatorNav = transactionsStackNav?.getParent();
+        
+        if (tabNavigatorNav && typeof tabNavigatorNav.setOptions === 'function') {
+          tabNavigatorNav.setOptions({
             tabBarStyle: {
               backgroundColor: 'rgba(0, 0, 0, 0.2)',
               borderTopWidth: 0,
@@ -106,26 +209,113 @@ const BeneficiariesScreen = () => {
     }, [navigation])
   );
 
+  // Also hide on mount to ensure it's hidden immediately
+  React.useLayoutEffect(() => {
+    const transactionsStack = navigation.getParent();
+    const tabNavigator = transactionsStack?.getParent();
+
+    if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+      tabNavigator.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+    }
+  }, [navigation]);
+
   const handleAddBeneficiary = () => {
-    if (newBeneficiaryName && newBeneficiaryPhone) {
-      const newBeneficiary: Beneficiary = {
-        id: Date.now().toString(),
-        name: newBeneficiaryName,
-        phoneNumber: newBeneficiaryPhone,
-      };
-      setBeneficiaries([...beneficiaries, newBeneficiary]);
-      setSelectedBeneficiary(newBeneficiary);
-      setNewBeneficiaryName('');
-      setNewBeneficiaryPhone('');
-      setShowAddBeneficiaryModal(false);
+    if (!newBeneficiaryName || !newBeneficiaryPhone) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    if (!selectedProviderForNew) {
+      Alert.alert('Error', 'Please select a provider');
+      return;
+    }
+
+    if (newBeneficiaryPhone.length < 10) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return;
+    }
+
+    createMutation.mutate({
+      categoryCode: categoryCode,
+      providerId: selectedProviderForNew,
+      name: newBeneficiaryName,
+      accountNumber: newBeneficiaryPhone,
+    });
+  };
+
+  const handleUpdateBeneficiary = () => {
+    if (!editingBeneficiary) return;
+
+    if (!newBeneficiaryName || !newBeneficiaryPhone) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    if (newBeneficiaryPhone.length < 10) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return;
+    }
+
+    updateMutation.mutate({
+      id: typeof editingBeneficiary.id === 'string' ? parseInt(editingBeneficiary.id) : editingBeneficiary.id,
+      name: newBeneficiaryName,
+      accountNumber: newBeneficiaryPhone,
+      accountType: editingBeneficiary.accountType,
+    });
+  };
+
+  const handleDeleteBeneficiary = () => {
+    if (!editingBeneficiary) return;
+    
+    const beneficiaryId = typeof editingBeneficiary.id === 'string' 
+      ? parseInt(editingBeneficiary.id) 
+      : editingBeneficiary.id;
+    
+    deleteMutation.mutate(beneficiaryId);
+  };
+
+  const handleSelectBeneficiary = (beneficiary: Beneficiary) => {
+    setSelectedBeneficiary(beneficiary);
+    
+    // If there's a callback function, call it and navigate back
+    if (onSelectBeneficiary) {
+      onSelectBeneficiary(beneficiary);
+      navigation.goBack();
     }
   };
 
-  const handleProceed = () => {
-    if (selectedBeneficiary) {
-      setShowSummaryModal(true);
-    }
+  const handleEditBeneficiary = (beneficiary: Beneficiary) => {
+    setEditingBeneficiary(beneficiary);
+    setNewBeneficiaryName(beneficiary.name);
+    setNewBeneficiaryPhone(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+    setSelectedProviderForNew(beneficiary.providerId || beneficiary.provider?.id || null);
+    setShowEditBeneficiaryModal(true);
   };
+
+  const handleDeleteClick = (beneficiary: Beneficiary) => {
+    setEditingBeneficiary(beneficiary);
+    setShowDeleteConfirmModal(true);
+  };
+
+  // Check if buttons should be enabled
+  const isAddButtonEnabled = useMemo(() => {
+    return (
+      newBeneficiaryName.length > 0 &&
+      newBeneficiaryPhone.length >= 10 &&
+      selectedProviderForNew !== null &&
+      !createMutation.isPending
+    );
+  }, [newBeneficiaryName, newBeneficiaryPhone, selectedProviderForNew, createMutation.isPending]);
+
+  const isUpdateButtonEnabled = useMemo(() => {
+    return (
+      newBeneficiaryName.length > 0 &&
+      newBeneficiaryPhone.length >= 10 &&
+      !updateMutation.isPending
+    );
+  }, [newBeneficiaryName, newBeneficiaryPhone, updateMutation.isPending]);
 
   return (
     <View style={styles.container}>
@@ -160,34 +350,81 @@ const BeneficiariesScreen = () => {
 
         {/* Beneficiaries Card */}
         <View style={styles.beneficiariesCard}>
-          <View style={styles.beneficiariesList}>
-            {beneficiaries.map((beneficiary) => (
-              <TouchableOpacity
-                key={beneficiary.id}
-                style={[
-                  styles.beneficiaryItem,
-                  selectedBeneficiary?.id === beneficiary.id && styles.beneficiaryItemSelected,
-                ]}
-                onPress={() => setSelectedBeneficiary(beneficiary)}
-              >
-                <View style={styles.beneficiaryInfo}>
-                  <ThemedText style={styles.beneficiaryName}>{beneficiary.name}</ThemedText>
-                  <ThemedText style={styles.beneficiaryPhone}>{beneficiary.phoneNumber}</ThemedText>
-                </View>
-                <Image
-                source={require('../../../assets/PencilSimpleLine (1).png')}
-                style={[{ marginBottom: -1, width: 26, height: 26 }]}
-                resizeMode="cover"
-              />              </TouchableOpacity>
-            ))}
-          </View>
+          {isLoadingBeneficiaries ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading beneficiaries...
+              </ThemedText>
+            </View>
+          ) : beneficiaries.length > 0 ? (
+            <View style={styles.beneficiariesList}>
+              {beneficiaries.map((beneficiary) => (
+                <TouchableOpacity
+                  key={String(beneficiary.id)}
+                  style={[
+                    styles.beneficiaryItem,
+                    selectedBeneficiary?.id === beneficiary.id && styles.beneficiaryItemSelected,
+                  ]}
+                  onPress={() => handleSelectBeneficiary(beneficiary)}
+                >
+                  <View style={styles.beneficiaryInfo}>
+                    <ThemedText style={styles.beneficiaryName}>{beneficiary.name}</ThemedText>
+                    <ThemedText style={styles.beneficiaryPhone}>
+                      {beneficiary.accountNumber || beneficiary.phoneNumber || ''}
+                    </ThemedText>
+                    {beneficiary.provider && (
+                      <ThemedText style={styles.beneficiaryProvider}>
+                        {beneficiary.provider.name || beneficiary.provider.code || ''}
+                      </ThemedText>
+                    )}
+                  </View>
+                  <View style={styles.beneficiaryActions}>
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleEditBeneficiary(beneficiary);
+                      }}
+                      style={styles.editButton}
+                    >
+                      <Image
+                        source={require('../../../assets/PencilSimpleLine (1).png')}
+                        style={[{ marginBottom: -1, width: 26, height: 26 }]}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(beneficiary);
+                      }}
+                      style={styles.deleteButton}
+                    >
+                      <MaterialCommunityIcons name="delete-outline" size={24 * SCALE} color="#ff0000" />
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="account-plus-outline" size={48 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center' }}>
+                No beneficiaries found. Add your first beneficiary below.
+              </ThemedText>
+            </View>
+          )}
         </View>
 
-        {/* Proceed Button - Only shown when beneficiary is selected */}
-        {selectedBeneficiary && (
+        {/* Proceed Button - Only shown when beneficiary is selected and no callback */}
+        {selectedBeneficiary && !onSelectBeneficiary && (
           <TouchableOpacity
             style={styles.proceedButton}
-            onPress={handleProceed}
+            onPress={() => {
+              // Navigate back with selected beneficiary
+              // @ts-ignore - navigation typing
+              navigation.navigate('Airtime', { selectedBeneficiary });
+            }}
           >
             <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
           </TouchableOpacity>
@@ -264,116 +501,166 @@ const BeneficiariesScreen = () => {
         </View>
       </Modal>
 
-      {/* Summary Modal */}
+      {/* Edit Beneficiary Modal */}
       <Modal
-        visible={showSummaryModal}
+        visible={showEditBeneficiaryModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowSummaryModal(false)}
+        onRequestClose={() => {
+          setShowEditBeneficiaryModal(false);
+          setEditingBeneficiary(null);
+          setNewBeneficiaryName('');
+          setNewBeneficiaryPhone('');
+          setSelectedProviderForNew(null);
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.summaryModalContent}>
+          <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
-              <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
+              <ThemedText style={styles.modalTitle}>Edit Beneficiary</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEditBeneficiaryModal(false);
+                  setEditingBeneficiary(null);
+                  setNewBeneficiaryName('');
+                  setNewBeneficiaryPhone('');
+                  setSelectedProviderForNew(null);
+                }}
+              >
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
-            {/* Summary Details */}
-            <View style={styles.summaryDetails}>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Country</ThemedText>
-                <ThemedText style={styles.summaryValue}>Nigeria</ThemedText>
+            {/* Form Fields */}
+            <View style={styles.formContainer}>
+              {/* Name Field */}
+              <View style={styles.inputContainer}>
+                <ThemedText style={styles.inputLabel}>Name</ThemedText>
+                <TextInput
+                  style={[styles.textInput, { fontSize: 14 * 1 }]}
+                  placeholder="Enter beneficiary name"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={newBeneficiaryName}
+                  onChangeText={setNewBeneficiaryName}
+                />
               </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Network Provider</ThemedText>
-                <ThemedText style={styles.summaryValue}>MTN</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Phone Number</ThemedText>
-                <ThemedText style={styles.summaryValue}>0701245678</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Fee</ThemedText>
-                <ThemedText style={styles.summaryValue}>N20</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Amount</ThemedText>
-                <ThemedText style={styles.summaryValue}>N2,000</ThemedText>
+
+              {/* Phone Number Field */}
+              <View style={styles.inputContainer}>
+                <ThemedText style={styles.inputLabel}>Phone Number</ThemedText>
+                <TextInput
+                  style={[styles.textInput, { fontSize: 14 * 1 }]}
+                  placeholder="Enter phone number"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={newBeneficiaryPhone}
+                  onChangeText={setNewBeneficiaryPhone}
+                  keyboardType="phone-pad"
+                />
               </View>
             </View>
 
-            {/* Complete Button */}
+            {/* Update Button */}
             <TouchableOpacity
-              style={styles.completeButton}
-              onPress={() => {
-                // Store transaction details from summary modal
-                setTransactionDetails({
-                  amount: 'N2,000',
-                  fee: 'N20',
-                  mobileNumber: '0701245678',
-                  networkProvider: 'MTN',
-                  country: 'Nigeria',
-                });
-                setShowSummaryModal(false);
-                setShowSuccessModal(true);
-              }}
+              style={[styles.saveButton, !isUpdateButtonEnabled && styles.saveButtonDisabled]}
+              onPress={handleUpdateBeneficiary}
+              disabled={!isUpdateButtonEnabled}
             >
-              <ThemedText style={styles.completeButtonText}>Complete</ThemedText>
+              {updateMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.saveButtonText}>Update</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Transaction Success Modal */}
-      <TransactionSuccessModal
-        visible={showSuccessModal}
-        transaction={{
-          amount: transactionDetails.amount,
-          fee: transactionDetails.fee,
-          mobileNumber: transactionDetails.mobileNumber,
-          networkProvider: transactionDetails.networkProvider,
-          country: transactionDetails.country,
-          transactionType: 'airtime',
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteConfirmModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => {
+          setShowDeleteConfirmModal(false);
+          setEditingBeneficiary(null);
         }}
-        onViewTransaction={() => {
-          setShowSuccessModal(false);
-          setShowReceiptModal(true);
-        }}
-        onCancel={() => {
-          setShowSuccessModal(false);
-        }}
-      />
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModalContent}>
+            <ThemedText style={styles.confirmModalTitle}>Delete Beneficiary</ThemedText>
+            <ThemedText style={styles.confirmModalMessage}>
+              Are you sure you want to delete {editingBeneficiary?.name}? This action cannot be undone.
+            </ThemedText>
+            <View style={styles.confirmModalButtons}>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalButtonCancel]}
+                onPress={() => {
+                  setShowDeleteConfirmModal(false);
+                  setEditingBeneficiary(null);
+                }}
+              >
+                <ThemedText style={styles.confirmModalButtonTextCancel}>Cancel</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmModalButton, styles.confirmModalButtonDelete]}
+                onPress={handleDeleteBeneficiary}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <ThemedText style={styles.confirmModalButtonTextDelete}>Delete</ThemedText>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
-      {/* Transaction Receipt Modal */}
-      <TransactionReceiptModal
-        visible={showReceiptModal}
-        transaction={{
-          transactionType: 'billPayment',
-          transferAmount: transactionDetails.amount,
-          amountNGN: transactionDetails.amount,
-          fee: transactionDetails.fee,
-          mobileNumber: transactionDetails.mobileNumber,
-          billerType: transactionDetails.networkProvider,
-          plan: `${transactionDetails.amount} ${transactionDetails.networkProvider}`, // Format: "N2,000 MTN"
-          recipientName: 'Airtime Recharge', // This triggers "Recharged" in the message
-          country: transactionDetails.country,
-          transactionId: '12dwerkxywurcksc', // Mock transaction ID
-          dateTime: new Date().toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          paymentMethod: 'Wallet',
-        }}
-        onClose={() => {
-          setShowReceiptModal(false);
-        }}
-      />
+      {/* Provider Selection Modal */}
+      <Modal
+        visible={showProviderModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowProviderModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Provider</ThemedText>
+              <TouchableOpacity onPress={() => setShowProviderModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            {isLoadingProviders ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {providers.map((provider) => (
+                  <TouchableOpacity
+                    key={provider.id}
+                    style={styles.providerItem}
+                    onPress={() => {
+                      setSelectedProviderForNew(provider.id);
+                      setShowProviderModal(false);
+                    }}
+                  >
+                    <ThemedText style={styles.providerName}>{provider.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedProviderForNew === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedProviderForNew === provider.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -616,6 +903,107 @@ const styles = StyleSheet.create({
     fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#000000',
+  },
+  beneficiaryProvider: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 2 * SCALE,
+  },
+  beneficiaryActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12 * SCALE,
+  },
+  editButton: {
+    padding: 4 * SCALE,
+  },
+  deleteButton: {
+    padding: 4 * SCALE,
+  },
+  selectInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF08',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 11 * SCALE,
+    paddingVertical: 21 * SCALE,
+    minHeight: 60 * SCALE,
+  },
+  selectInputText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  selectInputPlaceholder: {
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  providerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 15 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  providerName: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  modalList: {
+    paddingHorizontal: 20 * SCALE,
+    maxHeight: 400,
+  },
+  confirmModalContent: {
+    backgroundColor: '#020C19',
+    borderRadius: 20 * SCALE,
+    padding: 20 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    maxWidth: '90%',
+  },
+  confirmModalTitle: {
+    fontSize: 18 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 15 * SCALE,
+    textAlign: 'center',
+  },
+  confirmModalMessage: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 25 * SCALE,
+    textAlign: 'center',
+    lineHeight: 20 * SCALE,
+  },
+  confirmModalButtons: {
+    flexDirection: 'row',
+    gap: 12 * SCALE,
+  },
+  confirmModalButton: {
+    flex: 1,
+    borderRadius: 100,
+    paddingVertical: 15 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmModalButtonCancel: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  confirmModalButtonDelete: {
+    backgroundColor: '#ff0000',
+  },
+  confirmModalButtonTextCancel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  confirmModalButtonTextDelete: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
   },
 });
 

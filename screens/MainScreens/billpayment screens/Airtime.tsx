@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,31 +10,34 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetBillPaymentProviders, useGetBillPaymentBeneficiaries } from '../../../queries/billPayment.queries';
+import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬' },
-  { id: 2, name: 'Botswana', flag: '🇧🇼' },
-  { id: 3, name: 'Ghana', flag: '🇬🇭' },
-  { id: 4, name: 'Kenya', flag: '🇰🇪' },
-  { id: 5, name: 'South Africa', flag: '🇿🇦' },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿' },
-  { id: 7, name: 'Uganda', flag: '🇺🇬' },
-];
-
-const NETWORKS = [
-  { id: '1', name: 'MTN', icon: require('../../../assets/Ellipse 20.png') },
-  { id: '2', name: 'GLO', icon: require('../../../assets/Ellipse 21.png') },
-  { id: '3', name: 'Airtel', icon: require('../../../assets/Ellipse 21 (2).png') },
-];
+// Country code mapping
+const COUNTRY_CODE_MAP: { [key: string]: string } = {
+  'Nigeria': 'NG',
+  'Botswana': 'BW',
+  'Ghana': 'GH',
+  'Kenya': 'KE',
+  'South Africa': 'ZA',
+  'Tanzania': 'TZ',
+  'Uganda': 'UG',
+};
 
 interface RecentTransaction {
   id: string;
@@ -46,8 +49,25 @@ interface RecentTransaction {
   icon: any;
 }
 
-const Airtime = () => {
+const Airtime = ({ route }: any) => {
   const navigation = useNavigation();
+  
+  // Handle beneficiary selection from BeneficiariesScreen
+  React.useEffect(() => {
+    if (route?.params?.selectedBeneficiary) {
+      const beneficiary = route.params.selectedBeneficiary;
+      setMobileNumber(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+      setAccountName(beneficiary.name || '');
+      // Set provider if available
+      if (beneficiary.provider?.id) {
+        setSelectedProvider(beneficiary.provider.id);
+        setSelectedProviderCode(beneficiary.provider.code);
+      }
+      // Clear the params to avoid re-applying on re-render
+      // @ts-ignore - navigation params typing
+      navigation.setParams({ selectedBeneficiary: undefined });
+    }
+  }, [route?.params?.selectedBeneficiary, navigation]);
   
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -82,30 +102,421 @@ const Airtime = () => {
     }, [navigation])
   );
 
-  const [balance, setBalance] = useState('200,000');
-  const [amount, setAmount] = useState('2,000');
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
+  const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState(1);
+  const [selectedCountry, setSelectedCountry] = useState<string>('NG');
   const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [searchQuery, setSearchQuery] = useState('');
+  const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
+  const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
+
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalance,
+    refetch: refetchBalances,
+  } = useGetWalletBalances();
+
+  // Get NGN balance from wallet balances
+  const ngnBalance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+    const ngnWallet = balancesData.data.fiat.find((w: any) => w.currency === 'NGN');
+    return ngnWallet?.balance || '0';
+  }, [balancesData?.data?.fiat]);
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬', flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼', flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭', flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪', flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦', flagUrl: null },
+        { id: 6, name: 'Tanzania', code: 'TZ', flag: '🇹🇿', flagUrl: null },
+        { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬', flagUrl: null },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => {
+      // Check if flag is a URL path (starts with /) or an emoji
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: flagEmoji,
+        flagUrl: flagUrl,
+      };
+    });
+  }, [countriesData?.data]);
+
+  // Initialize selected country from API data when it first loads
+  useEffect(() => {
+    if (countriesData?.data && Array.isArray(countriesData.data) && countriesData.data.length > 0) {
+      // Only initialize if we still have default values and API data is available
+      if (selectedCountry === 'NG' && selectedCountryName === 'Nigeria') {
+        const defaultCountry = countries.find((c: any) => c.code === 'NG') || countries[0];
+        if (defaultCountry && (defaultCountry.code !== selectedCountry || defaultCountry.name !== selectedCountryName)) {
+          setSelectedCountry(defaultCountry.code);
+          setSelectedCountryName(defaultCountry.name);
+        }
+      }
+    }
+  }, [countriesData?.data, countries, selectedCountry, selectedCountryName]);
+
+  // Fetch providers based on category and country
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useGetBillPaymentProviders({
+    categoryCode: 'airtime',
+    countryCode: selectedCountry,
+  });
+
+  // Debug logging
+  useEffect(() => {
+    console.log('[Airtime] Providers query state:', {
+      isLoading: isLoadingProviders,
+      isError: isProvidersError,
+      error: providersError,
+      data: providersData,
+      selectedCountry,
+    });
+  }, [isLoadingProviders, isProvidersError, providersError, providersData, selectedCountry]);
+
+  // Transform providers to networks format
+  const networks = useMemo(() => {
+    console.log('[Airtime] Transforming providers, providersData:', providersData);
+    
+    if (!providersData) {
+      console.log('[Airtime] No providersData');
+      return [];
+    }
+    
+    if (!providersData.data) {
+      console.log('[Airtime] No providersData.data');
+      return [];
+    }
+    
+    if (!Array.isArray(providersData.data)) {
+      console.log('[Airtime] providersData.data is not an array:', typeof providersData.data);
+      return [];
+    }
+    
+    if (providersData.data.length === 0) {
+      console.log('[Airtime] providersData.data is empty array');
+      return [];
+    }
+    
+    const transformed = providersData.data.map((provider: any) => {
+      console.log('[Airtime] Processing provider:', provider);
+      
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GLO') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'Airtel') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      }
+
+      return {
+        id: String(provider.id),
+        name: provider.name || provider.code || '',
+        code: provider.code || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+        rawData: provider,
+      };
+    });
+    
+    console.log('[Airtime] Transformed networks:', transformed);
+    return transformed;
+  }, [providersData]);
+
+  // Fetch beneficiaries for airtime
+  const {
+    data: beneficiariesData,
+    isLoading: isLoadingBeneficiaries,
+    refetch: refetchBeneficiaries,
+  } = useGetBillPaymentBeneficiaries({ categoryCode: 'airtime' });
+
+  // Fetch recent transactions
+  const {
+    data: transactionsData,
+    isLoading: isLoadingTransactions,
+    refetch: refetchTransactions,
+  } = useGetBillPayments({
+    categoryCode: 'airtime',
+    limit: 10,
+  });
+
+  // Query for recent transactions to find the transaction ID if not returned
+  // Query without status filter to catch all recent transactions
+  const {
+    data: pendingTransactionsData,
+    refetch: refetchPendingTransactions,
+  } = useGetBillPayments({
+    categoryCode: 'airtime',
+    limit: 10, // Get more transactions to increase chances of finding the match
+  });
+
+  // Transform transactions to UI format
+  const recentTransactions: RecentTransaction[] = useMemo(() => {
+    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+      return [];
+    }
+
+    return transactionsData.data.map((tx: any) => {
+      const provider = tx.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GLO') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'Airtel') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      }
+
+      const amount = parseFloat(tx.amount || '0');
+      const date = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        : 'N/A';
+
+      return {
+        id: String(tx.id),
+        phoneNumber: tx.accountNumber || '',
+        network: provider.name || provider.code || '',
+        amount: `N${formatBalance(amount)}`,
+        date: date,
+        plan: tx.plan?.name || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [transactionsData?.data]);
+
+  // Initiate bill payment mutation
+  const initiateMutation = useInitiateBillPayment({
+    onSuccess: (data: any) => {
+      console.log('[Airtime] Payment initiated successfully:', JSON.stringify(data, null, 2));
+      
+      // Try to extract transaction ID from various possible locations
+      const transactionId = 
+        data?.data?.transactionId || 
+        data?.data?.id || 
+        data?.data?.transaction?.id ||
+        (data?.data as any)?.transactionId ||
+        (data as any)?.transactionId ||
+        (data as any)?.id;
+      
+      console.log('[Airtime] Extracted transaction ID:', transactionId);
+      console.log('[Airtime] Full data structure:', JSON.stringify(data, null, 2));
+      
+      // Store the full transaction data for reference
+      setPendingTransactionData(data?.data);
+      
+      if (transactionId) {
+        setPendingTransactionId(transactionId);
+        setShowPinModal(true);
+      } else {
+        // If no transaction ID, try to find it from recent transactions
+        // The transaction might be created server-side but not immediately available
+        console.warn('[Airtime] No transaction ID found in response, querying for recent transactions');
+        console.log('[Airtime] Response keys:', Object.keys(data || {}));
+        console.log('[Airtime] Data keys:', Object.keys(data?.data || {}));
+        
+        // Store payment data and show PIN modal
+        setShowPinModal(true);
+        
+        // Try to find transaction ID with multiple attempts and delays
+        // The transaction might be created server-side but not immediately available
+        const findTransactionId = async (attempt: number = 1, maxAttempts: number = 5) => {
+          if (attempt > maxAttempts) {
+            console.warn('[Airtime] Could not find transaction ID after multiple attempts');
+            // Don't block the user - they can still try to confirm
+            return;
+          }
+          
+          try {
+            // Wait progressively longer for each attempt (0.5s, 1s, 1.5s, 2s, 2.5s)
+            await new Promise(resolve => setTimeout(resolve, attempt * 500));
+            
+            // Query for recent transactions (without status filter to catch all)
+            const recentResult = await refetchPendingTransactions();
+            // Handle different response structures
+            const responseData = recentResult.data?.data;
+            const transactions = responseData?.transactions || 
+                               (Array.isArray(responseData) ? responseData : []);
+            
+            console.log(`[Airtime] Attempt ${attempt}/${maxAttempts}: Found ${transactions.length} transactions`);
+            console.log('[Airtime] Response structure:', {
+              hasData: !!recentResult.data,
+              hasDataData: !!recentResult.data?.data,
+              isArray: Array.isArray(responseData),
+              hasTransactions: !!responseData?.transactions,
+              transactionsLength: transactions.length,
+            });
+            
+            if (transactions && Array.isArray(transactions) && transactions.length > 0) {
+              // Find the most recent transaction that matches our payment details
+              const numericAmount = parseFloat(amount.replace(/,/g, ''));
+              const matchingTx = transactions.find((tx: any) => {
+                const txAmount = parseFloat(tx.amount || '0');
+                const matchesAccount = tx.accountNumber === mobileNumber;
+                const matchesAmount = Math.abs(txAmount - numericAmount) < 0.01; // Allow small floating point differences
+                const matchesProvider = tx.provider?.id === selectedProvider || 
+                                       tx.providerId === selectedProvider;
+                
+                console.log('[Airtime] Checking transaction:', {
+                  id: tx.id,
+                  accountNumber: tx.accountNumber,
+                  amount: tx.amount,
+                  providerId: tx.provider?.id || tx.providerId,
+                  matchesAccount,
+                  matchesAmount,
+                  matchesProvider,
+                });
+                
+                return matchesAccount && matchesAmount && matchesProvider;
+              });
+              
+              if (matchingTx?.id) {
+                console.log('[Airtime] ✅ Found matching transaction ID:', matchingTx.id);
+                setPendingTransactionId(matchingTx.id);
+                return; // Success, stop retrying
+              }
+              
+              // If no exact match on last attempt, try the most recent transaction as fallback
+              if (attempt === maxAttempts && transactions.length > 0) {
+                const mostRecent = transactions[0];
+                console.log('[Airtime] ⚠️ Using most recent transaction as fallback:', mostRecent.id);
+                setPendingTransactionId(mostRecent.id);
+                return;
+              }
+            }
+            
+            // Retry if not found and haven't reached max attempts
+            if (attempt < maxAttempts) {
+              console.log(`[Airtime] Transaction not found, retrying (attempt ${attempt + 1}/${maxAttempts})...`);
+              findTransactionId(attempt + 1, maxAttempts);
+            }
+          } catch (error) {
+            console.error(`[Airtime] Error fetching transactions (attempt ${attempt}):`, error);
+            // Retry on error if haven't reached max attempts
+            if (attempt < maxAttempts) {
+              findTransactionId(attempt + 1, maxAttempts);
+            }
+          }
+        };
+        
+        // Start finding transaction ID (runs in background)
+        findTransactionId();
+      }
+    },
+    onError: (error: any) => {
+      console.error('[Airtime] Error initiating payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+    },
+  });
+
+  // Confirm bill payment mutation
+  const confirmMutation = useConfirmBillPayment({
+    onSuccess: (data) => {
+      console.log('[Airtime] Payment confirmed successfully:', data);
+      setShowPinModal(false);
+      setPin('');
+      setPendingTransactionId(null);
+      setPendingTransactionData(null);
+      // Reset form
+      setAmount('');
+      setMobileNumber('');
+      setAccountName('');
+      setSelectedProvider(null);
+      setSelectedProviderCode(null);
+      // Refresh data
+      refetchTransactions();
+      refetchBalances();
+      refetchBeneficiaries();
+      
+      // Show success and navigate back
+      Alert.alert(
+        'Success',
+        'Airtime purchase successful!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigate back to bill payment main screen
+              // @ts-ignore - allow parent route name
+              navigation.navigate('Call' as never);
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      console.error('[Airtime] Error confirming payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+    },
+  });
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest airtime data
-        // - Fetch updated balance
-        // - Update any other data that needs refreshing
-        console.log('Refreshing airtime data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[Airtime] Refreshing airtime data...');
+    try {
+      await Promise.all([
+        refetchBalances(),
+        refetchProviders(),
+        refetchBeneficiaries(),
+        refetchTransactions(),
+      ]);
+      console.log('[Airtime] Airtime data refreshed successfully');
+    } catch (error) {
+      console.error('[Airtime] Error refreshing airtime data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -113,45 +524,37 @@ const Airtime = () => {
     refreshDelay: 2000,
   });
 
-  // Mock data - Replace with API calls later
-  const recentTransactions: RecentTransaction[] = [
-    {
-      id: '1',
-      phoneNumber: '07012345678',
-      network: 'MTN',
-      amount: 'N2,000',
-      date: 'Oct 16, 2025',
-      plan: '1 GIG MTN',
-      icon: require('../../../assets/Ellipse 20.png'),
-    },
-    {
-      id: '2',
-      phoneNumber: '07012345678',
-      network: 'MTN',
-      amount: 'N2,000',
-      date: 'Oct 16, 2025',
-      plan: '1 GIG MTN',
-      icon: require('../../../assets/Ellipse 21.png'),
-    },
-    {
-      id: '3',
-      phoneNumber: '07012345678',
-      network: 'MTN',
-      amount: 'N2,000',
-      date: 'Oct 16, 2025',
-      plan: '1 GIG MTN',
-      icon: require('../../../assets/Ellipse 21 (2).png'),
-    },
-    {
-      id: '4',
-      phoneNumber: '07012345678',
-      network: 'MTN',
-      amount: 'N2,000',
-      date: 'Oct 16, 2025',
-      plan: '1 GIG MTN',
-      icon: require('../../../assets/Ellipse 22.png'),
-    },
-  ];
+  // Get recent beneficiaries for quick selection
+  const recentBeneficiaries = useMemo(() => {
+    if (!beneficiariesData?.data || !Array.isArray(beneficiariesData.data)) {
+      return [];
+    }
+    return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
+      const provider = beneficiary.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GLO') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'Airtel') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      }
+
+      return {
+        id: String(beneficiary.id),
+        phoneNumber: beneficiary.accountNumber || '',
+        network: provider.name || provider.code || '',
+        amount: '',
+        date: '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [beneficiariesData?.data]);
 
   const quickAmounts = ['N100', 'N200', 'N500', 'N1,000'];
 
@@ -161,20 +564,138 @@ const Airtime = () => {
   };
 
   const handleProviderSelect = (networkId: string) => {
-    setSelectedProvider(networkId);
-    setShowNetworkModal(false);
-  };
-
-  const handleProceed = () => {
-    if (selectedProvider && mobileNumber && accountName) {
-      // @ts-ignore - allow parent route name
-      navigation.navigate('Beneficiaries' as never);
+    const provider = networks.find((n) => n.id === networkId);
+    if (provider) {
+      setSelectedProvider(parseInt(networkId));
+      setSelectedProviderCode(provider.code);
+      setShowNetworkModal(false);
     }
   };
 
-  const filteredNetworks = NETWORKS.filter((network) =>
+  const handleProceed = () => {
+    if (!selectedProvider || !mobileNumber || !amount) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate amount
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    // Validate mobile number (basic validation)
+    if (mobileNumber.length < 10) {
+      Alert.alert('Error', 'Please enter a valid mobile number');
+      return;
+    }
+
+    // Initiate payment
+    initiateMutation.mutate({
+      categoryCode: 'airtime',
+      providerId: selectedProvider,
+      currency: 'NGN',
+      amount: numericAmount.toString(),
+      accountNumber: mobileNumber,
+    });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pin || pin.length < 4) {
+      Alert.alert('Error', 'Please enter your PIN');
+      return;
+    }
+
+    // If we have a transaction ID, use it
+    if (pendingTransactionId) {
+      confirmMutation.mutate({
+        transactionId: pendingTransactionId,
+        pin: pin,
+      });
+      return;
+    }
+
+    // If no transaction ID, try to find it one more time before showing error
+    if (pendingTransactionData) {
+      console.log('[Airtime] No transaction ID, attempting to find it before confirming...');
+      
+      try {
+        // Try to find the transaction one more time
+        const result = await refetchPendingTransactions();
+        const responseData = result.data?.data;
+        const transactions = responseData?.transactions || 
+                           (Array.isArray(responseData) ? responseData : []);
+        
+        console.log('[Airtime] Transactions found before confirmation:', transactions.length);
+        
+        if (transactions && Array.isArray(transactions) && transactions.length > 0) {
+          const numericAmount = parseFloat(amount.replace(/,/g, ''));
+          const matchingTx = transactions.find((tx: any) => {
+            const txAmount = parseFloat(tx.amount || '0');
+            return tx.accountNumber === mobileNumber &&
+                   Math.abs(txAmount - numericAmount) < 0.01 &&
+                   (tx.provider?.id === selectedProvider || tx.providerId === selectedProvider);
+          });
+          
+          if (matchingTx?.id) {
+            console.log('[Airtime] Found transaction ID before confirmation:', matchingTx.id);
+            setPendingTransactionId(matchingTx.id);
+            confirmMutation.mutate({
+              transactionId: matchingTx.id,
+              pin: pin,
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('[Airtime] Error finding transaction before confirmation:', error);
+      }
+      
+      // If still no transaction ID found, show error
+      Alert.alert(
+        'Transaction ID Not Found',
+        'Unable to find the transaction ID. Please try initiating the payment again.',
+        [
+          {
+            text: 'Cancel',
+            onPress: () => {
+              setShowPinModal(false);
+              setPin('');
+            },
+          },
+          {
+            text: 'Retry',
+            onPress: () => {
+              setShowPinModal(false);
+              setPin('');
+              // Retry the initiate call
+              handleProceed();
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    Alert.alert('Error', 'Transaction data not found. Please try again.');
+  };
+
+  const filteredNetworks = networks.filter((network) =>
     network.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // Check if proceed button should be enabled
+  const isProceedEnabled = useMemo(() => {
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    return (
+      selectedProvider !== null &&
+      mobileNumber.length >= 10 &&
+      !isNaN(numericAmount) &&
+      numericAmount > 0 &&
+      !initiateMutation.isPending
+    );
+  }, [selectedProvider, mobileNumber, amount, initiateMutation.isPending]);
 
   return (
     <View style={styles.container}>
@@ -227,31 +748,48 @@ const Airtime = () => {
                   style={[{ marginBottom: -1, width: 18, height: 16 }]}
                   resizeMode="cover"
                 />
-                <TextInput
-                  style={styles.balanceAmountInput}
-                  value={`N${balance}`}
-                  onChangeText={(text) => {
-                    // Remove 'N' prefix and format
-                    const numericValue = text.replace(/[N,]/g, '');
-                    setBalance(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Enter amount"
-                  placeholderTextColor="rgba(169, 239, 69, 0.5)"
-                />
+                {isLoadingBalance ? (
+                  <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                ) : (
+                  <ThemedText style={styles.balanceAmountInput}>
+                    N{formatBalance(ngnBalance)}
+                  </ThemedText>
+                )}
               </View>
             </View>
             <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryModal(true)}
             >
-              <Image
-                source={require('../../../assets/login/nigeria-flag.png')}
-                style={styles.countryFlagImage}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+              {isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (() => {
+                const selectedCountryData = countries.find((c: any) => c.code === selectedCountry);
+                const flagUrl = selectedCountryData?.flagUrl;
+                const flagEmoji = selectedCountryData?.flag;
+                
+                return (
+                  <>
+                    {flagUrl ? (
+                      <Image
+                        source={{ uri: flagUrl }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : flagEmoji ? (
+                      <ThemedText style={styles.countryFlagEmoji}>{flagEmoji}</ThemedText>
+                    ) : (
+                      <Image
+                        source={require('../../../assets/login/nigeria-flag.png')}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                    <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                  </>
+                );
+              })()}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -296,14 +834,29 @@ const Airtime = () => {
             {/* Select Provider */}
             <TouchableOpacity
               style={styles.inputField}
-              onPress={() => setShowNetworkModal(true)}
+              onPress={() => {
+                console.log('[Airtime] Opening provider modal, networks:', networks, 'isLoading:', isLoadingProviders);
+                setShowNetworkModal(true);
+              }}
+              disabled={isLoadingProviders}
             >
-              <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
-                {selectedProvider
-                  ? NETWORKS.find((n) => n.id === selectedProvider)?.name || 'Select Provider'
-                  : 'Select Provider'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              {isLoadingProviders ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading providers...</ThemedText>
+                </View>
+              ) : (
+                <>
+                  <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
+                    {selectedProvider
+                      ? networks.find((n) => n.id === String(selectedProvider))?.name || 'Select Provider'
+                      : networks.length > 0 
+                        ? 'Select Provider' 
+                        : 'No providers available'}
+                  </ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
 
             {/* Enter Mobile Number */}
@@ -315,20 +868,54 @@ const Airtime = () => {
                 value={mobileNumber}
                 onChangeText={(text) => {
                   setMobileNumber(text);
-                  // TODO: Fetch account name from API based on mobile number
+                  // For airtime, we don't have account name validation
+                  // The account name will be set after successful validation or payment
                   if (text.length >= 10) {
-                    setAccountName('Qamardeen Abdul Malik');
+                    // You can add validation here if needed
+                    // For now, we'll leave accountName empty or use a placeholder
+                    setAccountName(''); // Will be set from beneficiary or transaction
                   } else {
                     setAccountName('');
                   }
                 }}
                 keyboardType="phone-pad"
               />
-              <Image
-                source={require('../../../assets/AddressBook.png')}
-                style={[{ marginBottom: -1, width: 19, height: 19 }]}
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                onPress={() => {
+                  // Only navigate if a provider is selected
+                  if (!selectedProvider) {
+                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    return;
+                  }
+                  
+                  // Navigate to BeneficiariesScreen with current form data
+                  // @ts-ignore - allow parent route name
+                  navigation.navigate('Beneficiaries' as never, {
+                    categoryCode: 'airtime',
+                    selectedProvider: selectedProvider,
+                    selectedProviderCode: selectedProviderCode,
+                    amount: amount,
+                    onSelectBeneficiary: (beneficiary: any) => {
+                      // Populate form with selected beneficiary
+                      setMobileNumber(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+                      setAccountName(beneficiary.name || '');
+                      // Set provider if available
+                      if (beneficiary.provider?.id) {
+                        setSelectedProvider(beneficiary.provider.id);
+                        setSelectedProviderCode(beneficiary.provider.code);
+                      }
+                    },
+                  });
+                }}
+                disabled={!selectedProvider}
+                style={!selectedProvider ? { opacity: 0.5 } : {}}
+              >
+                <Image
+                  source={require('../../../assets/AddressBook.png')}
+                  style={[{ marginBottom: -1, width: 19, height: 19 }]}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Account Name (Auto-filled) */}
@@ -344,11 +931,15 @@ const Airtime = () => {
 
           {/* Proceed Button */}
           <TouchableOpacity
-            style={[styles.proceedButton, (!selectedProvider || !mobileNumber || !accountName) && styles.proceedButtonDisabled]}
+            style={[styles.proceedButton, !isProceedEnabled && styles.proceedButtonDisabled]}
             onPress={handleProceed}
-            disabled={!selectedProvider || !mobileNumber || !accountName}
+            disabled={!isProceedEnabled || initiateMutation.isPending}
           >
-            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            {initiateMutation.isPending ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -365,19 +956,43 @@ const Airtime = () => {
         {/* Recent Section */}
         <View style={styles.recentSection}>
           <ThemedText style={styles.recentTitle}>Recent</ThemedText>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentScrollContent}
-          >
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.recentItem}>
-                <Image source={transaction.icon} style={styles.recentIcon} resizeMode="cover" />
-                <ThemedText style={styles.recentPhone}>{transaction.phoneNumber}</ThemedText>
-                <ThemedText style={styles.recentNetwork}>{transaction.network}</ThemedText>
-              </View>
-            ))}
-          </ScrollView>
+          {isLoadingBeneficiaries ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentBeneficiaries.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScrollContent}
+            >
+              {recentBeneficiaries.map((beneficiary) => (
+                <TouchableOpacity
+                  key={beneficiary.id}
+                  style={styles.recentItem}
+                  onPress={() => {
+                    setMobileNumber(beneficiary.phoneNumber);
+                    // Find and set the provider
+                    const provider = networks.find((n) => n.name === beneficiary.network || n.code === beneficiary.network);
+                    if (provider) {
+                      setSelectedProvider(parseInt(provider.id));
+                      setSelectedProviderCode(provider.code);
+                    }
+                  }}
+                >
+                  <Image source={beneficiary.icon} style={styles.recentIcon} resizeMode="cover" />
+                  <ThemedText style={styles.recentPhone}>{beneficiary.phoneNumber}</ThemedText>
+                  <ThemedText style={styles.recentNetwork}>{beneficiary.network}</ThemedText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent beneficiaries
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Recent Transactions Card */}
@@ -389,29 +1004,41 @@ const Airtime = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.transactionsList}>
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.transactionItem}>
-                <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
-                  <View style={styles.transactionMeta}>
-                    {transaction.plan ? (
-                      <>
-                        <ThemedText style={styles.transactionPlan}>{transaction.plan}</ThemedText>
-                        <View style={styles.transactionDot} />
-                      </>
-                    ) : null}
-                    <ThemedText style={styles.transactionNetwork}>{transaction.network}</ThemedText>
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentTransactions.length > 0 ? (
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction) => (
+                <View key={transaction.id} style={styles.transactionItem}>
+                  <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
+                    <View style={styles.transactionMeta}>
+                      {transaction.plan ? (
+                        <>
+                          <ThemedText style={styles.transactionPlan}>{transaction.plan}</ThemedText>
+                          <View style={styles.transactionDot} />
+                        </>
+                      ) : null}
+                      <ThemedText style={styles.transactionNetwork}>{transaction.network}</ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                   </View>
                 </View>
-                <View style={styles.transactionRight}>
-                  <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
-                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
-                </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent transactions
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -448,23 +1075,52 @@ const Airtime = () => {
             </View>
 
             {/* Network List */}
-            <ScrollView style={styles.networkList}>
-              {filteredNetworks.map((network) => (
+            {isLoadingProviders ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading providers...
+                </ThemedText>
+              </View>
+            ) : isProvidersError ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {providersError?.message || 'Failed to load providers. Please try again.'}
+                </ThemedText>
                 <TouchableOpacity
-                  key={network.id}
-                  style={styles.networkItem}
-                  onPress={() => handleProviderSelect(network.id)}
+                  style={[styles.applyButton, { marginTop: 20, backgroundColor: '#A9EF45' }]}
+                  onPress={() => refetchProviders()}
                 >
-                  <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
-                  <ThemedText style={styles.networkName}>{network.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedProvider === network.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedProvider === network.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
+                  <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            ) : filteredNetworks.length > 0 ? (
+              <ScrollView style={styles.networkList}>
+                {filteredNetworks.map((network) => (
+                  <TouchableOpacity
+                    key={network.id}
+                    style={styles.networkItem}
+                    onPress={() => handleProviderSelect(network.id)}
+                  >
+                    <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
+                    <ThemedText style={styles.networkName}>{network.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedProvider === parseInt(network.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedProvider === parseInt(network.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="information" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {searchQuery ? 'No networks found matching your search' : `No networks available for ${selectedCountryName}. Please try a different country.`}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -492,31 +1148,117 @@ const Airtime = () => {
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((country) => (
-                <TouchableOpacity
-                  key={country.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(country.id);
-                    setSelectedCountryName(country.name);
-                  }}
-                >
-                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
-                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedCountry === country.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((country) => (
+                  <TouchableOpacity
+                    key={country.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(country.code);
+                      setSelectedCountryName(country.name);
+                      // Refetch providers when country changes
+                      refetchProviders();
+                    }}
+                  >
+                    {country.flagUrl ? (
+                      <Image
+                        source={{ uri: country.flagUrl }}
+                        style={styles.countryFlagImageModal}
+                        resizeMode="cover"
+                      />
+                    ) : country.flag ? (
+                      <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                    ) : (
+                      <View style={styles.countryFlagPlaceholder} />
+                    )}
+                    <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === country.code ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedCountry === country.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PIN Confirmation Modal */}
+      <Modal
+        visible={showPinModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowPinModal(false);
+          setPin('');
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pinModalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPinModal(false);
+                  setPin('');
+                }}
+              >
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pinInputContainer}>
+              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+              {pendingTransactionData && (
+                <View style={styles.paymentSummaryContainer}>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || amount}</ThemedText>
+                  </View>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                  </View>
+                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || amount}</ThemedText>
+                  </View>
+                </View>
+              )}
+              <TextInput
+                style={styles.pinInput}
+                value={pin}
+                onChangeText={setPin}
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter PIN"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                autoFocus
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+              onPress={handleConfirmPayment}
+              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
+            >
+              {confirmMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -613,6 +1355,17 @@ const styles = StyleSheet.create({
     width: 36 * SCALE,
     height: 38 * SCALE,
     borderRadius: 18 * SCALE,
+  },
+  countryFlagImageModal: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+  },
+  countryFlagPlaceholder: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   countryNameText: {
     fontSize: 14 * SCALE,
@@ -974,6 +1727,10 @@ const styles = StyleSheet.create({
   },
   countryFlagEmoji: {
     fontSize: 24 * SCALE,
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    textAlign: 'center',
+    lineHeight: 32 * SCALE,
   },
   countryNameModal: {
     flex: 1,
@@ -993,6 +1750,83 @@ const styles = StyleSheet.create({
     fontSize: 14 * 1,
     fontWeight: '400',
     color: '#000000',
+  },
+  pinModalContent: {
+    backgroundColor: '#020C19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    maxHeight: '50%',
+  },
+  pinInputContainer: {
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 20 * SCALE,
+  },
+  pinLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 15 * SCALE,
+    textAlign: 'center',
+  },
+  pinInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 15 * SCALE,
+    fontSize: 18 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 8,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  confirmButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 22 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+  },
+  confirmButtonText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  paymentSummaryContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  paymentSummaryTotal: {
+    marginTop: 8 * SCALE,
+    paddingTop: 8 * SCALE,
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  paymentSummaryValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });
 

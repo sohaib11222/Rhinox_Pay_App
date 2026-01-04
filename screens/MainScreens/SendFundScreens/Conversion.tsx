@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     View,
     StyleSheet,
@@ -12,27 +12,65 @@ import {
     KeyboardAvoidingView,
     Platform,
     RefreshControl,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import * as LocalAuthentication from 'expo-local-authentication';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useCalculateConversion, useGetConversionReceipt } from '../../../queries/conversion.queries';
+import { useInitiateConversion, useConfirmConversion } from '../../../mutations/conversion.mutations';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
-const COUNTRIES = [
-    { id: 1, name: 'Nigeria', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'N', currencySymbol: '₦' },
-    { id: 2, name: 'Botswana', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'BWP', currencySymbol: 'P' },
-    { id: 3, name: 'Ghana', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'GHC', currencySymbol: '₵' },
-    { id: 4, name: 'Kenya', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'Ksh', currencySymbol: 'Ksh' },
-    { id: 5, name: 'South Africa', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'ZAR', currencySymbol: 'R' },
-    { id: 6, name: 'Tanzania', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'TZS', currencySymbol: 'TSh' },
-    { id: 7, name: 'Uganda', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'UGX', currencySymbol: 'USh' },
+// Fallback countries data
+const FALLBACK_COUNTRIES = [
+    { id: 1, name: 'Nigeria', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'NGN', currencySymbol: '₦', code: 'NG' },
+    { id: 2, name: 'Botswana', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'BWP', currencySymbol: 'P', code: 'BW' },
+    { id: 3, name: 'Ghana', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'GHS', currencySymbol: '₵', code: 'GH' },
+    { id: 4, name: 'Kenya', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'KES', currencySymbol: 'Ksh', code: 'KE' },
+    { id: 5, name: 'South Africa', flag: require('../../../assets/login/south-africa-flag.png'), currency: 'ZAR', currencySymbol: 'R', code: 'ZA' },
+    { id: 6, name: 'Tanzania', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'TZS', currencySymbol: 'TSh', code: 'TZ' },
+    { id: 7, name: 'Uganda', flag: require('../../../assets/login/nigeria-flag.png'), currency: 'UGX', currencySymbol: 'USh', code: 'UG' },
 ];
+
+// Currency mapping based on country code
+const getCurrencyFromCountryCode = (countryCode: string): string => {
+    const currencyMap: { [key: string]: string } = {
+        'NG': 'NGN',
+        'KE': 'KES',
+        'GH': 'GHS',
+        'ZA': 'ZAR',
+        'BW': 'BWP',
+        'TZ': 'TZS',
+        'UG': 'UGX',
+    };
+    return currencyMap[countryCode] || 'NGN';
+};
+
+// Currency symbol mapping
+const getCurrencySymbol = (currency: string): string => {
+    const symbolMap: { [key: string]: string } = {
+        'NGN': '₦',
+        'KES': 'Ksh',
+        'GHS': '₵',
+        'ZAR': 'R',
+        'BWP': 'P',
+        'TZS': 'TSh',
+        'UGX': 'USh',
+    };
+    return symbolMap[currency] || currency;
+};
 
 const Conversion = () => {
     const navigation = useNavigation();
@@ -70,15 +108,16 @@ const Conversion = () => {
         }, [navigation])
     );
 
-    const [sendCountry, setSendCountry] = useState(1); // Nigeria
-    const [receiveCountry, setReceiveCountry] = useState(4); // Kenya
-    const [sendAmount, setSendAmount] = useState('200,000.00');
-    const [receiveAmount, setReceiveAmount] = useState('16,336.00');
-    const [sendBalance, setSendBalance] = useState('200,000');
-    const [receiveBalance, setReceiveBalance] = useState('0');
-    const [exchangeRate, setExchangeRate] = useState('0.08168'); // Calculated: 200,000 NGN / 16,336 KSH ≈ 0.08168
-    const [exchangeRateDisplay, setExchangeRateDisplay] = useState('0.05'); // Display: N1 = ksh0.05
-    const [exchangeRateSummary, setExchangeRateSummary] = useState('1,110'); // Summary: N1 ~ Ksh1,110
+    const [sendCountry, setSendCountry] = useState<number | string>(1); // Nigeria
+    const [receiveCountry, setReceiveCountry] = useState<number | string>(4); // Kenya
+    const [sendAmount, setSendAmount] = useState('0.00');
+    const [receiveAmount, setReceiveAmount] = useState('0.00');
+    const [exchangeRate, setExchangeRate] = useState('0');
+    const [exchangeRateDisplay, setExchangeRateDisplay] = useState('0');
+    const [exchangeRateSummary, setExchangeRateSummary] = useState('0');
+    const [fee, setFee] = useState('0');
+    const [feeCurrency, setFeeCurrency] = useState('NGN');
+    const [conversionReference, setConversionReference] = useState('');
     const [showSendCountryModal, setShowSendCountryModal] = useState(false);
     const [showReceiveCountryModal, setShowReceiveCountryModal] = useState(false);
     const [showSummaryModal, setShowSummaryModal] = useState(false);
@@ -90,18 +129,315 @@ const Conversion = () => {
     const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
     const [emailCode, setEmailCode] = useState('');
     const [authenticatorCode, setAuthenticatorCode] = useState('');
+    const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+    const [biometricType, setBiometricType] = useState<string>('');
+    const [isScanning, setIsScanning] = useState(false);
 
-    const sendCountryData = COUNTRIES.find(c => c.id === sendCountry);
-    const receiveCountryData = COUNTRIES.find(c => c.id === receiveCountry);
+    // Fetch countries from API
+    const {
+        data: countriesData,
+        isLoading: isLoadingCountries,
+    } = useGetCountries();
+
+    // Transform countries data with currency info
+    const countries = useMemo(() => {
+        if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+            return FALLBACK_COUNTRIES;
+        }
+        return countriesData.data.map((country: any) => {
+            const code = country.code || country.countryCode || '';
+            const currency = getCurrencyFromCountryCode(code);
+            const currencySymbol = getCurrencySymbol(currency);
+            
+            // Handle flag - can be URL from backend or use fallback
+            let flagSource: any = require('../../../assets/login/nigeria-flag.png'); // Default fallback
+            if (country.flag) {
+                if (typeof country.flag === 'string') {
+                    // If it's a URL path from backend
+                    if (country.flag.startsWith('/') || country.flag.startsWith('http')) {
+                        flagSource = { uri: country.flag.startsWith('/') 
+                            ? `${API_BASE_URL.replace('/api', '')}${country.flag}`
+                            : country.flag };
+                    } else {
+                        // Try to match with fallback countries
+                        const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
+                        flagSource = fallback?.flag || flagSource;
+                    }
+                } else {
+                    flagSource = country.flag;
+                }
+            } else {
+                // Try to match with fallback countries by code
+                const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
+                flagSource = fallback?.flag || flagSource;
+            }
+
+            return {
+                id: country.id,
+                name: country.name,
+                code: code,
+                currency: currency,
+                currencySymbol: currencySymbol,
+                flag: flagSource,
+            };
+        });
+    }, [countriesData?.data]);
+
+    const sendCountryData = countries.find(c => c.id === sendCountry || (c as any).code === sendCountry);
+    const receiveCountryData = countries.find(c => c.id === receiveCountry || (c as any).code === receiveCountry);
+    
+    // Get currency codes
+    const fromCurrency = useMemo(() => {
+        if (sendCountryData) {
+            return sendCountryData.currency;
+        }
+        // Fallback: try to get from country ID
+        const country = countries.find(c => c.id === sendCountry);
+        return country?.currency || 'NGN';
+    }, [sendCountry, sendCountryData, countries]);
+    
+    const toCurrency = useMemo(() => {
+        if (receiveCountryData) {
+            return receiveCountryData.currency;
+        }
+        // Fallback: try to get from country ID
+        const country = countries.find(c => c.id === receiveCountry);
+        return country?.currency || 'KES';
+    }, [receiveCountry, receiveCountryData, countries]);
+    
+    // Get numeric amount for API calls
+    const numericAmount = useMemo(() => {
+        const cleaned = sendAmount.replace(/,/g, '');
+        const num = parseFloat(cleaned);
+        return isNaN(num) || num <= 0 ? '0' : num.toString();
+    }, [sendAmount]);
+
+    // Fetch wallet balances
+    const {
+        data: balancesData,
+        isLoading: isLoadingBalances,
+        refetch: refetchBalances,
+    } = useGetWalletBalances();
+
+    // Get balances for send and receive currencies
+    const sendBalance = useMemo(() => {
+        if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+        const wallet = balancesData.data.fiat.find((w: any) => w.currency === fromCurrency);
+        return wallet?.balance || '0';
+    }, [balancesData?.data?.fiat, fromCurrency]);
+
+    const receiveBalance = useMemo(() => {
+        if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+        const wallet = balancesData.data.fiat.find((w: any) => w.currency === toCurrency);
+        return wallet?.balance || '0';
+    }, [balancesData?.data?.fiat, toCurrency]);
+
+    // Format balance for display
+    const formatBalance = (amount: string | number) => {
+        const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+        if (isNaN(num)) return '0';
+        return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    };
+
+    // Calculate conversion preview
+    const shouldCalculate = numericAmount !== '0' && fromCurrency !== toCurrency;
+    const {
+        data: calculateData,
+        isLoading: isLoadingCalculation,
+        error: calculateError,
+    } = useCalculateConversion(
+        {
+            fromCurrency,
+            toCurrency,
+            amount: shouldCalculate ? numericAmount : '0',
+        }
+    );
+
+    // Update amounts and rates when calculation data changes
+    useEffect(() => {
+        if (calculateData?.data) {
+            const data = calculateData.data;
+            if (data.toAmount) {
+                setReceiveAmount(formatNumber(data.toAmount));
+            }
+            if (data.receivedAmount) {
+                setReceiveAmount(formatNumber(data.receivedAmount));
+            }
+            if (data.exchangeRate) {
+                setExchangeRate(data.exchangeRate);
+                // Calculate display rate (1 fromCurrency = ? toCurrency)
+                const rate = parseFloat(data.exchangeRate);
+                if (!isNaN(rate) && rate > 0) {
+                    setExchangeRateDisplay(rate.toFixed(2));
+                    setExchangeRateSummary(rate.toFixed(0));
+                }
+            }
+            if (data.fee) {
+                setFee(data.fee);
+            }
+            if (data.feeCurrency) {
+                setFeeCurrency(data.feeCurrency);
+            }
+        }
+    }, [calculateData]);
+
+    // Initiate conversion mutation
+    const initiateMutation = useInitiateConversion({
+        onSuccess: (response) => {
+            if (response?.data?.conversionReference) {
+                setConversionReference(response.data.conversionReference);
+                setShowSummaryModal(false);
+                setShowPinModal(true);
+            } else {
+                Alert.alert('Error', 'Failed to initiate conversion. Please try again.');
+            }
+        },
+        onError: (error: any) => {
+            Alert.alert('Error', error?.message || 'Failed to initiate conversion. Please try again.');
+        },
+    });
+
+    // Confirm conversion mutation
+    const confirmMutation = useConfirmConversion({
+        onSuccess: (response) => {
+            setShowPinModal(false);
+            setShowSecurityModal(true);
+        },
+        onError: (error: any) => {
+            Alert.alert('Error', error?.message || 'Invalid PIN. Please try again.');
+            setPin('');
+        },
+    });
+
+    // Get conversion receipt
+    const {
+        data: receiptData,
+        isLoading: isLoadingReceipt,
+    } = useGetConversionReceipt(conversionReference || '');
+
+    // Check biometric availability
+    useEffect(() => {
+        checkBiometricAvailability();
+    }, []);
+
+    const checkBiometricAvailability = async () => {
+        try {
+            const hasHardware = await LocalAuthentication.hasHardwareAsync();
+            if (!hasHardware) {
+                setIsBiometricAvailable(false);
+                return;
+            }
+
+            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+            if (!isEnrolled) {
+                setIsBiometricAvailable(false);
+                return;
+            }
+
+            const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+            setIsBiometricAvailable(true);
+
+            // Determine biometric type
+            if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+                setBiometricType('Face ID');
+            } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+                setBiometricType('Fingerprint');
+            } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+                setBiometricType('Iris');
+            } else {
+                setBiometricType('Biometric');
+            }
+        } catch (error) {
+            console.error('Error checking biometric availability:', error);
+            setIsBiometricAvailable(false);
+        }
+    };
+
+    // Get stored PIN from secure storage
+    const getStoredPin = async (): Promise<string | null> => {
+        try {
+            // Note: In a real app, you should use secure storage like expo-secure-store
+            // For now, we'll use AsyncStorage as a placeholder
+            // In production, use: import * as SecureStore from 'expo-secure-store';
+            const storedPin = await AsyncStorage.getItem('user_pin');
+            return storedPin;
+        } catch (error) {
+            console.error('Error retrieving stored PIN:', error);
+            return null;
+        }
+    };
+
+    // Handle biometric authentication
+    const handleBiometricAuth = async () => {
+        if (!isBiometricAvailable) {
+            Alert.alert(
+                'Biometrics Not Available',
+                'Your device does not support biometrics or it is not set up. Please enter your PIN manually.',
+                [{ text: 'OK' }]
+            );
+            return;
+        }
+
+        if (!conversionReference) {
+            Alert.alert('Error', 'Conversion reference not found. Please try again.');
+            return;
+        }
+
+        setIsScanning(true);
+        try {
+            const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: `Authenticate with ${biometricType} to confirm conversion`,
+                cancelLabel: 'Cancel',
+                disableDeviceFallback: false,
+                fallbackLabel: 'Use PIN',
+            });
+
+            setIsScanning(false);
+
+            if (result.success) {
+                // Try to get stored PIN
+                const storedPin = await getStoredPin();
+                
+                if (storedPin) {
+                    // Use stored PIN to confirm conversion
+                    confirmMutation.mutate({
+                        conversionReference,
+                        pin: storedPin,
+                    });
+                } else {
+                    // If no stored PIN, prompt user to enter PIN
+                    Alert.alert(
+                        'PIN Required',
+                        'Please enter your PIN to complete the conversion.',
+                        [{ text: 'OK' }]
+                    );
+                }
+            } else {
+                if (result.error === 'user_cancel') {
+                    // User cancelled - do nothing
+                } else {
+                    Alert.alert(
+                        'Biometric Authentication Failed',
+                        'Please try again or enter your PIN manually.',
+                        [{ text: 'OK' }]
+                    );
+                }
+            }
+        } catch (error: any) {
+            setIsScanning(false);
+            console.error('Biometric authentication error:', error);
+            Alert.alert(
+                'Error',
+                'An error occurred during biometric authentication. Please enter your PIN manually.',
+                [{ text: 'OK' }]
+            );
+        }
+    };
 
     // Pull-to-refresh functionality
     const handleRefresh = async () => {
-        return new Promise<void>((resolve) => {
-            setTimeout(() => {
-                console.log('Refreshing conversion data...');
-                resolve();
-            }, 1000);
-        });
+        await refetchBalances();
+        return Promise.resolve();
     };
 
     const { refreshing, onRefresh } = usePullToRefresh({
@@ -121,11 +457,7 @@ const Conversion = () => {
                 const newValue = cleaned.slice(0, -1);
                 const formatted = formatNumber(newValue);
                 setSendAmount(formatted);
-
-                // Recalculate receive amount
-                const numericValue = parseFloat(newValue);
-                const calculated = numericValue * parseFloat(exchangeRate);
-                setReceiveAmount(formatNumber(calculated.toString()));
+                // The receive amount will be updated via the useCalculateConversion hook
             } else {
                 setSendAmount('0.00');
                 setReceiveAmount('0.00');
@@ -144,12 +476,7 @@ const Conversion = () => {
         const newValue = cleaned === '0.00' ? num : cleaned + num;
         const formatted = formatNumber(newValue);
         setSendAmount(formatted);
-
-        // Calculate receive amount based on exchange rate
-        // Using the actual rate: NGN * exchangeRate = KSH
-        const numericValue = parseFloat(newValue);
-        const calculated = numericValue * parseFloat(exchangeRate);
-        setReceiveAmount(formatNumber(calculated.toString()));
+        // The receive amount will be updated via the useCalculateConversion hook
     };
 
     const formatNumber = (value: string): string => {
@@ -162,26 +489,11 @@ const Conversion = () => {
     const handleSwap = () => {
         const tempCountry = sendCountry;
         const tempAmount = sendAmount;
-        const tempBalance = sendBalance;
 
         setSendCountry(receiveCountry);
         setReceiveCountry(tempCountry);
         setSendAmount(receiveAmount);
-        setReceiveAmount(tempAmount);
-        setSendBalance(receiveBalance);
-        setReceiveBalance(tempBalance);
-
-        // Recalculate exchange rate (inverse)
-        const currentRate = parseFloat(exchangeRate);
-        setExchangeRate((1 / currentRate).toFixed(5));
-
-        // Update display rate (inverse)
-        const currentDisplayRate = parseFloat(exchangeRateDisplay);
-        setExchangeRateDisplay((1 / currentDisplayRate).toFixed(2));
-
-        // Update summary rate (inverse)
-        const currentSummaryRate = parseFloat(exchangeRateSummary);
-        setExchangeRateSummary((1 / currentSummaryRate).toFixed(0));
+        // The receive amount and rates will be recalculated via the useCalculateConversion hook
     };
 
     const handlePinPress = (num: string) => {
@@ -200,11 +512,13 @@ const Conversion = () => {
             setPin(newPin);
 
             if (newPin.length === 5) {
-                // Auto proceed to security verification
-                setTimeout(() => {
-                    setShowPinModal(false);
-                    setShowSecurityModal(true);
-                }, 300);
+                // Confirm conversion with PIN
+                if (conversionReference) {
+                    confirmMutation.mutate({
+                        conversionReference,
+                        pin: newPin,
+                    });
+                }
             }
         }
     };
@@ -215,14 +529,22 @@ const Conversion = () => {
 
     const handleSecurityComplete = () => {
         if (emailCode && authenticatorCode) {
+            // In a real implementation, you would verify the security codes here
+            // For now, we'll proceed to success
             setShowSecurityModal(false);
             setShowSuccessModal(true);
+            // Refetch balances after successful conversion
+            refetchBalances();
         }
     };
 
     const handleSummaryComplete = () => {
-        setShowSummaryModal(false);
-        setShowPinModal(true);
+        // Initiate conversion
+        initiateMutation.mutate({
+            fromCurrency,
+            toCurrency,
+            amount: numericAmount,
+        });
     };
 
     const handleViewTransaction = () => {
@@ -276,9 +598,20 @@ const Conversion = () => {
                 {/* Exchange Rate */}
                 <View style={styles.exchangeRateSection}>
                     <ThemedText style={styles.exchangeRateLabel}>Exchange Rate</ThemedText>
-                    <ThemedText style={styles.exchangeRateValue}>
-                        {sendCountryData?.currencySymbol}1 = {receiveCountryData?.currencySymbol.toLowerCase()}{exchangeRateDisplay}
-                    </ThemedText>
+                    {isLoadingCalculation ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <ActivityIndicator size="small" color="#A9EF45" />
+                            <ThemedText style={styles.exchangeRateValue}>Calculating...</ThemedText>
+                        </View>
+                    ) : calculateError ? (
+                        <ThemedText style={[styles.exchangeRateValue, { color: '#ff0000', fontSize: 14 }]}>
+                            Error loading rate
+                        </ThemedText>
+                    ) : (
+                        <ThemedText style={styles.exchangeRateValue}>
+                            {sendCountryData?.currencySymbol}1 = {receiveCountryData?.currencySymbol.toLowerCase()}{exchangeRateDisplay}
+                        </ThemedText>
+                    )}
                 </View>
 
                 {/* You Send Card */}
@@ -289,11 +622,19 @@ const Conversion = () => {
                             style={styles.countrySelector}
                             onPress={() => setShowSendCountryModal(true)}
                         >
-                            <Image
-                                source={sendCountryData?.flag || COUNTRIES[0].flag}
-                                style={styles.countryFlagImage}
-                                resizeMode="cover"
-                            />
+                            {typeof sendCountryData?.flag === 'object' && 'uri' in sendCountryData.flag ? (
+                                <Image
+                                    source={sendCountryData.flag}
+                                    style={styles.countryFlagImage}
+                                    resizeMode="cover"
+                                />
+                            ) : (
+                                <Image
+                                    source={sendCountryData?.flag || FALLBACK_COUNTRIES[0].flag}
+                                    style={styles.countryFlagImage}
+                                    resizeMode="cover"
+                                />
+                            )}
                             <ThemedText style={styles.countryNameText}>{sendCountryData?.name}</ThemedText>
                             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
@@ -305,7 +646,11 @@ const Conversion = () => {
                             style={styles.walletIcon}
                             resizeMode="cover"
                         />
-                        <ThemedText style={styles.balanceText}>{sendCountryData?.currencySymbol}{sendBalance}</ThemedText>
+                        {isLoadingBalances ? (
+                            <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.7)" />
+                        ) : (
+                            <ThemedText style={styles.balanceText}>{sendCountryData?.currencySymbol}{formatBalance(sendBalance)}</ThemedText>
+                        )}
                     </View>
                 </View>
 
@@ -324,16 +669,31 @@ const Conversion = () => {
                 <View style={styles.receiveCard}>
                     <ThemedText style={styles.cardLabel}>You Receive</ThemedText>
                     <View style={styles.cardHeader}>
-                        <TouchableOpacity
-                            style={styles.countrySelector}
-                            onPress={() => setShowReceiveCountryModal(true)}
-                        >
-                            <Image
-                                source={receiveCountryData?.flag || COUNTRIES[3].flag}
-                                style={styles.countryFlagImage}
-                                resizeMode="cover"
-                            />
-                            <ThemedText style={styles.countryNameText}>{receiveCountryData?.name}</ThemedText>
+                            <TouchableOpacity
+                                style={styles.countrySelector}
+                                onPress={() => setShowReceiveCountryModal(true)}
+                                disabled={isLoadingCountries}
+                            >
+                                {isLoadingCountries ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <>
+                                        {typeof receiveCountryData?.flag === 'object' && 'uri' in receiveCountryData.flag ? (
+                                            <Image
+                                                source={receiveCountryData.flag}
+                                                style={styles.countryFlagImage}
+                                                resizeMode="cover"
+                                            />
+                                        ) : (
+                                            <Image
+                                                source={receiveCountryData?.flag || FALLBACK_COUNTRIES[3].flag}
+                                                style={styles.countryFlagImage}
+                                                resizeMode="cover"
+                                            />
+                                        )}
+                                        <ThemedText style={styles.countryNameText}>{receiveCountryData?.name || 'Select Country'}</ThemedText>
+                                    </>
+                                )}
                             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
                         <ThemedText style={styles.amountText}>{receiveCountryData?.currencySymbol}{receiveAmount}</ThemedText>
@@ -344,7 +704,11 @@ const Conversion = () => {
                             style={styles.walletIcon}
                             resizeMode="cover"
                         />
-                        <ThemedText style={styles.balanceText}>{receiveCountryData?.currencySymbol}{receiveBalance}</ThemedText>
+                        {isLoadingBalances ? (
+                            <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.7)" />
+                        ) : (
+                            <ThemedText style={styles.balanceText}>{receiveCountryData?.currencySymbol}{formatBalance(receiveBalance)}</ThemedText>
+                        )}
                     </View>
                 </View>
 
@@ -479,14 +843,27 @@ const Conversion = () => {
             </ScrollView>
 
             {/* Convert Button - Fixed at Bottom */}
-            <View style={styles.convertButtonContainer}>
-                <TouchableOpacity
-                    style={styles.convertButton}
-                    onPress={() => setShowSummaryModal(true)}
-                >
-                    <ThemedText style={styles.convertButtonText}>Convert</ThemedText>
-                </TouchableOpacity>
-            </View>
+            {numericAmount !== '0' && fromCurrency !== toCurrency && (
+                <View style={styles.convertButtonContainer}>
+                    <TouchableOpacity
+                        style={[
+                            styles.convertButton,
+                            (isLoadingCalculation || initiateMutation.isPending) && styles.convertButtonDisabled
+                        ]}
+                        onPress={() => setShowSummaryModal(true)}
+                        disabled={isLoadingCalculation || initiateMutation.isPending}
+                    >
+                        {initiateMutation.isPending ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <ActivityIndicator size="small" color="#000000" />
+                                <ThemedText style={styles.convertButtonText}>Processing...</ThemedText>
+                            </View>
+                        ) : (
+                            <ThemedText style={styles.convertButtonText}>Convert</ThemedText>
+                        )}
+                    </TouchableOpacity>
+                </View>
+            )}
 
             {/* Send Country Selection Modal */}
             <Modal
@@ -504,27 +881,45 @@ const Conversion = () => {
                             </TouchableOpacity>
                         </View>
                         <ScrollView style={styles.modalList}>
-                            {COUNTRIES.map((c) => (
-                                <TouchableOpacity
-                                    key={c.id}
-                                    style={styles.countryItem}
-                                    onPress={() => {
-                                        setSendCountry(c.id);
-                                    }}
-                                >
-                                    <Image
-                                        source={c.flag}
-                                        style={styles.countryFlagImageModal}
-                                        resizeMode="cover"
-                                    />
-                                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                                    <MaterialCommunityIcons
-                                        name={sendCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                                        size={24 * SCALE}
-                                        color={sendCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                                    />
-                                </TouchableOpacity>
-                            ))}
+                            {isLoadingCountries ? (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <ActivityIndicator size="small" color="#A9EF45" />
+                                </View>
+                            ) : countries.length === 0 ? (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <ThemedText style={styles.countryName}>No countries available</ThemedText>
+                                </View>
+                            ) : (
+                                countries.map((c) => (
+                                    <TouchableOpacity
+                                        key={c.id}
+                                        style={styles.countryItem}
+                                        onPress={() => {
+                                            setSendCountry(c.id);
+                                        }}
+                                    >
+                                        {typeof c.flag === 'object' && 'uri' in c.flag ? (
+                                            <Image
+                                                source={c.flag}
+                                                style={styles.countryFlagImageModal}
+                                                resizeMode="cover"
+                                            />
+                                        ) : (
+                                            <Image
+                                                source={c.flag}
+                                                style={styles.countryFlagImageModal}
+                                                resizeMode="cover"
+                                            />
+                                        )}
+                                        <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                                        <MaterialCommunityIcons
+                                            name={sendCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                                            size={24 * SCALE}
+                                            color={sendCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                                        />
+                                    </TouchableOpacity>
+                                ))
+                            )}
                         </ScrollView>
                         <TouchableOpacity
                             style={styles.applyButton}
@@ -552,27 +947,45 @@ const Conversion = () => {
                             </TouchableOpacity>
                         </View>
                         <ScrollView style={styles.modalList}>
-                            {COUNTRIES.map((c) => (
-                                <TouchableOpacity
-                                    key={c.id}
-                                    style={styles.countryItem}
-                                    onPress={() => {
-                                        setReceiveCountry(c.id);
-                                    }}
-                                >
-                                    <Image
-                                        source={c.flag}
-                                        style={styles.countryFlagImageModal}
-                                        resizeMode="cover"
-                                    />
-                                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                                    <MaterialCommunityIcons
-                                        name={receiveCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                                        size={24 * SCALE}
-                                        color={receiveCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                                    />
-                                </TouchableOpacity>
-                            ))}
+                            {isLoadingCountries ? (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <ActivityIndicator size="small" color="#A9EF45" />
+                                </View>
+                            ) : countries.length === 0 ? (
+                                <View style={{ padding: 20, alignItems: 'center' }}>
+                                    <ThemedText style={styles.countryName}>No countries available</ThemedText>
+                                </View>
+                            ) : (
+                                countries.map((c) => (
+                                    <TouchableOpacity
+                                        key={c.id}
+                                        style={styles.countryItem}
+                                        onPress={() => {
+                                            setReceiveCountry(c.id);
+                                        }}
+                                    >
+                                        {typeof c.flag === 'object' && 'uri' in c.flag ? (
+                                            <Image
+                                                source={c.flag}
+                                                style={styles.countryFlagImageModal}
+                                                resizeMode="cover"
+                                            />
+                                        ) : (
+                                            <Image
+                                                source={c.flag}
+                                                style={styles.countryFlagImageModal}
+                                                resizeMode="cover"
+                                            />
+                                        )}
+                                        <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                                        <MaterialCommunityIcons
+                                            name={receiveCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                                            size={24 * SCALE}
+                                            color={receiveCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                                        />
+                                    </TouchableOpacity>
+                                ))
+                            )}
                         </ScrollView>
                         <TouchableOpacity
                             style={styles.applyButton}
@@ -610,7 +1023,7 @@ const Conversion = () => {
                                 <View style={styles.summaryRow}>
                                     <View style={styles.summaryRowLeft}>
                                         <Image
-                                            source={sendCountryData?.flag || COUNTRIES[0].flag}
+                                            source={typeof sendCountryData?.flag === 'object' && 'uri' in sendCountryData.flag ? sendCountryData.flag : (sendCountryData?.flag || FALLBACK_COUNTRIES[0].flag)}
                                             style={styles.summaryFlag}
                                             resizeMode="cover"
                                         />
@@ -640,7 +1053,7 @@ const Conversion = () => {
                                 <View style={styles.summaryRow}>
                                     <View style={styles.summaryRowLeft}>
                                         <Image
-                                            source={receiveCountryData?.flag || COUNTRIES[3].flag}
+                                            source={typeof receiveCountryData?.flag === 'object' && 'uri' in receiveCountryData.flag ? receiveCountryData.flag : (receiveCountryData?.flag || FALLBACK_COUNTRIES[3].flag)}
                                             style={styles.summaryFlag}
                                             resizeMode="cover"
                                         />
@@ -656,7 +1069,9 @@ const Conversion = () => {
                             <View style={styles.summaryDetailsCard}>
                                 <View style={[styles.summaryDetailRow, {borderTopRightRadius: 10, borderTopLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                                     <ThemedText style={styles.summaryDetailLabel}>Transaction Fee</ThemedText>
-                                    <ThemedText style={styles.summaryDetailValue}>500 {sendCountryData?.currency}</ThemedText>
+                                    <ThemedText style={styles.summaryDetailValue}>
+                                        {isLoadingCalculation ? '...' : `${fee} ${feeCurrency || fromCurrency}`}
+                                    </ThemedText>
                                 </View>
                                 <View style={styles.summaryDetailRow}>
                                     <ThemedText style={styles.summaryDetailLabel}>Exchange Rate</ThemedText>
@@ -672,10 +1087,21 @@ const Conversion = () => {
                         </ScrollView>
 
                         <TouchableOpacity
-                            style={styles.summaryProceedButton}
+                            style={[
+                                styles.summaryProceedButton,
+                                (initiateMutation.isPending || isLoadingCalculation) && styles.summaryProceedButtonDisabled
+                            ]}
                             onPress={handleSummaryComplete}
+                            disabled={initiateMutation.isPending || isLoadingCalculation}
                         >
-                            <ThemedText style={styles.summaryProceedButtonText}>Complete</ThemedText>
+                            {initiateMutation.isPending ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <ActivityIndicator size="small" color="#000000" />
+                                    <ThemedText style={styles.summaryProceedButtonText}>Processing...</ThemedText>
+                                </View>
+                            ) : (
+                                <ThemedText style={styles.summaryProceedButtonText}>Complete</ThemedText>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -730,10 +1156,42 @@ const Conversion = () => {
                                     );
                                 })}
                             </View>
-                            <TouchableOpacity style={styles.fingerprintButton}>
-                                <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
+                            <TouchableOpacity 
+                                style={[
+                                    styles.fingerprintButton,
+                                    (!isBiometricAvailable || isScanning) && styles.fingerprintButtonDisabled
+                                ]}
+                                onPress={handleBiometricAuth}
+                                disabled={!isBiometricAvailable || isScanning || confirmMutation.isPending}
+                            >
+                                {isScanning ? (
+                                    <ActivityIndicator size="small" color="#A9EF45" />
+                                ) : (
+                                    <MaterialCommunityIcons 
+                                        name="fingerprint" 
+                                        size={24 * SCALE} 
+                                        color={isBiometricAvailable ? "#A9EF45" : "rgba(169, 239, 69, 0.5)"} 
+                                    />
+                                )}
                             </TouchableOpacity>
                         </View>
+                        
+                        {confirmMutation.isPending && (
+                            <View style={{ alignItems: 'center', marginTop: 20 }}>
+                                <ActivityIndicator size="small" color="#A9EF45" />
+                                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 12, marginTop: 8 }}>
+                                    Verifying PIN...
+                                </ThemedText>
+                            </View>
+                        )}
+                        
+                        {confirmMutation.isError && (
+                            <View style={{ alignItems: 'center', marginTop: 20 }}>
+                                <ThemedText style={{ color: '#ff0000', fontSize: 12 }}>
+                                    {confirmMutation.error?.message || 'Invalid PIN. Please try again.'}
+                                </ThemedText>
+                            </View>
+                        )}
 
                         <View style={styles.numpad}>
                             <View style={styles.numpadRow}>
@@ -948,24 +1406,68 @@ const Conversion = () => {
             {/* Receipt Modal */}
             <TransactionReceiptModal
                 visible={showReceiptModal}
-                transaction={{
-                    transactionType: 'fund',
-                    transactionTitle: 'Currency Conversion',
-                    transferAmount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
-                    fee: `500 ${sendCountryData?.currency}`,
-                    paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
-                    country: receiveCountryData?.name || '',
-                    recipientName: 'Currency Conversion',
-                    transactionId: `CV${Date.now().toString().slice(-10)}`,
-                    dateTime: new Date().toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                    }),
-                    paymentMethod: 'Conversion',
-                }}
+                transaction={
+                    isLoadingReceipt ? {
+                        transactionType: 'fund',
+                        transactionTitle: 'Currency Conversion',
+                        transferAmount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
+                        fee: `${fee} ${feeCurrency}`,
+                        paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
+                        country: receiveCountryData?.name || '',
+                        recipientName: 'Currency Conversion',
+                        transactionId: conversionReference || `CV${Date.now().toString().slice(-10)}`,
+                        dateTime: new Date().toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        }),
+                        paymentMethod: 'Conversion',
+                    } : receiptData?.data ? {
+                        transactionType: 'fund',
+                        transactionTitle: 'Currency Conversion',
+                        transferAmount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
+                        fee: receiptData.data.fee ? `${receiptData.data.fee} ${receiptData.data.feeCurrency || feeCurrency}` : `${fee} ${feeCurrency}`,
+                        paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
+                        country: receiveCountryData?.name || '',
+                        recipientName: 'Currency Conversion',
+                        transactionId: receiptData.data.conversionReference || conversionReference || `CV${Date.now().toString().slice(-10)}`,
+                        dateTime: receiptData.data.toTransaction?.createdAt 
+                            ? new Date(receiptData.data.toTransaction.createdAt).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            })
+                            : new Date().toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            }),
+                        paymentMethod: receiptData.data.paymentMethod || 'Conversion',
+                    } : {
+                        transactionType: 'fund',
+                        transactionTitle: 'Currency Conversion',
+                        transferAmount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
+                        fee: `${fee} ${feeCurrency}`,
+                        paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
+                        country: receiveCountryData?.name || '',
+                        recipientName: 'Currency Conversion',
+                        transactionId: conversionReference || `CV${Date.now().toString().slice(-10)}`,
+                        dateTime: new Date().toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                        }),
+                        paymentMethod: 'Conversion',
+                    }
+                }
                 onClose={handleReceiptClose}
             />
         </KeyboardAvoidingView>
@@ -1160,6 +1662,9 @@ const styles = StyleSheet.create({
         paddingVertical: 18 * SCALE,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    convertButtonDisabled: {
+        backgroundColor: 'rgba(169, 239, 69, 0.5)',
     },
     convertButtonText: {
         fontSize: 14 * 1,
@@ -1412,6 +1917,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    summaryProceedButtonDisabled: {
+        backgroundColor: 'rgba(169, 239, 69, 0.5)',
+    },
     summaryProceedButtonText: {
         fontSize: 14 * 1,
         fontWeight: '400',
@@ -1509,6 +2017,9 @@ const styles = StyleSheet.create({
         borderColor: 'rgba(255, 255, 255, 0.12)',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    fingerprintButtonDisabled: {
+        opacity: 0.5,
     },
     pinSlot: {
         width: 28 * SCALE,

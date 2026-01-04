@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,12 +8,15 @@ import {
   Dimensions,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -34,6 +37,7 @@ interface RecentTransaction {
   status: 'Successful' | 'Pending' | 'Failed';
   icon: any; // Image require() source or MaterialCommunityIcons name
   iconType?: 'icon' | 'image'; // Optional, defaults to 'image' if icon is require()
+  rawData?: any; // Store raw transaction data for navigation
 }
 
 const BillPaymentMainScreen = () => {
@@ -85,44 +89,101 @@ const BillPaymentMainScreen = () => {
     },
   ];
 
-  const recentTransactions: RecentTransaction[] = [
-    {
-      id: '1',
-      title: 'Airtime Topup',
-      amount: 'N2000',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/Ellipse 20.png'),
-      iconType: 'image',
-    },
-    {
-      id: '2',
-      title: 'Electricity Purchase',
-      amount: 'N2000',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/Ellipse 21.png'),
-      iconType: 'image',
-    },
-    {
-      id: '3',
-      title: 'Cable TV ',
-      amount: 'N2000',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/Ellipse 21 (2).png'),
-      iconType: 'image',
-    },
-    {
-      id: '4',
-      title: 'Betting Funding',
-      amount: 'N2000',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/Ellipse 22.png'),
-      iconType: 'image',
-    },
-  ];
+  // Fetch recent bill payment transactions
+  const {
+    data: transactionsData,
+    isLoading: isLoadingTransactions,
+    isError: isTransactionsError,
+    error: transactionsError,
+    refetch: refetchTransactions,
+  } = useGetBillPayments({
+    limit: 10,
+    offset: 0,
+  });
+
+  // Transform transactions to UI format
+  const recentTransactions = useMemo(() => {
+    if (!transactionsData?.data?.transactions || !Array.isArray(transactionsData.data.transactions)) {
+      return [];
+    }
+
+    return transactionsData.data.transactions.map((tx: any) => {
+      const category = tx.category || {};
+      const provider = tx.provider || {};
+      
+      // Get category name for title
+      const categoryName = category.name || category.code || 'Bill Payment';
+      
+      // Format amount
+      const amount = parseFloat(tx.amount || '0');
+      const formattedAmount = `N${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+      
+      // Format date
+      const date = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        : 'N/A';
+      
+      // Map status
+      let status: 'Successful' | 'Pending' | 'Failed' = 'Pending';
+      if (tx.status === 'completed' || tx.status === 'successful' || tx.status === 'success') {
+        status = 'Successful';
+      } else if (tx.status === 'failed' || tx.status === 'failure') {
+        status = 'Failed';
+      } else {
+        status = 'Pending';
+      }
+      
+      // Get provider logo or default icon
+      let icon: any = require('../../../assets/Ellipse 20.png');
+      let iconType: 'icon' | 'image' = 'image';
+      
+      if (provider.logoUrl) {
+        const logoUrl = `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`;
+        icon = { uri: logoUrl };
+        iconType = 'image';
+      } else {
+        // Default icons based on category
+        const categoryCode = category.code || '';
+        if (categoryCode === 'airtime') {
+          icon = require('../../../assets/Ellipse 20.png');
+        } else if (categoryCode === 'data') {
+          icon = require('../../../assets/Ellipse 21.png');
+        } else if (categoryCode === 'electricity') {
+          icon = require('../../../assets/Ellipse 21 (2).png');
+        } else if (categoryCode === 'cable_tv') {
+          icon = require('../../../assets/Ellipse 22.png');
+        } else if (categoryCode === 'betting') {
+          icon = require('../../../assets/Ellipse 22.png');
+        } else if (categoryCode === 'internet') {
+          icon = require('../../../assets/Ellipse 20.png');
+        } else {
+          icon = require('../../../assets/Ellipse 20.png');
+        }
+        iconType = 'image';
+      }
+      
+      // Build title
+      let title = categoryName;
+      if (provider.name) {
+        title = `${provider.name} - ${categoryName}`;
+      }
+      
+      return {
+        id: String(tx.id),
+        title: title,
+        amount: formattedAmount,
+        date: date,
+        status: status,
+        icon: icon,
+        iconType: iconType,
+        rawData: tx, // Store raw data for navigation
+      };
+    });
+  }, [transactionsData?.data?.transactions]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -198,17 +259,13 @@ const BillPaymentMainScreen = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest bill payment categories
-        // - Fetch latest recent transactions
-        // - Update any other data that needs refreshing
-        console.log('Refreshing bill payment data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[BillPaymentMainScreen] Refreshing bill payment data...');
+    try {
+      await refetchTransactions();
+      console.log('[BillPaymentMainScreen] Bill payment data refreshed successfully');
+    } catch (error) {
+      console.error('[BillPaymentMainScreen] Error refreshing bill payment data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -283,56 +340,82 @@ const BillPaymentMainScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.transactionsList}>
-            {recentTransactions.map((transaction) => (
+          {isLoadingTransactions ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={styles.loadingText}>Loading transactions...</ThemedText>
+            </View>
+          ) : isTransactionsError ? (
+            <View style={styles.errorContainer}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={styles.errorText}>
+                {transactionsError?.message || 'Failed to load transactions. Please try again.'}
+              </ThemedText>
               <TouchableOpacity
-                key={transaction.id}
-                style={styles.transactionItem}
-                onPress={() => handleTransactionPress(transaction)}
+                style={styles.retryButton}
+                onPress={() => refetchTransactions()}
               >
-                <View style={styles.transactionIconContainer}>
-                  <View style={styles.transactionIconCircle}>
-                    {transaction.iconType === 'image' ? (
-                      <Image
-                        source={transaction.icon}
-                        style={styles.transactionIconImage}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <MaterialCommunityIcons
-                        name={transaction.icon as any}
-                        size={20 * SCALE}
-                        color="#A9EF45"
-                      />
-                    )}
-                  </View>
-                </View>
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
-                  <View style={styles.transactionStatusRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: getStatusColor(transaction.status) },
-                      ]}
-                    />
-                    <ThemedText
-                      style={[
-                        styles.transactionStatus,
-                        { color: getStatusColor(transaction.status) },
-                      ]}
-                    >
-                      {transaction.status}
-                    </ThemedText>
-                  </View>
-                </View>
-                <View style={styles.transactionAmountContainer}>
-                  <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
-                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
-                </View>
+                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
               </TouchableOpacity>
-            ))}
-          </View>
+            </View>
+          ) : recentTransactions.length > 0 ? (
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction: RecentTransaction) => (
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={styles.transactionItem}
+                  onPress={() => handleTransactionPress(transaction)}
+                >
+                  <View style={styles.transactionIconContainer}>
+                    <View style={styles.transactionIconCircle}>
+                      {transaction.iconType === 'image' ? (
+                        <Image
+                          source={transaction.icon}
+                          style={styles.transactionIconImage}
+                          resizeMode="contain"
+                        />
+                      ) : (
+                        <MaterialCommunityIcons
+                          name={transaction.icon as any}
+                          size={20 * SCALE}
+                          color="#A9EF45"
+                        />
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
+                    <View style={styles.transactionStatusRow}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: getStatusColor(transaction.status) },
+                        ]}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.transactionStatus,
+                          { color: getStatusColor(transaction.status) },
+                        ]}
+                      >
+                        {transaction.status}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionAmountContainer}>
+                    <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <MaterialCommunityIcons name="receipt-text-outline" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+              <ThemedText style={styles.emptyText}>No recent transactions</ThemedText>
+              <ThemedText style={styles.emptySubtext}>Your bill payment transactions will appear here</ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -499,6 +582,61 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100 * SCALE,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40 * SCALE,
+    gap: 12 * SCALE,
+  },
+  loadingText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40 * SCALE,
+    gap: 12 * SCALE,
+  },
+  errorText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#ff0000',
+    textAlign: 'center',
+    paddingHorizontal: 20 * SCALE,
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 10 * SCALE,
+    marginTop: 10 * SCALE,
+  },
+  retryButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40 * SCALE,
+    gap: 8 * SCALE,
+  },
+  emptyText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    paddingHorizontal: 20 * SCALE,
   },
 });
 

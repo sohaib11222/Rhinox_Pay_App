@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,29 +20,27 @@ import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetMobileMoneyProviders } from '../../../queries/deposit.queries';
+import { useInitiateDeposit, useConfirmDeposit } from '../../../mutations/deposit.mutations';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: require('../../../assets/login/nigeria-flag.png') },
-  { id: 2, name: 'Botswana', flag: require('../../../assets/login/nigeria-flag.png') },
-  { id: 3, name: 'Ghana', flag: require('../../../assets/login/nigeria-flag.png') },
-  { id: 4, name: 'Kenya', flag: require('../../../assets/login/nigeria-flag.png') },
-  { id: 5, name: 'South Africa', flag: require('../../../assets/login/south-africa-flag.png') },
-];
-
-interface Provider {
-  id: string;
-  name: string;
-  icon: any;
-}
-
-const PROVIDERS: Provider[] = [
-  { id: '1', name: 'MTN', icon: require('../../../assets/Ellipse 20.png') },
-  { id: '2', name: 'Vodafone', icon: require('../../../assets/Ellipse 21.png') },
-  { id: '3', name: 'Airtel', icon: require('../../../assets/Ellipse 21 (2).png') },
-];
+// Currency mapping based on country code
+const getCurrencyFromCountryCode = (countryCode: string): string => {
+  const currencyMap: { [key: string]: string } = {
+    'NG': 'NGN',
+    'KE': 'KES',
+    'GH': 'GHS',
+    'ZA': 'ZAR',
+    'BW': 'BWP',
+    'TZ': 'TZS',
+    'UG': 'UGX',
+  };
+  return currencyMap[countryCode] || 'KES';
+};
 
 const Fund = () => {
   const navigation = useNavigation();
@@ -78,67 +78,261 @@ const Fund = () => {
     }, [navigation])
   );
 
-  const [balance, setBalance] = useState('0');
-  const [amount, setAmount] = useState('200,000');
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
   const [momoNumber, setMomoNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState(4); // Kenya by default
+  const [selectedCountry, setSelectedCountry] = useState<string>('KE'); // Kenya by default
   const [selectedCountryName, setSelectedCountryName] = useState('Kenya');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
+  const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
+  // Get currency from country code
+  const currency = useMemo(() => getCurrencyFromCountryCode(selectedCountry), [selectedCountry]);
+
   // Get currency symbol based on country
   const getCurrencySymbol = () => {
-    if (selectedCountryName === 'Kenya') return 'Ksh';
-    if (selectedCountryName === 'Nigeria') return 'N';
-    if (selectedCountryName === 'Ghana') return 'GHC';
+    if (selectedCountry === 'KE') return 'Ksh';
+    if (selectedCountry === 'NG') return 'N';
+    if (selectedCountry === 'GH') return 'GHC';
+    if (selectedCountry === 'ZA') return 'R';
     return 'Ksh';
   };
 
   const currencySymbol = getCurrencySymbol();
 
-  const handleProviderSelect = (providerId: string) => {
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalance,
+    refetch: refetchBalances,
+  } = useGetWalletBalances();
+
+  // Get balance for selected currency
+  const balance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+    const wallet = balancesData.data.fiat.find((w: any) => w.currency === currency);
+    return wallet?.balance || '0';
+  }, [balancesData?.data?.fiat, currency]);
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: require('../../../assets/login/nigeria-flag.png') },
+        { id: 2, name: 'Botswana', code: 'BW', flag: require('../../../assets/login/nigeria-flag.png') },
+        { id: 3, name: 'Ghana', code: 'GH', flag: require('../../../assets/login/nigeria-flag.png') },
+        { id: 4, name: 'Kenya', code: 'KE', flag: require('../../../assets/login/nigeria-flag.png') },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: require('../../../assets/login/south-africa-flag.png') },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => ({
+      id: country.id || index + 1,
+      name: country.name || '',
+      code: country.code || '',
+      flag: country.flag || require('../../../assets/login/nigeria-flag.png'),
+    }));
+  }, [countriesData?.data]);
+
+  // Fetch mobile money providers based on country and currency
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useGetMobileMoneyProviders({
+    countryCode: selectedCountry,
+    currency: currency,
+  });
+
+  // Transform providers to UI format
+  const providers = useMemo(() => {
+    if (!providersData?.data || !Array.isArray(providersData.data)) {
+      return [];
+    }
+    
+    return providersData.data.map((provider: any) => {
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'VODAFONE') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'AIRTEL_MONEY') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else if (provider.code === 'MPESA') {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      return {
+        id: provider.id,
+        name: provider.name || provider.code || '',
+        code: provider.code || '',
+        icon: icon,
+        rawData: provider,
+      };
+    });
+  }, [providersData]);
+
+  // Initiate deposit mutation
+  const initiateMutation = useInitiateDeposit({
+    onSuccess: (data: any) => {
+      console.log('[Fund] Deposit initiated successfully:', JSON.stringify(data, null, 2));
+      
+      const transactionId = 
+        data?.data?.id || 
+        (data?.data as any)?.transactionId ||
+        (data as any)?.id ||
+        (data as any)?.transactionId;
+      
+      setPendingTransactionData(data?.data);
+      
+      if (transactionId) {
+        // Convert to number if it's a string
+        const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
+        if (!isNaN(id)) {
+          setPendingTransactionId(id);
+          setShowPinModal(true);
+        } else {
+          Alert.alert('Error', 'Invalid transaction ID received');
+        }
+      } else {
+        Alert.alert('Error', 'Transaction ID not found in response');
+      }
+    },
+    onError: (error: any) => {
+      console.error('[Fund] Error initiating deposit:', error);
+      Alert.alert('Error', error?.message || 'Failed to initiate deposit');
+    },
+  });
+
+  // Confirm deposit mutation
+  const confirmMutation = useConfirmDeposit({
+    onSuccess: (data) => {
+      console.log('[Fund] Deposit confirmed successfully:', data);
+      setShowPinModal(false);
+      setPin('');
+      setPendingTransactionId(null);
+      setPendingTransactionData(null);
+      
+      // Reset form
+      setAmount('');
+      setMomoNumber('');
+      setAccountName('');
+      setSelectedProvider(null);
+      
+      // Refresh balances
+      refetchBalances();
+      
+      // Show success modal
+      setShowSuccessModal(true);
+    },
+    onError: (error: any) => {
+      console.error('[Fund] Error confirming deposit:', error);
+      Alert.alert('Error', error?.message || 'Failed to confirm deposit');
+    },
+  });
+
+  const handleProviderSelect = (providerId: number) => {
     setSelectedProvider(providerId);
     setShowProviderModal(false);
   };
 
   const handleProceed = () => {
-    if (selectedProvider && momoNumber && accountName && amount) {
-      setShowSummaryModal(true);
+    if (!selectedProvider || !momoNumber || !amount) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate amount
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    // Validate momo number
+    if (momoNumber.length < 9) {
+      Alert.alert('Error', 'Please enter a valid mobile money number');
+      return;
+    }
+
+    // Initiate deposit
+    const initiateData: any = {
+      amount: amount.replace(/,/g, ''),
+      currency: currency,
+      countryCode: selectedCountry,
+      channel: 'mobile_money',
+      providerId: String(selectedProvider),
+    };
+
+    initiateMutation.mutate(initiateData);
+  };
+
+  const handleConfirmDeposit = async () => {
+    if (!pin || pin.length < 4) {
+      Alert.alert('Error', 'Please enter your PIN');
+      return;
+    }
+
+    if (pendingTransactionId !== null && pendingTransactionId !== undefined) {
+      confirmMutation.mutate({
+        transactionId: pendingTransactionId,
+        pin: pin,
+      });
+    } else {
+      Alert.alert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
-  const handleCompleteFund = () => {
-    setShowSummaryModal(false);
-    setShowSuccessModal(true);
-  };
-
-  const filteredProviders = PROVIDERS.filter((provider) =>
+  const filteredProviders = providers.filter((provider) =>
     provider.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Auto-fill account name when momo number is entered
-  React.useEffect(() => {
-    if (momoNumber.length >= 9) {
-      setAccountName('Derrick Tsorme');
-    } else {
-      setAccountName('');
-    }
-  }, [momoNumber]);
+  // Check if proceed button should be enabled
+  const isProceedEnabled = useMemo(() => {
+    return (
+      selectedProvider !== null &&
+      momoNumber.length >= 9 &&
+      amount.replace(/,/g, '').length > 0 &&
+      !initiateMutation.isPending
+    );
+  }, [selectedProvider, momoNumber, amount, initiateMutation.isPending]);
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing wallet funding data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[Fund] Refreshing wallet funding data...');
+    try {
+      await Promise.all([
+        refetchBalances(),
+        refetchProviders(),
+      ]);
+      console.log('[Fund] Wallet funding data refreshed successfully');
+    } catch (error) {
+      console.error('[Fund] Error refreshing wallet funding data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -193,30 +387,32 @@ const Fund = () => {
                   style={styles.walletIcon}
                   resizeMode="cover"
                 />
-                <TextInput
-                  style={styles.balanceAmountInput}
-                  value={`${currencySymbol}${balance}`}
-                  onChangeText={(text) => {
-                    const numericValue = text.replace(/[KshN,]/g, '');
-                    setBalance(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Enter amount"
-                  placeholderTextColor="rgba(169, 239, 69, 0.5)"
-                />
+                {isLoadingBalance ? (
+                  <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                ) : (
+                  <ThemedText style={styles.balanceAmountInput}>
+                    {currencySymbol}{formatBalance(balance)}
+                  </ThemedText>
+                )}
               </View>
             </View>
             <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryModal(true)}
             >
-              <Image
-                source={COUNTRIES.find((c) => c.id === selectedCountry)?.flag || COUNTRIES[0].flag}
-                style={styles.countryFlagImage}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+              {isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Image
+                    source={countries.find((c) => c.code === selectedCountry)?.flag || countries[0]?.flag || require('../../../assets/login/nigeria-flag.png')}
+                    style={styles.countryFlagImage}
+                    resizeMode="cover"
+                  />
+                  <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -229,7 +425,8 @@ const Fund = () => {
               style={styles.amountInput}
               value={`${amount}${currencySymbol}`}
               onChangeText={(text) => {
-                const numericValue = text.replace(/[KshN,]/g, '');
+                // Remove currency symbols and commas
+                const numericValue = text.replace(/[KshNGHCZAR,]/g, '').replace(/\s/g, '');
                 if (numericValue === '' || /^\d+$/.test(numericValue)) {
                   setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
                 }
@@ -247,13 +444,25 @@ const Fund = () => {
             <TouchableOpacity
               style={styles.inputField}
               onPress={() => setShowProviderModal(true)}
+              disabled={isLoadingProviders}
             >
-              <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
-                {selectedProvider
-                  ? PROVIDERS.find((p) => p.id === selectedProvider)?.name || 'Destination Provider'
-                  : 'Destination Provider'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              {isLoadingProviders ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading providers...</ThemedText>
+                </View>
+              ) : (
+                <>
+                  <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
+                    {selectedProvider
+                      ? providers.find((p) => p.id === selectedProvider)?.name || 'Destination Provider'
+                      : providers.length > 0 
+                        ? 'Destination Provider' 
+                        : 'No providers available'}
+                  </ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
 
             {/* Momo Number */}
@@ -303,14 +512,15 @@ const Fund = () => {
       {/* Proceed Button - Fixed at bottom */}
       <View style={styles.proceedButtonContainer}>
         <TouchableOpacity
-          style={[
-            styles.proceedButton,
-            (!selectedProvider || !momoNumber || !accountName || !amount) && styles.proceedButtonDisabled,
-          ]}
+          style={[styles.proceedButton, !isProceedEnabled && styles.proceedButtonDisabled]}
           onPress={handleProceed}
-          disabled={!selectedProvider || !momoNumber || !accountName || !amount}
+          disabled={!isProceedEnabled || initiateMutation.isPending}
         >
-          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          {initiateMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -344,23 +554,52 @@ const Fund = () => {
             </View>
 
             {/* Provider List */}
-            <ScrollView style={styles.providerList}>
-              {filteredProviders.map((provider) => (
+            {isLoadingProviders ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading providers...
+                </ThemedText>
+              </View>
+            ) : isProvidersError ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {providersError?.message || 'Failed to load providers. Please try again.'}
+                </ThemedText>
                 <TouchableOpacity
-                  key={provider.id}
-                  style={styles.providerItem}
-                  onPress={() => handleProviderSelect(provider.id)}
+                  style={[styles.applyButton, { marginTop: 20, backgroundColor: '#A9EF45' }]}
+                  onPress={() => refetchProviders()}
                 >
-                  <Image source={provider.icon} style={styles.providerIcon} resizeMode="cover" />
-                  <ThemedText style={styles.providerName}>{provider.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedProvider === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedProvider === provider.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
+                  <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            ) : filteredProviders.length > 0 ? (
+              <ScrollView style={styles.providerList}>
+                {filteredProviders.map((provider) => (
+                  <TouchableOpacity
+                    key={provider.id}
+                    style={styles.providerItem}
+                    onPress={() => handleProviderSelect(provider.id)}
+                  >
+                    <Image source={provider.icon} style={styles.providerIcon} resizeMode="cover" />
+                    <ThemedText style={styles.providerName}>{provider.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedProvider === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedProvider === provider.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="information" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {searchQuery ? 'No providers found matching your search' : `No providers available for ${selectedCountryName}. Please try a different country.`}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -373,85 +612,69 @@ const Fund = () => {
         </View>
       </Modal>
 
-      {/* Summary Modal */}
+      {/* PIN Confirmation Modal */}
       <Modal
-        visible={showSummaryModal}
+        visible={showPinModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowSummaryModal(false)}
+        onRequestClose={() => {
+          setShowPinModal(false);
+          setPin('');
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.summaryModalContent}>
-            {/* Modal Header */}
+          <View style={styles.pinModalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
-              <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
+              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPinModal(false);
+                  setPin('');
+                }}
+              >
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-
-            {/* Amount Section */}
-            <View style={styles.summaryAmountSection}>
-              <ThemedText style={styles.summaryAmountLabel}>You are Sending</ThemedText>
-              <ThemedText style={styles.summaryAmountValue}>{amount}{currencySymbol}</ThemedText>
+            <View style={styles.pinInputContainer}>
+              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm deposit</ThemedText>
+              {pendingTransactionData && (
+                <View style={styles.paymentSummaryContainer}>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
+                  </View>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.fee || '0'}</ThemedText>
+                  </View>
+                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.totalAmount || pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
+                  </View>
+                </View>
+              )}
+              <TextInput
+                style={styles.pinInput}
+                value={pin}
+                onChangeText={setPin}
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter PIN"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                autoFocus
+              />
             </View>
-
-            {/* Account Details */}
-            <View style={styles.summaryDetailsCard}>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>MOMO Number</ThemedText>
-                <ThemedText style={styles.summaryValue}>{momoNumber}</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
-                <ThemedText style={styles.summaryValue}>
-                  {PROVIDERS.find((p) => p.id === selectedProvider)?.name || ''}
-                </ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Account Name</ThemedText>
-                <ThemedText style={styles.summaryValue}>{accountName}</ThemedText>
-              </View>
-            </View>
-
-            {/* Transaction Details */}
-            <View style={styles.summaryDetailsCard}>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Transaction Fee</ThemedText>
-                <ThemedText style={styles.summaryValue}>20 {currencySymbol}</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Funding Route</ThemedText>
-                <ThemedText style={styles.summaryValue}>Mobile Money</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
-                <ThemedText style={styles.summaryValue}>
-                  {PROVIDERS.find((p) => p.id === selectedProvider)?.name || ''}
-                </ThemedText>
-              </View>
-            </View>
-
-            {/* Warning Section */}
-            <View style={styles.warningSectionModal}>
-              <View style={styles.warningRow}>
-                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <ThemedText style={styles.warningText}>
-                  Ensure you are sending cash to the right mobile money account to prevent loss of funds
-                </ThemedText>
-              </View>
-              <View style={styles.warningRow}>
-                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <ThemedText style={styles.warningText}>Payment will take a few minutes to reflect</ThemedText>
-              </View>
-            </View>
-
-            {/* Complete Button */}
             <TouchableOpacity
-              style={styles.completeButton}
-              onPress={handleCompleteFund}
+              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+              onPress={handleConfirmDeposit}
+              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
             >
-              <ThemedText style={styles.completeButtonText}>Complete Withdrawal</ThemedText>
+              {confirmMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.confirmButtonText}>Confirm Deposit</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -484,7 +707,7 @@ const Fund = () => {
           amountNGN: `${amount}${currencySymbol}`,
           fee: `20${currencySymbol}`,
           mobileNumber: momoNumber,
-          provider: PROVIDERS.find((p) => p.id === selectedProvider)?.name || '',
+          provider: providers.find((p) => p.id === selectedProvider)?.name || '',
           accountName: accountName,
           country: selectedCountryName,
           transactionId: '12dwerkxywurcksc',
@@ -517,22 +740,37 @@ const Fund = () => {
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.countryList}>
-              {COUNTRIES.map((country) => (
-                <TouchableOpacity
-                  key={country.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(country.id);
-                    setSelectedCountryName(country.name);
-                    setShowCountryModal(false);
-                  }}
-                >
-                  <Image source={country.flag} style={styles.countryFlagImage} resizeMode="cover" />
-                  <ThemedText style={styles.countryNameText}>{country.name}</ThemedText>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.countryList}>
+                {countries.map((country) => (
+                  <TouchableOpacity
+                    key={country.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(country.code);
+                      setSelectedCountryName(country.name);
+                      // Refetch providers when country changes
+                      refetchProviders();
+                      // Reset provider selection
+                      setSelectedProvider(null);
+                      setShowCountryModal(false);
+                    }}
+                  >
+                    <Image source={country.flag} style={styles.countryFlagImage} resizeMode="cover" />
+                    <ThemedText style={styles.countryNameText}>{country.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === country.code ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedCountry === country.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -921,6 +1159,83 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.3,
     borderBottomColor: 'rgba(255, 255, 255, 0.2)',
     gap: 12 * SCALE,
+  },
+  pinModalContent: {
+    backgroundColor: '#020C19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    maxHeight: '50%',
+  },
+  pinInputContainer: {
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 20 * SCALE,
+  },
+  pinLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 15 * SCALE,
+    textAlign: 'center',
+  },
+  pinInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 15 * SCALE,
+    fontSize: 18 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 8,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  confirmButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 22 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+  },
+  confirmButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  paymentSummaryContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  paymentSummaryTotal: {
+    marginTop: 8 * SCALE,
+    paddingTop: 8 * SCALE,
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  paymentSummaryValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });
 

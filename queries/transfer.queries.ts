@@ -35,7 +35,7 @@ export const useGetTransferEligibility = (options?: UseQueryOptions<ApiResponse,
  */
 export const getTransferReceipt = async (transactionId: string): Promise<ApiResponse> => {
   try {
-    const route = buildRouteWithParams(`/transfer/receipt/{transactionId}`, { transactionId });
+    const route = buildRouteWithParams(API_ROUTES.TRANSFER.RECEIPT + '/{transactionId}', { transactionId });
     const response = await apiClient.get(route);
     return response.data;
   } catch (error: any) {
@@ -48,7 +48,7 @@ export const getTransferReceipt = async (transactionId: string): Promise<ApiResp
  */
 export const useGetTransferReceipt = (
   transactionId: string,
-  options?: UseQueryOptions<ApiResponse, Error>
+  options?: Omit<UseQueryOptions<ApiResponse, Error>, 'queryKey' | 'queryFn'>
 ) => {
   return useQuery<ApiResponse, Error>({
     queryKey: ['transfer', 'receipt', transactionId],

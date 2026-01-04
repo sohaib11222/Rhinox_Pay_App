@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,6 +12,7 @@ import {
   TextInput,
   RefreshControl,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +20,9 @@ import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../components/TransactionReceiptModal';
+import { useGetHomeData, useGetWalletBalances, useGetHomeTransactions } from '../../queries/home.queries';
+import { useGetCountries } from '../../queries/country.queries';
+import { API_BASE_URL } from '../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
@@ -41,8 +45,8 @@ const HomeScreen = () => {
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('Fiat');
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState<number | null>(1);
-  const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
+  const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
+  const [selectedCountryName, setSelectedCountryName] = useState('');
   const [showSendFundsModal, setShowSendFundsModal] = useState(false);
   const [sendFundsWalletType, setSendFundsWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showSendFundsCountryModal, setShowSendFundsCountryModal] = useState(false);
@@ -60,31 +64,258 @@ const HomeScreen = () => {
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
-  // Balance data for Fiat and Crypto
-  const [fiatBalance] = useState({
-    currency: 'N',
-    amount: '2,000,000.',
-    decimals: '00',
-    fullAmount: '2,000,000.00',
-  });
-  const [cryptoBalance] = useState({
-    currency: 'BTC',
-    amount: '0.00001',
-    decimals: '',
-    fullAmount: '0.00001',
+  // API Queries
+  const { 
+    data: homeData, 
+    isLoading: isLoadingHomeData, 
+    isError: isErrorHomeData,
+    refetch: refetchHomeData 
+  } = useGetHomeData();
+
+  const { 
+    data: walletsData, 
+    isLoading: isLoadingWallets, 
+    isError: isErrorWallets,
+    refetch: refetchWallets 
+  } = useGetWalletBalances();
+
+  // Fetch home transactions
+  const { 
+    data: transactionsData, 
+    isLoading: isLoadingTransactions, 
+    isError: isErrorTransactions,
+    refetch: refetchTransactions 
+  } = useGetHomeTransactions({
+    limit: 10,
+    fiatLimit: 10,
+    cryptoLimit: 10,
   });
 
-  // Transaction totals for Fiat and Crypto
-  const [fiatTransactionTotal] = useState({
-    currency: 'N',
-    amount: '150,000.',
-    decimals: '00',
+  // Fetch countries for country modal
+  const { data: countriesData, isLoading: isLoadingCountries } = useGetCountries({
+    queryKey: ['countries'],
   });
-  const [cryptoTransactionTotal] = useState({
-    currency: 'BTC',
-    amount: '0.00150',
+  const countries = countriesData?.data || [];
+
+  // Extract data from API responses
+  const homeDataResponse = homeData?.data;
+  const user = homeDataResponse?.user;
+  const fiatWalletsFromAPI = homeDataResponse?.wallets || [];
+  const cryptoWalletsFromAPI = homeDataResponse?.cryptoWallets || [];
+  // Combine wallets from both sources - use active wallets only
+  const allFiatWallets = fiatWalletsFromAPI.filter((w: any) => w.isActive !== false);
+  const allCryptoWallets = cryptoWalletsFromAPI.filter((w: any) => w.active !== false);
+  const allWallets = [...allFiatWallets, ...allCryptoWallets];
+  const wallets = walletsData?.data || allWallets;
+
+  // Filter wallets based on selected country
+  const filteredWallets = useMemo(() => {
+    if (!selectedCountry) {
+      // If no country selected, show all wallets
+      return allWallets;
+    }
+    // Filter wallets by country ID
+    // Fiat wallets typically have countryId or country.id
+    // Crypto wallets don't have country, so show all crypto wallets
+    const filteredFiat = allFiatWallets.filter((w: any) => {
+      return w.countryId === selectedCountry || 
+             w.country?.id === selectedCountry ||
+             w.countryId === selectedCountry;
+    });
+    // Always show crypto wallets regardless of country selection
+    return [...filteredFiat, ...allCryptoWallets];
+  }, [allWallets, allFiatWallets, allCryptoWallets, selectedCountry]);
+  const totalBalance = homeDataResponse?.totalBalance || '0.00';
+  const activeWalletsCount = homeDataResponse?.activeWalletsCount || 0;
+  const activeCryptoWalletsCount = homeDataResponse?.activeCryptoWalletsCount || 0;
+  const recentTransactionsCount = homeDataResponse?.recentTransactionsCount || 0;
+
+  // Calculate Fiat and Crypto balances from wallets
+  const fiatWallets = allFiatWallets;
+  const cryptoWallets = allCryptoWallets;
+  
+  const fiatTotal = fiatWallets.reduce((sum: number, w: any) => sum + parseFloat(w.balance || '0'), 0);
+  const cryptoTotal = cryptoWallets.reduce((sum: number, w: any) => sum + parseFloat(w.balance || '0'), 0);
+
+  // Get currency name mapping
+  const getCurrencyName = (currency: string, wallet?: any) => {
+    if (wallet?.currencyName) return wallet.currencyName;
+    const currencyNames: { [key: string]: string } = {
+      'NGN': 'Nigerian Naira',
+      'KES': 'Kenya Shilling',
+      'GHS': 'Ghana Cedi',
+      'ZAR': 'South African Rand',
+      'TZS': 'Tanzanian Shilling',
+      'UGX': 'Ugandan Shilling',
+      'USD': 'US Dollar',
+      'EUR': 'Euro',
+      'GBP': 'British Pound',
+      'BTC': 'Bitcoin',
+      'ETH': 'Ethereum',
+      'USDT': 'Tether USD',
+      'BNB': 'Binance Coin',
+      'SOL': 'Solana',
+      'DOGE': 'Dogecoin',
+      'LTC': 'Litecoin',
+      'XRP': 'Ripple',
+      'TRX': 'Tron',
+      'MATIC': 'Polygon',
+      'USDC': 'USD Coin',
+    };
+    return currencyNames[currency] || currency;
+  };
+
+  // Initialize selected country from user's country
+  useEffect(() => {
+    if (user?.country && !selectedCountry) {
+      setSelectedCountry(user.country.id);
+      setSelectedCountryName(user.country.name);
+    }
+  }, [user?.country]);
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const formatBalanceNoDecimals = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { maximumFractionDigits: 8 });
+  };
+
+  // Balance data for Fiat and Crypto (from API or fallback)
+  const fiatBalance = {
+    currency: fiatWallets[0]?.currency || 'N',
+    amount: formatBalance(fiatTotal).split('.')[0] + '.',
+    decimals: formatBalance(fiatTotal).split('.')[1] || '00',
+    fullAmount: formatBalance(fiatTotal),
+  };
+
+  const cryptoBalance = {
+    currency: cryptoWallets[0]?.currency || 'BTC',
+    amount: formatBalanceNoDecimals(cryptoTotal),
     decimals: '',
-  });
+    fullAmount: formatBalanceNoDecimals(cryptoTotal),
+  };
+
+  // Extract transaction data from API
+  const transactionsResponse = transactionsData?.data;
+  const fiatTransactionsData = transactionsResponse?.fiat;
+  const cryptoTransactionsData = transactionsResponse?.crypto;
+
+  // Transaction totals for Fiat and Crypto (from API)
+  const fiatTransactionTotal = useMemo(() => {
+    if (!fiatTransactionsData?.totalBalance) {
+      return { currency: 'N', amount: '0.', decimals: '00' };
+    }
+    const total = parseFloat(fiatTransactionsData.totalBalance);
+    const formatted = formatBalance(total);
+    const parts = formatted.split('.');
+    return {
+      currency: 'N',
+      amount: parts[0] + '.',
+      decimals: parts[1] || '00',
+    };
+  }, [fiatTransactionsData?.totalBalance]);
+
+  const cryptoTransactionTotal = useMemo(() => {
+    if (!cryptoTransactionsData?.totalBalanceInUSDT) {
+      return { currency: 'USDT', amount: '0.00', decimals: '' };
+    }
+    const total = parseFloat(cryptoTransactionsData.totalBalanceInUSDT);
+    const formatted = formatBalance(total);
+    return {
+      currency: 'USDT',
+      amount: formatted,
+      decimals: '',
+    };
+  }, [cryptoTransactionsData?.totalBalanceInUSDT]);
+
+  // Helper function to get icon from transaction type
+  const getIconFromType = (type: string): string => {
+    const typeLower = type.toLowerCase();
+    if (typeLower.includes('fund') || typeLower.includes('deposit')) return 'arrow-up-circle';
+    if (typeLower.includes('send') || typeLower.includes('withdraw')) return 'arrow-up';
+    if (typeLower.includes('bill')) return 'file-document';
+    if (typeLower.includes('p2p')) return 'account-group';
+    if (typeLower.includes('convert') || typeLower.includes('exchange')) return 'swap-horizontal';
+    if (typeLower.includes('crypto')) return 'bitcoin';
+    return 'arrow-up-circle';
+  };
+
+  // Transform API transactions to UI format
+  const allTransactions = useMemo(() => {
+    const transactionsList: any[] = [];
+    
+    // Add fiat transactions
+    if (fiatTransactionsData?.recentTransactions && Array.isArray(fiatTransactionsData.recentTransactions)) {
+      fiatTransactionsData.recentTransactions.forEach((tx: any) => {
+        const date = tx.createdAt 
+          ? new Date(tx.createdAt).toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric' 
+            })
+          : 'N/A';
+        
+        transactionsList.push({
+          id: tx.id,
+          title: tx.description || tx.type || 'Transaction',
+          subtitle: tx.status || 'Completed',
+          amount: tx.formattedAmount || `${tx.isPositive ? '+' : ''}${tx.currencySymbol || ''}${formatBalance(tx.amount)}`,
+          date: date,
+          icon: getIconFromType(tx.type || tx.description || ''),
+          status: tx.status || 'Completed',
+          type: 'fiat',
+          rawData: tx,
+        });
+      });
+    }
+    
+    // Add crypto transactions
+    if (cryptoTransactionsData?.recentTransactions && Array.isArray(cryptoTransactionsData.recentTransactions)) {
+      cryptoTransactionsData.recentTransactions.forEach((tx: any) => {
+        const date = tx.createdAt 
+          ? new Date(tx.createdAt).toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric' 
+            })
+          : 'N/A';
+        
+        transactionsList.push({
+          id: tx.id,
+          title: tx.description || tx.type || 'Crypto Transaction',
+          subtitle: tx.status || 'Completed',
+          amount: tx.formattedAmount || `${tx.isPositive ? '+' : ''}${formatBalance(tx.amount)} ${tx.currency}`,
+          date: date,
+          icon: getIconFromType(tx.type || tx.description || ''),
+          status: tx.status || 'Completed',
+          type: 'crypto',
+          rawData: tx,
+        });
+      });
+    }
+    
+    // Sort by date (most recent first)
+    return transactionsList.sort((a, b) => {
+      const dateA = a.rawData?.createdAt ? new Date(a.rawData.createdAt).getTime() : 0;
+      const dateB = b.rawData?.createdAt ? new Date(b.rawData.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [fiatTransactionsData?.recentTransactions, cryptoTransactionsData?.recentTransactions]);
+
+  // Filter transactions based on selected filter
+  const transactions = useMemo(() => {
+    if (selectedFilter === 'Fiat') {
+      return allTransactions.filter(tx => tx.type === 'fiat').slice(0, 10);
+    } else {
+      return allTransactions.filter(tx => tx.type === 'crypto').slice(0, 10);
+    }
+  }, [allTransactions, selectedFilter]);
 
   // Promotional banner images - using complete banner images
   const promoBanners = [
@@ -93,27 +324,19 @@ const HomeScreen = () => {
     { id: 3, image: require('../../assets/Frame 89.png') },
   ];
 
-  // Mock data
-  const transactions = [
-    { id: 1, title: 'Fund Wallet', subtitle: 'From Bank', amount: '+N20,000', date: 'Oct 15,2025', icon: 'arrow-up-circle', status: 'Successful' },
-    { id: 2, title: 'NGN to GHC', subtitle: 'Successful', amount: 'N20,000 to c200', date: 'Oct 15,2025', icon: 'swap-horizontal', status: 'Successful' },
-    { id: 3, title: 'Fund Wallet', subtitle: 'From Bank', amount: '+N20,000', date: 'Oct 15,2025', icon: 'arrow-up-circle', status: 'Successful' },
-  ];
-
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest balance
-        // - Fetch latest transactions
-        // - Fetch latest wallet data
-        // - Update any other data that needs refreshing
-        console.log('Refreshing data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[HomeScreen] Refreshing data...');
+    try {
+      await Promise.all([
+        refetchHomeData(),
+        refetchWallets(),
+        refetchTransactions(),
+      ]);
+      console.log('[HomeScreen] Data refreshed successfully');
+    } catch (error) {
+      console.error('[HomeScreen] Error refreshing data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -181,7 +404,13 @@ const HomeScreen = () => {
 
           {/* Greeting Text */}
           <View style={styles.greetingContainer}>
-            <ThemedText style={styles.greetingText}>Hi, AbdulMalik</ThemedText>
+            {isLoadingHomeData ? (
+              <ActivityIndicator size="small" color="#A9EF45" />
+            ) : (
+              <ThemedText style={styles.greetingText}>
+                Hi, {user?.firstName || 'User'}
+              </ThemedText>
+            )}
             <View style={styles.welcomeRow}>
               <ThemedText style={styles.welcomeText}>Welcome</ThemedText>
               <ThemedText style={styles.welcomeEmoji}>👋</ThemedText>
@@ -194,11 +423,36 @@ const HomeScreen = () => {
             onPress={() => setShowCountryModal(true)}
           >
             <View style={styles.iconCircle}>
-              <Image
-                source={require('../../assets/login/nigeria-flag.png')}
-                style={[{ marginBottom: -1, width: 26, height: 26 }]}
-                resizeMode="cover"
-              />
+              {isLoadingHomeData || isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#A9EF45" />
+              ) : (() => {
+                // Show selected country flag if available, otherwise user's country flag
+                const selectedCountryData = countries.find((c: any) => c.id === selectedCountry);
+                const flagToShow = selectedCountryData?.flag || user?.country?.flag;
+                const codeToShow = selectedCountryData?.code || user?.country?.code;
+                
+                if (flagToShow) {
+                  return (
+                    <Image
+                      source={{ uri: `${API_BASE_URL.replace('/api', '')}${flagToShow}` }}
+                      style={[{ marginBottom: -1, width: 26, height: 26 }]}
+                      resizeMode="cover"
+                    />
+                  );
+                } else if (codeToShow) {
+                  return (
+                    <ThemedText style={{ color: '#FFFFFF', fontSize: 16 }}>{codeToShow}</ThemedText>
+                  );
+                } else {
+                  return (
+                    <Image
+                      source={require('../../assets/login/nigeria-flag.png')}
+                      style={[{ marginBottom: -1, width: 26, height: 26 }]}
+                      resizeMode="cover"
+                    />
+                  );
+                }
+              })()}
             </View>
           </TouchableOpacity>
 
@@ -221,20 +475,24 @@ const HomeScreen = () => {
         <View style={styles.balanceSection}>
           <ThemedText style={styles.balanceLabel}>Your balance</ThemedText>
           <View style={styles.balanceRow}>
-            <ThemedText style={styles.balanceAmount}>
-              {selectedFilter === 'Fiat' ? (
-                <>
-                  <ThemedText style={styles.balanceCurrency}>{fiatBalance.currency}</ThemedText>
-                  {balanceVisible ? fiatBalance.amount : '*******.'}
-                  <ThemedText style={styles.balanceDecimals}>{fiatBalance.decimals}</ThemedText>
-                </>
-              ) : (
-                <>
-                  <ThemedText>{balanceVisible ? cryptoBalance.amount : '*******'} </ThemedText>
-                  <ThemedText style={styles.balanceCurrency}>{cryptoBalance.currency}</ThemedText>
-                </>
-              )}
-            </ThemedText>
+            {isLoadingHomeData ? (
+              <ActivityIndicator size="small" color="#A9EF45" style={{ marginRight: 10 }} />
+            ) : (
+              <ThemedText style={styles.balanceAmount}>
+                {selectedFilter === 'Fiat' ? (
+                  <>
+                    <ThemedText style={styles.balanceCurrency}>{fiatBalance.currency}</ThemedText>
+                    {balanceVisible ? fiatBalance.amount : '*******.'}
+                    <ThemedText style={styles.balanceDecimals}>{fiatBalance.decimals}</ThemedText>
+                  </>
+                ) : (
+                  <>
+                    <ThemedText>{balanceVisible ? cryptoBalance.amount : '*******'} </ThemedText>
+                    <ThemedText style={styles.balanceCurrency}>{cryptoBalance.currency}</ThemedText>
+                  </>
+                )}
+              </ThemedText>
+            )}
             <TouchableOpacity
               onPress={() => setBalanceVisible(!balanceVisible)}
               style={styles.eyeButton}
@@ -287,7 +545,9 @@ const HomeScreen = () => {
 
         {/* Active Wallets Section */}
         <View style={styles.walletsHeader}>
-          <ThemedText style={styles.walletsTitle}>Active Wallets</ThemedText>
+          <ThemedText style={styles.walletsTitle}>
+            Active Wallets{selectedCountryName ? ` - ${selectedCountryName}` : ''}
+          </ThemedText>
           <TouchableOpacity
             onPress={() => {
               (navigation as any).navigate('Wallet', {
@@ -299,56 +559,99 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Wallet Cards */}
-        <View style={styles.walletCardsContainer}>
-          {/* NGN Wallet Card with Linear Gradient */}
-          <LinearGradient
-            colors={['#4880C0', '#1B589E']} // Darker blue at top to lighter blue at bottom
-            start={{ x: 1, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.walletCard}
-          >
-            <View style={styles.walletCardContent}>
-              <Image
-                source={require('../../assets/login/nigeria-flag.png')}
-                style={styles.walletIcon}
-                resizeMode="cover"
-              />
-              <View style={styles.walletInfo}>
-                <ThemedText style={styles.walletCode}>NGN</ThemedText>
-                <ThemedText style={styles.walletName}>Nigerian Naira</ThemedText>
-              </View>
-            </View>
-            <View style={styles.walletDivider} />
-            <ThemedText style={styles.walletBalanceLabel}>Balance</ThemedText>
-            <ThemedText style={styles.walletBalanceAmount}>
-              2,000,000.00<ThemedText style={styles.walletBalanceCurrency}>NGN</ThemedText>
-            </ThemedText>
-            <ThemedText style={styles.walletUsdAmount}>$20,000</ThemedText>
-          </LinearGradient>
-
-          {/* KSH Wallet Card */}
-          <View style={[styles.walletCard, styles.walletCardWhite]}>
-            <View style={styles.walletCardContent}>
-              <Image
-                source={require('../../assets/Mask group.png')}
-                style={styles.walletIcon}
-                resizeMode="cover"
-              />
-
-              <View style={styles.walletInfo}>
-                <ThemedText style={[styles.walletCode, styles.walletCodeDark]}>KSH</ThemedText>
-                <ThemedText style={[styles.walletName, styles.walletNameDark]}>Kenya Shilling</ThemedText>
-              </View>
-            </View>
-            <View style={styles.walletDivider} />
-            <ThemedText style={[styles.walletBalanceLabel, styles.walletBalanceLabelDark]}>Balance</ThemedText>
-            <ThemedText style={[styles.walletBalanceAmount, styles.walletBalanceAmountDark]}>
-              20,000<ThemedText style={styles.walletBalanceCurrencyDark}>KSH</ThemedText>
-            </ThemedText>
-            <ThemedText style={[styles.walletUsdAmount, styles.walletUsdAmountDark]}>$20,000</ThemedText>
+        {/* Wallet Cards - Horizontal Scrollable */}
+        {isLoadingWallets && isLoadingHomeData ? (
+          <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', minHeight: 139 * SCALE, marginHorizontal: SCREEN_WIDTH * 0.047 }]}>
+            <ActivityIndicator size="small" color="#A9EF45" />
           </View>
-        </View>
+        ) : filteredWallets.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.walletCardsScrollContent}
+            style={styles.walletCardsScrollView}
+          >
+            {filteredWallets.map((wallet: any, index: number) => {
+              const isFirst = index === 0;
+              const isFiat = wallet.type === 'fiat';
+              const flagUri = wallet.flag ? `${API_BASE_URL.replace('/api', '')}${wallet.flag}` : null;
+              const currencyName = getCurrencyName(wallet.currency, wallet);
+              
+              const WalletCardContent = (
+                <>
+                  <View style={styles.walletCardContent}>
+                    {isFiat && flagUri ? (
+                      <Image
+                        source={{ uri: flagUri }}
+                        style={styles.walletIcon}
+                        resizeMode="cover"
+                      />
+                    ) : isFiat ? (
+                      <Image
+                        source={require('../../assets/login/nigeria-flag.png')}
+                        style={styles.walletIcon}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Image
+                        source={require('../../assets/CurrencyBtc.png')}
+                        style={styles.walletIcon}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <View style={styles.walletInfo}>
+                      <ThemedText style={[styles.walletCode, !isFirst && styles.walletCodeDark]}>
+                        {wallet.currency}
+                      </ThemedText>
+                      <ThemedText style={[styles.walletName, !isFirst && styles.walletNameDark]}>
+                        {currencyName}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.walletDivider} />
+                  <ThemedText style={[styles.walletBalanceLabel, !isFirst && styles.walletBalanceLabelDark]}>
+                    Balance
+                  </ThemedText>
+                  <ThemedText style={[styles.walletBalanceAmount, !isFirst && styles.walletBalanceAmountDark]}>
+                    {isFiat ? formatBalance(wallet.balance) : formatBalanceNoDecimals(wallet.balance)}
+                    <ThemedText style={[styles.walletBalanceCurrency, !isFirst && styles.walletBalanceCurrencyDark]}>
+                      {wallet.currency}
+                    </ThemedText>
+                  </ThemedText>
+                  <ThemedText style={[styles.walletUsdAmount, !isFirst && styles.walletUsdAmountDark]}>
+                    ${formatBalance(parseFloat(wallet.balance || '0') * 0.001)} {/* Placeholder USD conversion */}
+                  </ThemedText>
+                </>
+              );
+
+              if (isFirst && isFiat) {
+                return (
+                  <LinearGradient
+                    key={wallet.id}
+                    colors={['#4880C0', '#1B589E']}
+                    start={{ x: 1, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={styles.walletCard}
+                  >
+                    {WalletCardContent}
+                  </LinearGradient>
+                );
+              } else {
+                return (
+                  <View key={wallet.id} style={[styles.walletCard, styles.walletCardWhite]}>
+                    {WalletCardContent}
+                  </View>
+                );
+              }
+            })}
+          </ScrollView>
+        ) : (
+          <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', minHeight: 139 * SCALE, marginHorizontal: SCREEN_WIDTH * 0.047 }]}>
+            <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+              {selectedCountry ? `No wallets found for ${selectedCountryName}` : 'No wallets found'}
+            </ThemedText>
+          </View>
+        )}
 
         {/* Promotional Banner Carousel */}
         <View style={styles.promoBannerContainer}>
@@ -434,20 +737,26 @@ const HomeScreen = () => {
               )}
             </View>
           </View>
-          <ThemedText style={styles.transactionTotalAmount}>
-            {selectedFilter === 'Fiat' ? (
-              <>
-                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>{fiatTransactionTotal.currency} </ThemedText>
-                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}>{fiatTransactionTotal.amount}</ThemedText>
-                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalDecimals}>{fiatTransactionTotal.decimals}</ThemedText>
-              </>
-            ) : (
-              <>
-                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}>{cryptoTransactionTotal.amount} </ThemedText>
-                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>{cryptoTransactionTotal.currency}</ThemedText>
-              </>
-            )}
-          </ThemedText>
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : (
+            <ThemedText style={styles.transactionTotalAmount}>
+              {selectedFilter === 'Fiat' ? (
+                <>
+                  <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>{fiatTransactionTotal.currency} </ThemedText>
+                  <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}>{fiatTransactionTotal.amount}</ThemedText>
+                  <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalDecimals}>{fiatTransactionTotal.decimals}</ThemedText>
+                </>
+              ) : (
+                <>
+                  <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}>{cryptoTransactionTotal.amount} </ThemedText>
+                  <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>{cryptoTransactionTotal.currency}</ThemedText>
+                </>
+              )}
+            </ThemedText>
+          )}
 
           {/* Chart Bars */}
           <View style={styles.chartBars}>
@@ -493,35 +802,45 @@ const HomeScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {transactions.map((transaction) => (
-            <TouchableOpacity
-              key={transaction.id}
-              style={styles.transactionItem}
-              onPress={() => handleTransactionPress(transaction)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.transactionIconContainer}>
-                <View style={styles.transactionIconCircle}>
-                  <MaterialCommunityIcons
-                    name={transaction.icon as any}
-                    size={14 * SCALE}
-                    color="#A9EF45"
-                  />
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : transactions.length > 0 ? (
+            transactions.map((transaction) => (
+              <TouchableOpacity
+                key={transaction.id}
+                style={styles.transactionItem}
+                onPress={() => handleTransactionPress(transaction)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.transactionIconContainer}>
+                  <View style={styles.transactionIconCircle}>
+                    <MaterialCommunityIcons
+                      name={transaction.icon as any}
+                      size={14 * SCALE}
+                      color="#A9EF45"
+                    />
+                  </View>
                 </View>
-              </View>
-              <View style={styles.transactionDetails}>
-                <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
-                <View style={styles.transactionStatusRow}>
-                  <View style={styles.statusDot} />
-                  <ThemedText style={styles.transactionSubtitle}>{transaction.status || transaction.subtitle}</ThemedText>
+                <View style={styles.transactionDetails}>
+                  <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
+                  <View style={styles.transactionStatusRow}>
+                    <View style={styles.statusDot} />
+                    <ThemedText style={styles.transactionSubtitle}>{transaction.status || transaction.subtitle}</ThemedText>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.transactionAmountContainer}>
-                <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
-                <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
-              </View>
-            </TouchableOpacity>
-          ))}
+                <View style={styles.transactionAmountContainer}>
+                  <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
+                </View>
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>No recent transactions</ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -543,26 +862,43 @@ const HomeScreen = () => {
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(c.id);
-                    setSelectedCountryName(c.name);
-                  }}
-                >
-                  <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
-                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((c: any) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(c.id);
+                      setSelectedCountryName(c.name);
+                      setShowCountryModal(false);
+                      // Update wallets on home page based on selected country
+                      // No navigation needed - wallets will update automatically
+                    }}
+                  >
+                    {c.flag ? (
+                      <Image
+                        source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
+                    )}
+                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24}
+                      color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity 
               style={styles.applyButton} 
               onPress={() => setShowCountryModal(false)}
@@ -987,26 +1323,40 @@ const HomeScreen = () => {
                   <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.modalList}>
-                {COUNTRIES.map((c) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={styles.countryItem}
-                    onPress={() => {
-                      setSelectedCountry(c.id);
-                      setSelectedCountryName(c.name);
-                    }}
-                  >
-                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
-                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                    <MaterialCommunityIcons
-                      name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                      size={24}
-                      color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              {isLoadingCountries ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                </View>
+              ) : (
+                <ScrollView style={styles.modalList}>
+                  {countries.map((c: any) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedCountry(c.id);
+                        setSelectedCountryName(c.name);
+                      }}
+                    >
+                      {c.flag ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
+                      )}
+                      <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
               <TouchableOpacity 
                 style={styles.applyButton} 
                 onPress={() => setShowSendFundsCountryModal(false)}
@@ -1406,26 +1756,40 @@ const HomeScreen = () => {
                   <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.modalList}>
-                {COUNTRIES.map((c) => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={styles.countryItem}
-                    onPress={() => {
-                      setSelectedCountry(c.id);
-                      setSelectedCountryName(c.name);
-                    }}
-                  >
-                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
-                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                    <MaterialCommunityIcons
-                      name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                      size={24}
-                      color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              {isLoadingCountries ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                </View>
+              ) : (
+                <ScrollView style={styles.modalList}>
+                  {countries.map((c: any) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedCountry(c.id);
+                        setSelectedCountryName(c.name);
+                      }}
+                    >
+                      {c.flag ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
+                      )}
+                      <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
               <TouchableOpacity 
                 style={styles.applyButton} 
                 onPress={() => setShowFundWalletCountryModal(false)}
@@ -1611,6 +1975,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SCREEN_WIDTH * 0.047,
     gap: 10 * SCALE,
     marginBottom: 20 * SCALE,
+  },
+  walletCardsScrollView: {
+    marginBottom: 20 * SCALE,
+  },
+  walletCardsScrollContent: {
+    paddingHorizontal: SCREEN_WIDTH * 0.047,
+    gap: 10 * SCALE,
   },
   walletCard: {
     flex: 1,
@@ -2318,6 +2689,12 @@ const styles = StyleSheet.create({
   },
   countryFlag: {
     fontSize: 20,
+    marginRight: 15,
+  },
+  countryFlagImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     marginRight: 15,
   },
   countryName: {

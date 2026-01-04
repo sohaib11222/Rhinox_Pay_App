@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,56 +10,23 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetBillPaymentProviders, useGetBillPaymentPlans, useGetBillPaymentBeneficiaries } from '../../../queries/billPayment.queries';
+import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
-
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬' },
-  { id: 2, name: 'Botswana', flag: '🇧🇼' },
-  { id: 3, name: 'Ghana', flag: '🇬🇭' },
-  { id: 4, name: 'Kenya', flag: '🇰🇪' },
-  { id: 5, name: 'South Africa', flag: '🇿🇦' },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿' },
-  { id: 7, name: 'Uganda', flag: '🇺🇬' },
-];
-
-const NETWORKS = [
-  { id: '1', name: 'MTN', icon: require('../../../assets/Ellipse 20.png') },
-  { id: '2', name: 'GLO', icon: require('../../../assets/Ellipse 21.png') },
-  { id: '3', name: 'Airtel', icon: require('../../../assets/Ellipse 21 (2).png') },
-];
-
-interface DataPlan {
-  id: string;
-  title: string; // e.g., "1 GIG for 1 Day"
-  description: string; // e.g., "Daily Plan - N1,000"
-  category: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
-  data: string;
-  validity: string;
-  price: string;
-}
-
-// Mock data plans - Replace with API calls later
-const DATA_PLANS: DataPlan[] = [
-  { id: '1', title: '1 GIG for 1 Day', description: 'Daily Plan - N1,000', category: 'Daily', data: '1 GB', validity: '1 Day', price: 'N1,000' },
-  { id: '2', title: '1 GIG for 1 Day', description: 'Daily Plan', category: 'Daily', data: '1 GB', validity: '1 Day', price: 'N1,000' },
-  { id: '3', title: '1 GIG for 1 Day', description: 'Daily Plan', category: 'Daily', data: '1 GB', validity: '1 Day', price: 'N1,000' },
-  { id: '4', title: '1 GIG for 1 Day', description: 'Daily Plan', category: 'Daily', data: '1 GB', validity: '1 Day', price: 'N1,000' },
-  { id: '5', title: '10 GIG for 1 Month', description: 'Monthly Plan - N20,000', category: 'Monthly', data: '10 GB', validity: '30 Days', price: 'N20,000' },
-  { id: '6', title: '300 GIG for 1 Year', description: 'Yearly Plan - N150,000', category: 'Yearly', data: '300 GB', validity: '365 Days', price: 'N150,000' },
-  { id: '7', title: 'Weekly Plan', description: 'Weekly Plan - N1,000', category: 'Weekly', data: '3 GB', validity: '7 Days', price: 'N1,000' },
-  { id: '8', title: 'Monthly Plan', description: 'Monthly Plan - N2,500', category: 'Monthly', data: '10 GB', validity: '30 Days', price: 'N2,500' },
-  { id: '9', title: 'Monthly Plan', description: 'Monthly Plan - N4,000', category: 'Monthly', data: '20 GB', validity: '30 Days', price: 'N4,000' },
-  { id: '10', title: 'Monthly Plan', description: 'Monthly Plan - N8,000', category: 'Monthly', data: '50 GB', validity: '30 Days', price: 'N8,000' },
-  { id: '11', title: 'Monthly Plan', description: 'Monthly Plan - N15,000', category: 'Monthly', data: '100 GB', validity: '30 Days', price: 'N15,000' },
-];
 
 interface RecentTransaction {
   id: string;
@@ -71,8 +38,25 @@ interface RecentTransaction {
   icon: any;
 }
 
-const DataRecharge = () => {
+const DataRecharge = ({ route }: any) => {
   const navigation = useNavigation();
+  
+  // Handle beneficiary selection from BeneficiariesScreen
+  React.useEffect(() => {
+    if (route?.params?.selectedBeneficiary) {
+      const beneficiary = route.params.selectedBeneficiary;
+      setMobileNumber(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+      setAccountName(beneficiary.name || '');
+      // Set provider if available
+      if (beneficiary.provider?.id) {
+        setSelectedProvider(beneficiary.provider.id);
+        setSelectedProviderCode(beneficiary.provider.code);
+      }
+      // Clear the params to avoid re-applying on re-render
+      // @ts-ignore - navigation params typing
+      navigation.setParams({ selectedBeneficiary: undefined });
+    }
+  }, [route?.params?.selectedBeneficiary, navigation]);
   
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -107,27 +91,327 @@ const DataRecharge = () => {
     }, [navigation])
   );
 
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<DataPlan | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
+  const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState(1);
+  const [selectedCountry, setSelectedCountry] = useState<string>('NG');
   const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [searchQuery, setSearchQuery] = useState('');
   const [planSearchQuery, setPlanSearchQuery] = useState('');
-  const [selectedPlanFilter, setSelectedPlanFilter] = useState<'All' | 'Daily' | 'Weekly' | 'Monthly' | 'Yearly'>('All');
+  const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
+  const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
+
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalance,
+    refetch: refetchBalances,
+  } = useGetWalletBalances();
+
+  // Get NGN balance from wallet balances
+  const ngnBalance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+    const ngnWallet = balancesData.data.fiat.find((w: any) => w.currency === 'NGN');
+    return ngnWallet?.balance || '0';
+  }, [balancesData?.data?.fiat]);
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬', flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼', flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭', flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪', flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦', flagUrl: null },
+        { id: 6, name: 'Tanzania', code: 'TZ', flag: '🇹🇿', flagUrl: null },
+        { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬', flagUrl: null },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => {
+      // Check if flag is a URL path (starts with /) or an emoji
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: flagEmoji,
+        flagUrl: flagUrl,
+      };
+    });
+  }, [countriesData?.data]);
+
+  // Fetch providers based on category and country
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useGetBillPaymentProviders({
+    categoryCode: 'data',
+    countryCode: selectedCountry,
+  });
+
+  // Transform providers to networks format
+  const networks = useMemo(() => {
+    if (!providersData?.data || !Array.isArray(providersData.data)) {
+      return [];
+    }
+    
+    return providersData.data.map((provider: any) => {
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GLO') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'Airtel') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      }
+
+      return {
+        id: String(provider.id),
+        name: provider.name || provider.code || '',
+        code: provider.code || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+        rawData: provider,
+      };
+    });
+  }, [providersData]);
+
+  // Fetch plans when provider is selected
+  const {
+    data: plansData,
+    isLoading: isLoadingPlans,
+    refetch: refetchPlans,
+  } = useGetBillPaymentPlans(
+    { providerId: selectedProvider || 0 }
+  );
+
+  // Transform plans data
+  const plans = useMemo(() => {
+    if (!plansData?.data || !Array.isArray(plansData.data)) {
+      return [];
+    }
+    
+    return plansData.data.map((plan: any) => ({
+      id: plan.id,
+      name: plan.name || '',
+      code: plan.code || '',
+      amount: plan.amount || '0',
+      currency: plan.currency || 'NGN',
+      dataAmount: plan.dataAmount || '',
+      validity: plan.validity || '',
+      description: plan.description || '',
+    }));
+  }, [plansData?.data]);
+
+  // Fetch beneficiaries for data
+  const {
+    data: beneficiariesData,
+    isLoading: isLoadingBeneficiaries,
+    refetch: refetchBeneficiaries,
+  } = useGetBillPaymentBeneficiaries({ categoryCode: 'data' });
+
+  // Fetch recent transactions
+  const {
+    data: transactionsData,
+    isLoading: isLoadingTransactions,
+    refetch: refetchTransactions,
+  } = useGetBillPayments({
+    categoryCode: 'data',
+    limit: 10,
+  });
+
+  // Transform transactions to UI format
+  const recentTransactions: RecentTransaction[] = useMemo(() => {
+    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+      return [];
+    }
+
+    return transactionsData.data.map((tx: any) => {
+      const provider = tx.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GLO') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'Airtel') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      }
+
+      const amount = parseFloat(tx.amount || '0');
+      const date = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        : 'N/A';
+
+      return {
+        id: String(tx.id),
+        phoneNumber: tx.accountNumber || '',
+        network: provider.name || provider.code || '',
+        amount: `N${formatBalance(amount)}`,
+        date: date,
+        plan: tx.plan?.name || tx.plan?.dataAmount || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [transactionsData?.data]);
+
+  // Get recent beneficiaries for quick selection
+  const recentBeneficiaries = useMemo(() => {
+    if (!beneficiariesData?.data || !Array.isArray(beneficiariesData.data)) {
+      return [];
+    }
+    return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
+      const provider = beneficiary.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'MTN') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GLO') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'AIRTEL' || provider.code === 'Airtel') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      }
+
+      return {
+        id: String(beneficiary.id),
+        phoneNumber: beneficiary.accountNumber || '',
+        network: provider.name || provider.code || '',
+        amount: '',
+        date: '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [beneficiariesData?.data]);
+
+  // Initiate bill payment mutation
+  const initiateMutation = useInitiateBillPayment({
+    onSuccess: (data: any) => {
+      console.log('[DataRecharge] Payment initiated successfully:', JSON.stringify(data, null, 2));
+      
+      const transactionId = 
+        data?.data?.transactionId || 
+        data?.data?.id || 
+        data?.data?.transaction?.id ||
+        (data?.data as any)?.transactionId ||
+        (data as any)?.transactionId ||
+        (data as any)?.id;
+      
+      setPendingTransactionData(data?.data);
+      
+      if (transactionId) {
+        setPendingTransactionId(transactionId);
+        setShowPinModal(true);
+      } else {
+        setShowPinModal(true);
+      }
+    },
+    onError: (error: any) => {
+      console.error('[DataRecharge] Error initiating payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+    },
+  });
+
+  // Confirm bill payment mutation
+  const confirmMutation = useConfirmBillPayment({
+    onSuccess: (data) => {
+      console.log('[DataRecharge] Payment confirmed successfully:', data);
+      setShowPinModal(false);
+      setPin('');
+      setPendingTransactionId(null);
+      setPendingTransactionData(null);
+      // Reset form
+      setSelectedPlan(null);
+      setMobileNumber('');
+      setAccountName('');
+      setSelectedProvider(null);
+      setSelectedProviderCode(null);
+      // Refresh data
+      refetchTransactions();
+      refetchBalances();
+      refetchBeneficiaries();
+      
+      Alert.alert(
+        'Success',
+        'Data recharge successful!',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // @ts-ignore - allow parent route name
+              navigation.navigate('Call' as never);
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      console.error('[DataRecharge] Error confirming payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+    },
+  });
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing data recharge...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[DataRecharge] Refreshing data recharge...');
+    try {
+      await Promise.all([
+        refetchBalances(),
+        refetchProviders(),
+        refetchPlans(),
+        refetchBeneficiaries(),
+        refetchTransactions(),
+      ]);
+      console.log('[DataRecharge] Data recharge refreshed successfully');
+    } catch (error) {
+      console.error('[DataRecharge] Error refreshing data recharge:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -135,76 +419,82 @@ const DataRecharge = () => {
     refreshDelay: 2000,
   });
 
-  // Mock data - Replace with API calls later
-  const recentTransactions: RecentTransaction[] = [
-    {
-      id: '1',
-      phoneNumber: '07012345678',
-      network: 'MTN',
-      amount: 'N2,000',
-      date: 'Oct 16, 2025',
-      plan: '1.5 GB Data',
-      icon: require('../../../assets/Ellipse 20.png'),
-    },
-    {
-      id: '2',
-      phoneNumber: '07012345678',
-      network: 'GLO',
-      amount: 'N1,000',
-      date: 'Oct 16, 2025',
-      plan: '3 GB Data',
-      icon: require('../../../assets/Ellipse 21.png'),
-    },
-    {
-      id: '3',
-      phoneNumber: '07012345678',
-      network: 'Airtel',
-      amount: 'N2,500',
-      date: 'Oct 16, 2025',
-      plan: '10 GB Data',
-      icon: require('../../../assets/Ellipse 21 (2).png'),
-    },
-    {
-      id: '4',
-      phoneNumber: '07012345678',
-      network: 'MTN',
-      amount: 'N4,000',
-      date: 'Oct 16, 2025',
-      plan: '20 GB Data',
-      icon: require('../../../assets/Ellipse 22.png'),
-    },
-  ];
-
   const handleProviderSelect = (networkId: string) => {
-    setSelectedProvider(networkId);
-    setShowNetworkModal(false);
+    const provider = networks.find((n) => n.id === networkId);
+    if (provider) {
+      setSelectedProvider(parseInt(networkId));
+      setSelectedProviderCode(provider.code);
+      setSelectedPlan(null); // Reset plan when provider changes
+      setShowNetworkModal(false);
+    }
   };
 
-  const handlePlanSelect = (plan: DataPlan) => {
+  const handlePlanSelect = (plan: any) => {
     setSelectedPlan(plan);
     setShowPlanModal(false);
   };
 
   const handleProceed = () => {
-    if (selectedProvider && selectedPlan && mobileNumber && accountName) {
-      // @ts-ignore - allow parent route name
-      navigation.navigate('Beneficiaries' as never);
+    if (!selectedProvider || !selectedPlan || !mobileNumber) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate mobile number
+    if (mobileNumber.length < 10) {
+      Alert.alert('Error', 'Please enter a valid mobile number');
+      return;
+    }
+
+    // Initiate payment
+    initiateMutation.mutate({
+      categoryCode: 'data',
+      providerId: selectedProvider,
+      currency: selectedPlan.currency || 'NGN',
+      amount: selectedPlan.amount,
+      accountNumber: mobileNumber,
+      planId: selectedPlan.id,
+    });
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pin || pin.length < 4) {
+      Alert.alert('Error', 'Please enter your PIN');
+      return;
+    }
+
+    if (pendingTransactionId) {
+      confirmMutation.mutate({
+        transactionId: pendingTransactionId,
+        pin: pin,
+      });
+    } else {
+      Alert.alert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
-  const filteredNetworks = NETWORKS.filter((network) =>
+  const filteredNetworks = networks.filter((network) =>
     network.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredPlans = DATA_PLANS.filter((plan) => {
-    const matchesFilter = selectedPlanFilter === 'All' || plan.category === selectedPlanFilter;
+  const filteredPlans = plans.filter((plan) => {
     const matchesSearch = 
-      plan.title.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
-      plan.description.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
-      plan.data.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
-      plan.price.toLowerCase().includes(planSearchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
+      plan.name.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
+      plan.dataAmount.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
+      plan.amount.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
+      (plan.description && plan.description.toLowerCase().includes(planSearchQuery.toLowerCase()));
+    return matchesSearch;
   });
+
+  // Check if proceed button should be enabled
+  const isProceedEnabled = useMemo(() => {
+    return (
+      selectedProvider !== null &&
+      selectedPlan !== null &&
+      mobileNumber.length >= 10 &&
+      !initiateMutation.isPending
+    );
+  }, [selectedProvider, selectedPlan, mobileNumber, initiateMutation.isPending]);
 
   return (
     <View style={styles.container}>
@@ -256,31 +546,48 @@ const DataRecharge = () => {
                   style={[{ marginBottom: -1, width: 18, height: 16 }]}
                   resizeMode="cover"
                 />
-                <TextInput
-                  style={styles.balanceAmountInput}
-                  value={`N${1000000}`}
-                  onChangeText={(text) => {
-                    // Remove 'N' prefix and format
-                    const numericValue = text.replace(/[N,]/g, '');
-                    // setBalance(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Enter amount"
-                  placeholderTextColor="rgba(169, 239, 69, 0.5)"
-                />
+                {isLoadingBalance ? (
+                  <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                ) : (
+                  <ThemedText style={styles.balanceAmountInput}>
+                    N{formatBalance(ngnBalance)}
+                  </ThemedText>
+                )}
               </View>
             </View>
             <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryModal(true)}
             >
-              <Image
-                source={require('../../../assets/login/nigeria-flag.png')}
-                style={styles.countryFlagImage}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+              {isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (() => {
+                const selectedCountryData = countries.find((c: any) => c.code === selectedCountry);
+                const flagUrl = selectedCountryData?.flagUrl;
+                const flagEmoji = selectedCountryData?.flag;
+                
+                return (
+                  <>
+                    {flagUrl ? (
+                      <Image
+                        source={{ uri: flagUrl }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : flagEmoji ? (
+                      <ThemedText style={styles.countryFlagEmojiSelector}>{flagEmoji}</ThemedText>
+                    ) : (
+                      <Image
+                        source={require('../../../assets/login/nigeria-flag.png')}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                    <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                  </>
+                );
+              })()}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -289,33 +596,61 @@ const DataRecharge = () => {
         <View style={styles.mainCard}>
           {/* Form Fields */}
           <View style={styles.formFields}>
-            {/* Select Plan */}
+            {/* Select Provider - First */}
             <TouchableOpacity
               style={styles.inputField}
-              onPress={() => setShowPlanModal(true)}
+              onPress={() => {
+                setShowNetworkModal(true);
+              }}
+              disabled={isLoadingProviders}
             >
-              <ThemedText style={[styles.inputLabel, !selectedPlan && styles.inputPlaceholder]}>
-                {selectedPlan
-                  ? `${selectedPlan.title} - ${selectedPlan.price}`
-                  : 'Select Plan'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              {isLoadingProviders ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading providers...</ThemedText>
+                </View>
+              ) : (
+                <>
+                  <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
+                    {selectedProvider
+                      ? networks.find((n) => n.id === String(selectedProvider))?.name || 'Select Provider'
+                      : networks.length > 0 
+                        ? 'Select Provider' 
+                        : 'No providers available'}
+                  </ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
 
-            {/* Select Provider */}
-            <TouchableOpacity
-              style={styles.inputField}
-              onPress={() => setShowNetworkModal(true)}
-            >
-              <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
-                {selectedProvider
-                  ? NETWORKS.find((n) => n.id === selectedProvider)?.name || 'Select Provider'
-                  : 'Select Provider'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
-            </TouchableOpacity>
+            {/* Select Plan - Second (only shown when provider is selected) */}
+            {selectedProvider && (
+              <TouchableOpacity
+                style={styles.inputField}
+                onPress={() => setShowPlanModal(true)}
+                disabled={isLoadingPlans}
+              >
+                {isLoadingPlans ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading plans...</ThemedText>
+                  </View>
+                ) : (
+                  <>
+                    <ThemedText style={[styles.inputLabel, !selectedPlan && styles.inputPlaceholder]}>
+                      {selectedPlan
+                        ? `${selectedPlan.name} - ${selectedPlan.dataAmount} - N${formatBalance(selectedPlan.amount)}`
+                        : plans.length > 0
+                          ? 'Select Plan'
+                          : 'No plans available'}
+                    </ThemedText>
+                    <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-            {/* Enter Mobile Number */}
+            {/* Enter Mobile Number - Third */}
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
@@ -324,20 +659,50 @@ const DataRecharge = () => {
                 value={mobileNumber}
                 onChangeText={(text) => {
                   setMobileNumber(text);
-                  // TODO: Fetch account name from API based on mobile number
                   if (text.length >= 10) {
-                    setAccountName('Qamardeen Abdul Malik');
+                    // Account name will be set from beneficiary or transaction
+                    setAccountName('');
                   } else {
                     setAccountName('');
                   }
                 }}
                 keyboardType="phone-pad"
               />
-              <Image
-                source={require('../../../assets/AddressBook.png')}
-                style={[{ marginBottom: -1, width: 19, height: 19 }]}
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                onPress={() => {
+                  // Only navigate if a provider is selected
+                  if (!selectedProvider) {
+                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    return;
+                  }
+                  
+                  // Navigate to BeneficiariesScreen with current form data
+                  // @ts-ignore - allow parent route name
+                  navigation.navigate('Beneficiaries' as never, {
+                    categoryCode: 'data',
+                    selectedProvider: selectedProvider,
+                    selectedProviderCode: selectedProviderCode,
+                    onSelectBeneficiary: (beneficiary: any) => {
+                      // Populate form with selected beneficiary
+                      setMobileNumber(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+                      setAccountName(beneficiary.name || '');
+                      // Set provider if available
+                      if (beneficiary.provider?.id) {
+                        setSelectedProvider(beneficiary.provider.id);
+                        setSelectedProviderCode(beneficiary.provider.code);
+                      }
+                    },
+                  });
+                }}
+                disabled={!selectedProvider}
+                style={!selectedProvider ? { opacity: 0.5 } : {}}
+              >
+                <Image
+                  source={require('../../../assets/AddressBook.png')}
+                  style={[{ marginBottom: -1, width: 19, height: 19 }]}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Account Name (Auto-filled) */}
@@ -353,11 +718,15 @@ const DataRecharge = () => {
 
           {/* Proceed Button */}
           <TouchableOpacity
-            style={[styles.proceedButton, (!selectedProvider || !selectedPlan || !mobileNumber || !accountName) && styles.proceedButtonDisabled]}
+            style={[styles.proceedButton, !isProceedEnabled && styles.proceedButtonDisabled]}
             onPress={handleProceed}
-            disabled={!selectedProvider || !selectedPlan || !mobileNumber || !accountName}
+            disabled={!isProceedEnabled || initiateMutation.isPending}
           >
-            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            {initiateMutation.isPending ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -374,19 +743,43 @@ const DataRecharge = () => {
         {/* Recent Section */}
         <View style={styles.recentSection}>
           <ThemedText style={styles.recentTitle}>Recent</ThemedText>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.recentScrollContent}
-          >
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.recentItem}>
-                <Image source={transaction.icon} style={styles.recentIcon} resizeMode="cover" />
-                <ThemedText style={styles.recentPhone}>{transaction.phoneNumber}</ThemedText>
-                <ThemedText style={styles.recentNetwork}>{transaction.network}</ThemedText>
-              </View>
-            ))}
-          </ScrollView>
+          {isLoadingBeneficiaries ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentBeneficiaries.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScrollContent}
+            >
+              {recentBeneficiaries.map((beneficiary) => (
+                <TouchableOpacity
+                  key={beneficiary.id}
+                  style={styles.recentItem}
+                  onPress={() => {
+                    setMobileNumber(beneficiary.phoneNumber);
+                    // Find and set the provider
+                    const provider = networks.find((n) => n.name === beneficiary.network || n.code === beneficiary.network);
+                    if (provider) {
+                      setSelectedProvider(parseInt(provider.id));
+                      setSelectedProviderCode(provider.code);
+                    }
+                  }}
+                >
+                  <Image source={beneficiary.icon} style={styles.recentIcon} resizeMode="cover" />
+                  <ThemedText style={styles.recentPhone}>{beneficiary.phoneNumber}</ThemedText>
+                  <ThemedText style={styles.recentNetwork}>{beneficiary.network}</ThemedText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent beneficiaries
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Recent Transactions Card */}
@@ -398,29 +791,41 @@ const DataRecharge = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.transactionsList}>
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.transactionItem}>
-                <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
-                  <View style={styles.transactionMeta}>
-                    {transaction.plan ? (
-                      <>
-                        <ThemedText style={styles.transactionPlan}>{transaction.plan}</ThemedText>
-                        <View style={styles.transactionDot} />
-                      </>
-                    ) : null}
-                    <ThemedText style={styles.transactionNetwork}>{transaction.network}</ThemedText>
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentTransactions.length > 0 ? (
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction) => (
+                <View key={transaction.id} style={styles.transactionItem}>
+                  <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
+                    <View style={styles.transactionMeta}>
+                      {transaction.plan ? (
+                        <>
+                          <ThemedText style={styles.transactionPlan}>{transaction.plan}</ThemedText>
+                          <View style={styles.transactionDot} />
+                        </>
+                      ) : null}
+                      <ThemedText style={styles.transactionNetwork}>{transaction.network}</ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                   </View>
                 </View>
-                <View style={styles.transactionRight}>
-                  <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
-                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
-                </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent transactions
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -444,29 +849,6 @@ const DataRecharge = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Filter Tabs */}
-            <View style={styles.filterTabsContainer}>
-              {(['All', 'Daily', 'Weekly', 'Monthly', 'Yearly'] as const).map((filter) => (
-                <TouchableOpacity
-                  key={filter}
-                  style={[
-                    styles.filterTab,
-                    selectedPlanFilter === filter && styles.filterTabActive,
-                  ]}
-                  onPress={() => setSelectedPlanFilter(filter)}
-                >
-                  <ThemedText
-                    style={[
-                      styles.filterTabText,
-                      selectedPlanFilter === filter && styles.filterTabTextActive,
-                    ]}
-                  >
-                    {filter}
-                  </ThemedText>
-                </TouchableOpacity>
-              ))}
-            </View>
-
             {/* Search Bar */}
             <View style={styles.searchContainer}>
               <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
@@ -480,25 +862,42 @@ const DataRecharge = () => {
             </View>
 
             {/* Plan List */}
-            <ScrollView style={styles.planList}>
-              {filteredPlans.map((plan) => (
-                <TouchableOpacity
-                  key={plan.id}
-                  style={styles.planItem}
-                  onPress={() => handlePlanSelect(plan)}
-                >
-                  <View style={styles.planInfo}>
-                    <ThemedText style={styles.planTitle}>{plan.title}</ThemedText>
-                    <ThemedText style={styles.planDescription}>{plan.description}</ThemedText>
-                  </View>
-                  <MaterialCommunityIcons
-                    name={selectedPlan?.id === plan.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedPlan?.id === plan.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingPlans ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading plans...
+                </ThemedText>
+              </View>
+            ) : filteredPlans.length > 0 ? (
+              <ScrollView style={styles.planList}>
+                {filteredPlans.map((plan) => (
+                  <TouchableOpacity
+                    key={plan.id}
+                    style={styles.planItem}
+                    onPress={() => handlePlanSelect(plan)}
+                  >
+                    <View style={styles.planInfo}>
+                      <ThemedText style={styles.planTitle}>{plan.name}</ThemedText>
+                      <ThemedText style={styles.planDescription}>
+                        {plan.dataAmount} • {plan.validity} • N{formatBalance(plan.amount)}
+                      </ThemedText>
+                    </View>
+                    <MaterialCommunityIcons
+                      name={selectedPlan?.id === plan.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedPlan?.id === plan.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {planSearchQuery ? 'No plans found matching your search' : 'No plans available for this provider'}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -541,23 +940,52 @@ const DataRecharge = () => {
             </View>
 
             {/* Network List */}
-            <ScrollView style={styles.networkList}>
-              {filteredNetworks.map((network) => (
+            {isLoadingProviders ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading providers...
+                </ThemedText>
+              </View>
+            ) : isProvidersError ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {providersError?.message || 'Failed to load providers. Please try again.'}
+                </ThemedText>
                 <TouchableOpacity
-                  key={network.id}
-                  style={styles.networkItem}
-                  onPress={() => handleProviderSelect(network.id)}
+                  style={[styles.applyButton, { marginTop: 20, backgroundColor: '#A9EF45' }]}
+                  onPress={() => refetchProviders()}
                 >
-                  <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
-                  <ThemedText style={styles.networkName}>{network.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedProvider === network.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedProvider === network.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
+                  <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            ) : filteredNetworks.length > 0 ? (
+              <ScrollView style={styles.networkList}>
+                {filteredNetworks.map((network) => (
+                  <TouchableOpacity
+                    key={network.id}
+                    style={styles.networkItem}
+                    onPress={() => handleProviderSelect(network.id)}
+                  >
+                    <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
+                    <ThemedText style={styles.networkName}>{network.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedProvider === parseInt(network.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedProvider === parseInt(network.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="information" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {searchQuery ? 'No networks found matching your search' : `No networks available for ${selectedCountryName}. Please try a different country.`}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -585,31 +1013,117 @@ const DataRecharge = () => {
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((country) => (
-                <TouchableOpacity
-                  key={country.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(country.id);
-                    setSelectedCountryName(country.name);
-                  }}
-                >
-                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
-                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedCountry === country.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((country) => (
+                  <TouchableOpacity
+                    key={country.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(country.code);
+                      setSelectedCountryName(country.name);
+                      // Refetch providers when country changes
+                      refetchProviders();
+                    }}
+                  >
+                    {country.flagUrl ? (
+                      <Image
+                        source={{ uri: country.flagUrl }}
+                        style={styles.countryFlagImageModal}
+                        resizeMode="cover"
+                      />
+                    ) : country.flag ? (
+                      <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                    ) : (
+                      <View style={styles.countryFlagPlaceholder} />
+                    )}
+                    <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === country.code ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedCountry === country.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
             >
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PIN Confirmation Modal */}
+      <Modal
+        visible={showPinModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowPinModal(false);
+          setPin('');
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pinModalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPinModal(false);
+                  setPin('');
+                }}
+              >
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pinInputContainer}>
+              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+              {pendingTransactionData && (
+                <View style={styles.paymentSummaryContainer}>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                  </View>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                  </View>
+                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                  </View>
+                </View>
+              )}
+              <TextInput
+                style={styles.pinInput}
+                value={pin}
+                onChangeText={setPin}
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter PIN"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                autoFocus
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+              onPress={handleConfirmPayment}
+              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
+            >
+              {confirmMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -686,6 +1200,13 @@ const styles = StyleSheet.create({
     width: 36 * SCALE,
     height: 38 * SCALE,
     borderRadius: 18 * SCALE,
+  },
+  countryFlagEmojiSelector: {
+    fontSize: 28 * SCALE,
+    width: 36 * SCALE,
+    height: 38 * SCALE,
+    textAlign: 'center',
+    lineHeight: 38 * SCALE,
   },
   countryNameText: {
     fontSize: 14 * SCALE,
@@ -1079,6 +1600,21 @@ const styles = StyleSheet.create({
   },
   countryFlagEmoji: {
     fontSize: 24 * SCALE,
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    textAlign: 'center',
+    lineHeight: 32 * SCALE,
+  },
+  countryFlagImageModal: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+  },
+  countryFlagPlaceholder: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   countryNameModal: {
     flex: 1,
@@ -1098,6 +1634,83 @@ const styles = StyleSheet.create({
     fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#000000',
+  },
+  pinModalContent: {
+    backgroundColor: '#020C19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    maxHeight: '50%',
+  },
+  pinInputContainer: {
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 20 * SCALE,
+  },
+  pinLabel: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 15 * SCALE,
+    textAlign: 'center',
+  },
+  pinInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 15 * SCALE,
+    fontSize: 18 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 8,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  confirmButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 22 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+  },
+  confirmButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  paymentSummaryContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  paymentSummaryTotal: {
+    marginTop: 8 * SCALE,
+    paddingTop: 8 * SCALE,
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  paymentSummaryValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
   },
 });
 

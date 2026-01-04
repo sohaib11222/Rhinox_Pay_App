@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,8 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,49 +20,35 @@ import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetBillPaymentProviders, useGetBillPaymentPlans, useGetBillPaymentBeneficiaries } from '../../../queries/billPayment.queries';
+import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬' },
-  { id: 2, name: 'Botswana', flag: '🇧🇼' },
-  { id: 3, name: 'Ghana', flag: '🇬🇭' },
-  { id: 4, name: 'Kenya', flag: '🇰🇪' },
-  { id: 5, name: 'South Africa', flag: '🇿🇦' },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿' },
-  { id: 7, name: 'Uganda', flag: '🇺🇬' },
-];
-
-const BILLER_TYPES = [
-  { id: '1', name: 'DSTV', icon: require('../../../assets/Ellipse 20.png') },
-  { id: '2', name: 'GOTV', icon: require('../../../assets/Ellipse 21.png') },
-  { id: '3', name: 'StarTimes', icon: require('../../../assets/Ellipse 21 (2).png') },
-  { id: '4', name: 'ShowMax', icon: require('../../../assets/Ellipse 22.png') },
-];
-
-interface CablePlan {
-  id: string;
-  title: string; // e.g., "DSTV Premium"
-  description: string; // e.g., "Monthly Plan - N15,000"
-  category: 'Daily' | 'Weekly' | 'Monthly' | 'Yearly';
-  price: string;
-}
-
-// Mock data plans - Replace with API calls later
-const CABLE_PLANS: CablePlan[] = [
-  { id: '1', title: 'DSTV Premium', description: 'Monthly Plan - N15,000', category: 'Monthly', price: 'N15,000' },
-  { id: '2', title: 'DSTV Compact', description: 'Monthly Plan - N7,900', category: 'Monthly', price: 'N7,900' },
-  { id: '3', title: 'DSTV Confam', description: 'Monthly Plan - N4,620', category: 'Monthly', price: 'N4,620' },
-  { id: '4', title: 'GOTV Max', description: 'Monthly Plan - N3,600', category: 'Monthly', price: 'N3,600' },
-  { id: '5', title: 'GOTV Jolli', description: 'Monthly Plan - N2,500', category: 'Monthly', price: 'N2,500' },
-  { id: '6', title: 'GOTV Jinja', description: 'Monthly Plan - N1,900', category: 'Monthly', price: 'N1,900' },
-  { id: '7', title: 'StarTimes Nova', description: 'Monthly Plan - N1,500', category: 'Monthly', price: 'N1,500' },
-  { id: '8', title: 'ShowMax Premium', description: 'Monthly Plan - N2,900', category: 'Monthly', price: 'N2,900' },
-];
-
-const CableTv = () => {
+const CableTv = ({ route }: any) => {
   const navigation = useNavigation();
+  
+  // Handle beneficiary selection from BeneficiariesScreen
+  React.useEffect(() => {
+    if (route?.params?.selectedBeneficiary) {
+      const beneficiary = route.params.selectedBeneficiary;
+      setDecoderNumber(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+      setAccountName(beneficiary.name || '');
+      // Set provider if available
+      if (beneficiary.provider?.id) {
+        setSelectedBillerType(beneficiary.provider.id);
+        setSelectedProviderCode(beneficiary.provider.code);
+      }
+      // Clear the params to avoid re-applying on re-render
+      // @ts-ignore - navigation params typing
+      navigation.setParams({ selectedBeneficiary: undefined });
+    }
+  }, [route?.params?.selectedBeneficiary, navigation]);
   
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -95,19 +83,22 @@ const CableTv = () => {
     }, [navigation])
   );
 
-  const [selectedBillerType, setSelectedBillerType] = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<CablePlan | null>(null);
+  const [selectedBillerType, setSelectedBillerType] = useState<number | null>(null);
+  const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [decoderNumber, setDecoderNumber] = useState('');
-  const [amount, setAmount] = useState('');
   const [accountName, setAccountName] = useState('');
   const [showBillerTypeModal, setShowBillerTypeModal] = useState(false);
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState(1);
+  const [selectedCountry, setSelectedCountry] = useState<string>('NG');
   const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [searchQuery, setSearchQuery] = useState('');
   const [planSearchQuery, setPlanSearchQuery] = useState('');
-  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
+  const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pin, setPin] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [transactionDetails, setTransactionDetails] = useState({
@@ -119,14 +110,309 @@ const CableTv = () => {
     country: '',
   });
 
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalance,
+    refetch: refetchBalances,
+  } = useGetWalletBalances();
+
+  // Get NGN balance from wallet balances
+  const ngnBalance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) return '0';
+    const ngnWallet = balancesData.data.fiat.find((w: any) => w.currency === 'NGN');
+    return ngnWallet?.balance || '0';
+  }, [balancesData?.data?.fiat]);
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬' },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼' },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭' },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪' },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦' },
+        { id: 6, name: 'Tanzania', code: 'TZ', flag: '🇹🇿' },
+        { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬' },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => ({
+      id: country.id || index + 1,
+      name: country.name || '',
+      code: country.code || '',
+      flag: country.flag || '🏳️', // Can be URL path or emoji
+    }));
+  }, [countriesData?.data]);
+
+  // Get selected country data for flag display
+  const selectedCountryData = useMemo(() => {
+    return countries.find((c) => c.code === selectedCountry);
+  }, [countries, selectedCountry]);
+
+  // Fetch providers based on category and country
+  const {
+    data: providersData,
+    isLoading: isLoadingProviders,
+    isError: isProvidersError,
+    error: providersError,
+    refetch: refetchProviders,
+  } = useGetBillPaymentProviders({
+    categoryCode: 'cable_tv',
+    countryCode: selectedCountry,
+  });
+
+  // Transform providers to billers format
+  const billerTypes = useMemo(() => {
+    if (!providersData?.data || !Array.isArray(providersData.data)) {
+      return [];
+    }
+    
+    return providersData.data.map((provider: any) => {
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'DSTV') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GOTV') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'SHOWMAX' || provider.code === 'Showmax') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      return {
+        id: String(provider.id),
+        name: provider.name || provider.code || '',
+        code: provider.code || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+        rawData: provider,
+      };
+    });
+  }, [providersData]);
+
+  // Fetch plans when provider is selected
+  const {
+    data: plansData,
+    isLoading: isLoadingPlans,
+    refetch: refetchPlans,
+  } = useGetBillPaymentPlans(
+    { providerId: selectedBillerType || 0 }
+  );
+
+  // Transform plans data
+  const plans = useMemo(() => {
+    if (!plansData?.data || !Array.isArray(plansData.data)) {
+      return [];
+    }
+    
+    return plansData.data.map((plan: any) => ({
+      id: plan.id,
+      name: plan.name || '',
+      code: plan.code || '',
+      amount: plan.amount || '0',
+      currency: plan.currency || 'NGN',
+      validity: plan.validity || '',
+      description: plan.description || '',
+    }));
+  }, [plansData?.data]);
+
+  // Fetch beneficiaries for cable_tv
+  const {
+    data: beneficiariesData,
+    isLoading: isLoadingBeneficiaries,
+    refetch: refetchBeneficiaries,
+  } = useGetBillPaymentBeneficiaries({ categoryCode: 'cable_tv' });
+
+  // Fetch recent transactions
+  const {
+    data: transactionsData,
+    isLoading: isLoadingTransactions,
+    refetch: refetchTransactions,
+  } = useGetBillPayments({
+    categoryCode: 'cable_tv',
+    limit: 10,
+  });
+
+  // Transform transactions to UI format
+  const recentTransactions = useMemo(() => {
+    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+      return [];
+    }
+
+    return transactionsData.data.map((tx: any) => {
+      const provider = tx.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'DSTV') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GOTV') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'SHOWMAX' || provider.code === 'Showmax') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      const amount = parseFloat(tx.amount || '0');
+      const date = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        : 'N/A';
+
+      return {
+        id: String(tx.id),
+        decoderNumber: tx.accountNumber || '',
+        billerType: provider.name || provider.code || '',
+        amount: `N${formatBalance(amount)}`,
+        date: date,
+        plan: tx.plan?.name || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [transactionsData?.data]);
+
+  // Get recent beneficiaries for quick selection
+  const recentBeneficiaries = useMemo(() => {
+    if (!beneficiariesData?.data || !Array.isArray(beneficiariesData.data)) {
+      return [];
+    }
+    return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
+      const provider = beneficiary.provider || {};
+      const logoUrl = provider.logoUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
+        : null;
+      
+      // Default icon mapping
+      let icon = require('../../../assets/Ellipse 20.png');
+      if (provider.code === 'DSTV') {
+        icon = require('../../../assets/Ellipse 20.png');
+      } else if (provider.code === 'GOTV') {
+        icon = require('../../../assets/Ellipse 21.png');
+      } else if (provider.code === 'SHOWMAX' || provider.code === 'Showmax') {
+        icon = require('../../../assets/Ellipse 21 (2).png');
+      } else {
+        icon = require('../../../assets/Ellipse 22.png');
+      }
+
+      return {
+        id: String(beneficiary.id),
+        decoderNumber: beneficiary.accountNumber || '',
+        billerType: provider.name || provider.code || '',
+        icon: logoUrl ? { uri: logoUrl } : icon,
+      };
+    });
+  }, [beneficiariesData?.data]);
+
+  // Initiate bill payment mutation
+  const initiateMutation = useInitiateBillPayment({
+    onSuccess: (data: any) => {
+      console.log('[CableTv] Payment initiated successfully:', JSON.stringify(data, null, 2));
+      
+      const transactionId = 
+        data?.data?.transactionId || 
+        data?.data?.id || 
+        data?.data?.transaction?.id ||
+        (data?.data as any)?.transactionId ||
+        (data as any)?.transactionId ||
+        (data as any)?.id;
+      
+      setPendingTransactionData(data?.data);
+      
+      if (transactionId) {
+        setPendingTransactionId(transactionId);
+        setShowPinModal(true);
+      } else {
+        setShowPinModal(true);
+      }
+    },
+    onError: (error: any) => {
+      console.error('[CableTv] Error initiating payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+    },
+  });
+
+  // Confirm bill payment mutation
+  const confirmMutation = useConfirmBillPayment({
+    onSuccess: (data) => {
+      console.log('[CableTv] Payment confirmed successfully:', data);
+      setShowPinModal(false);
+      setPin('');
+      setPendingTransactionId(null);
+      setPendingTransactionData(null);
+      
+      // Set transaction details for success modal
+      const numericAmount = parseFloat(selectedPlan?.amount || '0');
+      setTransactionDetails({
+        amount: `N${formatBalance(numericAmount)}`,
+        fee: pendingTransactionData?.fee ? `N${formatBalance(pendingTransactionData.fee)}` : 'N200',
+        billerType: billerTypes.find((b) => b.id === String(selectedBillerType))?.name || '',
+        smartCardNumber: decoderNumber,
+        plan: selectedPlan?.name || '',
+        country: selectedCountryName,
+      });
+      
+      // Reset form
+      setSelectedPlan(null);
+      setDecoderNumber('');
+      setAccountName('');
+      setSelectedBillerType(null);
+      setSelectedProviderCode(null);
+      
+      // Refresh data
+      refetchTransactions();
+      refetchBalances();
+      refetchBeneficiaries();
+      
+      // Show success modal
+      setShowSuccessModal(true);
+    },
+    onError: (error: any) => {
+      console.error('[CableTv] Error confirming payment:', error);
+      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+    },
+  });
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing cable TV data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[CableTv] Refreshing cable TV data...');
+    try {
+      await Promise.all([
+        refetchBalances(),
+        refetchProviders(),
+        refetchPlans(),
+        refetchBeneficiaries(),
+        refetchTransactions(),
+      ]);
+      console.log('[CableTv] Cable TV data refreshed successfully');
+    } catch (error) {
+      console.error('[CableTv] Error refreshing cable TV data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -135,46 +421,86 @@ const CableTv = () => {
   });
 
   const handleBillerTypeSelect = (billerId: string) => {
-    setSelectedBillerType(billerId);
-    setShowBillerTypeModal(false);
+    const biller = billerTypes.find((b) => b.id === billerId);
+    if (biller) {
+      setSelectedBillerType(parseInt(billerId));
+      setSelectedProviderCode(biller.code);
+      setSelectedPlan(null); // Reset plan when provider changes
+      setShowBillerTypeModal(false);
+    }
   };
 
-  const handlePlanSelect = (plan: CablePlan) => {
+  const handlePlanSelect = (plan: any) => {
     setSelectedPlan(plan);
-    setAmount(plan.price.replace('N', '').replace(/,/g, ''));
     setShowPlanModal(false);
   };
 
   const handleProceed = () => {
-    if (selectedBillerType && selectedPlan && decoderNumber && amount && accountName) {
-      setShowSummaryModal(true);
+    if (!selectedBillerType || !selectedPlan || !decoderNumber) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    // Validate decoder number
+    if (decoderNumber.length < 10) {
+      Alert.alert('Error', 'Please enter a valid decoder number');
+      return;
+    }
+
+    // Initiate payment - only pass data that is coming
+    const initiateData: any = {
+      categoryCode: 'cable_tv',
+      providerId: selectedBillerType,
+      currency: selectedPlan.currency || 'NGN',
+      amount: selectedPlan.amount,
+      accountNumber: decoderNumber,
+    };
+
+    // Only add planId if plan is selected
+    if (selectedPlan?.id) {
+      initiateData.planId = selectedPlan.id;
+    }
+
+    initiateMutation.mutate(initiateData);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (!pin || pin.length < 4) {
+      Alert.alert('Error', 'Please enter your PIN');
+      return;
+    }
+
+    if (pendingTransactionId) {
+      confirmMutation.mutate({
+        transactionId: pendingTransactionId,
+        pin: pin,
+      });
+    } else {
+      Alert.alert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
-  const handleComplete = () => {
-    setTransactionDetails({
-      amount: `N${amount}`,
-      fee: 'N200',
-      billerType: BILLER_TYPES.find((b) => b.id === selectedBillerType)?.name || '',
-      smartCardNumber: decoderNumber,
-      plan: selectedPlan?.title || '',
-      country: selectedCountryName,
-    });
-    setShowSummaryModal(false);
-    setShowSuccessModal(true);
-  };
-
-  const filteredBillers = BILLER_TYPES.filter((biller) =>
+  const filteredBillers = billerTypes.filter((biller) =>
     biller.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredPlans = CABLE_PLANS.filter((plan) => {
+  const filteredPlans = plans.filter((plan) => {
     const matchesSearch = 
-      plan.title.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
-      plan.description.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
-      plan.price.toLowerCase().includes(planSearchQuery.toLowerCase());
+      plan.name.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
+      plan.amount.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
+      (plan.description && plan.description.toLowerCase().includes(planSearchQuery.toLowerCase()));
     return matchesSearch;
   });
+
+  // Check if proceed button should be enabled
+  const isProceedEnabled = useMemo(() => {
+    return (
+      selectedBillerType !== null &&
+      selectedPlan !== null &&
+      decoderNumber.length >= 10 &&
+      !initiateMutation.isPending
+    );
+  }, [selectedBillerType, selectedPlan, decoderNumber, initiateMutation.isPending]);
 
   return (
     <View style={styles.container}>
@@ -226,31 +552,50 @@ const CableTv = () => {
                   style={[{ marginBottom: -1, width: 18, height: 16 }]}
                   resizeMode="cover"
                 />
-                <TextInput
-                  style={styles.balanceAmountInput}
-                  value={`N${1000000}`}
-                  onChangeText={(text) => {
-                    // Remove 'N' prefix and format
-                    const numericValue = text.replace(/[N,]/g, '');
-                    // setBalance(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-                  }}
-                  keyboardType="numeric"
-                  placeholder="Enter amount"
-                  placeholderTextColor="rgba(169, 239, 69, 0.5)"
-                />
+                {isLoadingBalance ? (
+                  <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                ) : (
+                  <ThemedText style={styles.balanceAmountInput}>
+                    N{formatBalance(ngnBalance)}
+                  </ThemedText>
+                )}
               </View>
             </View>
             <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryModal(true)}
             >
-              <Image
-                source={require('../../../assets/login/nigeria-flag.png')}
-                style={styles.countryFlagImage}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+              {isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  {selectedCountryData?.flag ? (
+                    selectedCountryData.flag.startsWith('/') ? (
+                      <Image
+                        source={{ uri: `${API_BASE_URL.replace('/api', '')}${selectedCountryData.flag}` }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : selectedCountryData.flag.startsWith('http') ? (
+                      <Image
+                        source={{ uri: selectedCountryData.flag }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <ThemedText style={styles.countryFlagEmojiSmall}>{selectedCountryData.flag}</ThemedText>
+                    )
+                  ) : (
+                    <Image
+                      source={require('../../../assets/login/nigeria-flag.png')}
+                      style={styles.countryFlagImage}
+                      resizeMode="cover"
+                    />
+                  )}
+                  <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -259,33 +604,61 @@ const CableTv = () => {
         <View style={styles.mainCard}>
           {/* Form Fields */}
           <View style={styles.formFields}>
-            {/* Biller Type */}
+            {/* Biller Type - First */}
             <TouchableOpacity
               style={styles.inputField}
-              onPress={() => setShowBillerTypeModal(true)}
+              onPress={() => {
+                setShowBillerTypeModal(true);
+              }}
+              disabled={isLoadingProviders}
             >
-              <ThemedText style={[styles.inputLabel, !selectedBillerType && styles.inputPlaceholder]}>
-                {selectedBillerType
-                  ? BILLER_TYPES.find((b) => b.id === selectedBillerType)?.name || 'Select Biller Type'
-                  : 'Select Biller Type'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              {isLoadingProviders ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading providers...</ThemedText>
+                </View>
+              ) : (
+                <>
+                  <ThemedText style={[styles.inputLabel, !selectedBillerType && styles.inputPlaceholder]}>
+                    {selectedBillerType
+                      ? billerTypes.find((b) => b.id === String(selectedBillerType))?.name || 'Select Biller Type'
+                      : billerTypes.length > 0 
+                        ? 'Select Biller Type' 
+                        : 'No providers available'}
+                  </ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
 
-            {/* Select Plan */}
-            <TouchableOpacity
-              style={styles.inputField}
-              onPress={() => setShowPlanModal(true)}
-            >
-              <ThemedText style={[styles.inputLabel, !selectedPlan && styles.inputPlaceholder]}>
-                {selectedPlan
-                  ? `${selectedPlan.title} - ${selectedPlan.price}`
-                  : 'Select Plan'}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
-            </TouchableOpacity>
+            {/* Select Plan - Second (only shown when provider is selected) */}
+            {selectedBillerType && (
+              <TouchableOpacity
+                style={styles.inputField}
+                onPress={() => setShowPlanModal(true)}
+                disabled={isLoadingPlans}
+              >
+                {isLoadingPlans ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading plans...</ThemedText>
+                  </View>
+                ) : (
+                  <>
+                    <ThemedText style={[styles.inputLabel, !selectedPlan && styles.inputPlaceholder]}>
+                      {selectedPlan
+                        ? `${selectedPlan.name} - N${formatBalance(selectedPlan.amount)}`
+                        : plans.length > 0
+                          ? 'Select Plan'
+                          : 'No plans available'}
+                    </ThemedText>
+                    <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-            {/* Decoder Number */}
+            {/* Decoder Number - Third */}
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
@@ -294,32 +667,50 @@ const CableTv = () => {
                 value={decoderNumber}
                 onChangeText={(text) => {
                   setDecoderNumber(text);
-                  // TODO: Fetch account name from API based on decoder number
                   if (text.length >= 10) {
-                    setAccountName('Qamardeen Abdul Malik');
+                    // Account name will be set from beneficiary or transaction
+                    setAccountName('');
                   } else {
                     setAccountName('');
                   }
                 }}
                 keyboardType="numeric"
               />
-            </View>
-
-            {/* Amount */}
-            <View style={styles.inputField}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Enter Amount"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={amount}
-                onChangeText={(text) => {
-                  const numericValue = text.replace(/,/g, '');
-                  if (numericValue === '' || /^\d+$/.test(numericValue)) {
-                    setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+              <TouchableOpacity
+                onPress={() => {
+                  // Only navigate if a provider is selected
+                  if (!selectedBillerType) {
+                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    return;
                   }
+                  
+                  // Navigate to BeneficiariesScreen with current form data
+                  // @ts-ignore - allow parent route name
+                  navigation.navigate('Beneficiaries' as never, {
+                    categoryCode: 'cable_tv',
+                    selectedProvider: selectedBillerType,
+                    selectedProviderCode: selectedProviderCode,
+                    onSelectBeneficiary: (beneficiary: any) => {
+                      // Populate form with selected beneficiary
+                      setDecoderNumber(beneficiary.accountNumber || beneficiary.phoneNumber || '');
+                      setAccountName(beneficiary.name || '');
+                      // Set provider if available
+                      if (beneficiary.provider?.id) {
+                        setSelectedBillerType(beneficiary.provider.id);
+                        setSelectedProviderCode(beneficiary.provider.code);
+                      }
+                    },
+                  });
                 }}
-                keyboardType="numeric"
-              />
+                disabled={!selectedBillerType}
+                style={!selectedBillerType ? { opacity: 0.5 } : {}}
+              >
+                <Image
+                  source={require('../../../assets/AddressBook.png')}
+                  style={[{ marginBottom: -1, width: 19, height: 19 }]}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             </View>
 
             {/* Account Name (Auto-filled) */}
@@ -344,6 +735,94 @@ const CableTv = () => {
           <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
         </View>
 
+        {/* Recent Section */}
+        <View style={styles.recentSection}>
+          <ThemedText style={styles.recentTitle}>Recent</ThemedText>
+          {isLoadingBeneficiaries ? (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentBeneficiaries.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.recentScrollContent}
+            >
+              {recentBeneficiaries.map((beneficiary) => (
+                <TouchableOpacity
+                  key={beneficiary.id}
+                  style={styles.recentItem}
+                  onPress={() => {
+                    setDecoderNumber(beneficiary.decoderNumber);
+                    // Find and set the provider
+                    const provider = billerTypes.find((b) => b.name === beneficiary.billerType || b.code === beneficiary.billerType);
+                    if (provider) {
+                      setSelectedBillerType(parseInt(provider.id));
+                      setSelectedProviderCode(provider.code);
+                    }
+                  }}
+                >
+                  <Image source={beneficiary.icon} style={styles.recentIcon} resizeMode="cover" />
+                  <ThemedText style={styles.recentDecoder}>{beneficiary.decoderNumber}</ThemedText>
+                  <ThemedText style={styles.recentBiller}>{beneficiary.billerType}</ThemedText>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent beneficiaries
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
+        {/* Recent Transactions Card */}
+        <View style={styles.recentTransactionsCard}>
+          <View style={styles.recentTransactionsHeader}>
+            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
+            <TouchableOpacity>
+              <ThemedText style={styles.viewAllText}>View All</ThemedText>
+            </TouchableOpacity>
+          </View>
+
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentTransactions.length > 0 ? (
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction) => (
+                <View key={transaction.id} style={styles.transactionItem}>
+                  <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionDecoder}>{transaction.decoderNumber}</ThemedText>
+                    <View style={styles.transactionMeta}>
+                      {transaction.plan ? (
+                        <>
+                          <ThemedText style={styles.transactionPlan}>{transaction.plan}</ThemedText>
+                          <View style={styles.transactionDot} />
+                        </>
+                      ) : null}
+                      <ThemedText style={styles.transactionBiller}>{transaction.billerType}</ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No recent transactions
+              </ThemedText>
+            </View>
+          )}
+        </View>
+
         {/* Bottom spacing for proceed button */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -351,11 +830,15 @@ const CableTv = () => {
       {/* Proceed Button - Fixed at bottom */}
       <View style={styles.proceedButtonContainer}>
         <TouchableOpacity
-          style={[styles.proceedButton, (!selectedBillerType || !selectedPlan || !decoderNumber || !amount || !accountName) && styles.proceedButtonDisabled]}
+          style={[styles.proceedButton, !isProceedEnabled && styles.proceedButtonDisabled]}
           onPress={handleProceed}
-          disabled={!selectedBillerType || !selectedPlan || !decoderNumber || !amount || !accountName}
+          disabled={!isProceedEnabled || initiateMutation.isPending}
         >
-          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          {initiateMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -389,23 +872,52 @@ const CableTv = () => {
             </View>
 
             {/* Biller List */}
-            <ScrollView style={styles.billerList}>
-              {filteredBillers.map((biller) => (
+            {isLoadingProviders ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading providers...
+                </ThemedText>
+              </View>
+            ) : isProvidersError ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {providersError?.message || 'Failed to load providers. Please try again.'}
+                </ThemedText>
                 <TouchableOpacity
-                  key={biller.id}
-                  style={styles.billerItem}
-                  onPress={() => handleBillerTypeSelect(biller.id)}
+                  style={[styles.applyButton, { marginTop: 20, backgroundColor: '#A9EF45' }]}
+                  onPress={() => refetchProviders()}
                 >
-                  <Image source={biller.icon} style={styles.billerIcon} resizeMode="cover" />
-                  <ThemedText style={styles.billerName}>{biller.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedBillerType === biller.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedBillerType === biller.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
+                  <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+              </View>
+            ) : filteredBillers.length > 0 ? (
+              <ScrollView style={styles.billerList}>
+                {filteredBillers.map((biller) => (
+                  <TouchableOpacity
+                    key={biller.id}
+                    style={styles.billerItem}
+                    onPress={() => handleBillerTypeSelect(biller.id)}
+                  >
+                    <Image source={biller.icon} style={styles.billerIcon} resizeMode="cover" />
+                    <ThemedText style={styles.billerName}>{biller.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedBillerType === parseInt(biller.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedBillerType === parseInt(biller.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <MaterialCommunityIcons name="information" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {searchQuery ? 'No providers found matching your search' : `No providers available for ${selectedCountryName}. Please try a different country.`}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -448,25 +960,42 @@ const CableTv = () => {
             </View>
 
             {/* Plan List */}
-            <ScrollView style={styles.planList}>
-              {filteredPlans.map((plan) => (
-                <TouchableOpacity
-                  key={plan.id}
-                  style={styles.planItem}
-                  onPress={() => handlePlanSelect(plan)}
-                >
-                  <View style={styles.planInfo}>
-                    <ThemedText style={styles.planTitle}>{plan.title}</ThemedText>
-                    <ThemedText style={styles.planDescription}>{plan.description}</ThemedText>
-                  </View>
-                  <MaterialCommunityIcons
-                    name={selectedPlan?.id === plan.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedPlan?.id === plan.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingPlans ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading plans...
+                </ThemedText>
+              </View>
+            ) : filteredPlans.length > 0 ? (
+              <ScrollView style={styles.planList}>
+                {filteredPlans.map((plan) => (
+                  <TouchableOpacity
+                    key={plan.id}
+                    style={styles.planItem}
+                    onPress={() => handlePlanSelect(plan)}
+                  >
+                    <View style={styles.planInfo}>
+                      <ThemedText style={styles.planTitle}>{plan.name}</ThemedText>
+                      <ThemedText style={styles.planDescription}>
+                        {plan.validity} • N{formatBalance(plan.amount)}
+                      </ThemedText>
+                    </View>
+                    <MaterialCommunityIcons
+                      name={selectedPlan?.id === plan.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedPlan?.id === plan.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {planSearchQuery ? 'No plans found matching your search' : 'No plans available for this provider'}
+                </ThemedText>
+              </View>
+            )}
 
             {/* Apply Button */}
             <TouchableOpacity
@@ -494,26 +1023,52 @@ const CableTv = () => {
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((country) => (
-                <TouchableOpacity
-                  key={country.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountry(country.id);
-                    setSelectedCountryName(country.name);
-                  }}
-                >
-                  <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
-                  <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === country.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24 * SCALE}
-                    color={selectedCountry === country.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((country) => (
+                  <TouchableOpacity
+                    key={country.id}
+                    style={styles.countryItem}
+                    onPress={() => {
+                      setSelectedCountry(country.code);
+                      setSelectedCountryName(country.name);
+                      // Refetch providers when country changes
+                      refetchProviders();
+                    }}
+                  >
+                    {country.flag ? (
+                      country.flag.startsWith('/') ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${country.flag}` }}
+                          style={styles.countryFlagImageModal}
+                          resizeMode="cover"
+                        />
+                      ) : country.flag.startsWith('http') ? (
+                        <Image
+                          source={{ uri: country.flag }}
+                          style={styles.countryFlagImageModal}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                      )
+                    ) : (
+                      <ThemedText style={styles.countryFlagCode}>{country.code || '🏳️'}</ThemedText>
+                    )}
+                    <ThemedText style={styles.countryNameModal}>{country.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === country.code ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24 * SCALE}
+                      color={selectedCountry === country.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.applyButton}
               onPress={() => setShowCountryModal(false)}
@@ -524,61 +1079,69 @@ const CableTv = () => {
         </View>
       </Modal>
 
-      {/* Summary Modal */}
+      {/* PIN Confirmation Modal */}
       <Modal
-        visible={showSummaryModal}
+        visible={showPinModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowSummaryModal(false)}
+        onRequestClose={() => {
+          setShowPinModal(false);
+          setPin('');
+        }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.summaryModalContent}>
-            {/* Modal Header */}
+          <View style={styles.pinModalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Summary</ThemedText>
-              <TouchableOpacity onPress={() => setShowSummaryModal(false)}>
+              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowPinModal(false);
+                  setPin('');
+                }}
+              >
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-
-            {/* Summary Details */}
-            <View style={styles.summaryDetails}>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Country</ThemedText>
-                <ThemedText style={styles.summaryValue}>{selectedCountryName}</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Biller Type</ThemedText>
-                <ThemedText style={styles.summaryValue}>
-                  {BILLER_TYPES.find((b) => b.id === selectedBillerType)?.name || ''}
-                </ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Plan</ThemedText>
-                <ThemedText style={styles.summaryValue}>
-                  {selectedPlan?.title || ''}
-                </ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Decoder Number</ThemedText>
-                <ThemedText style={styles.summaryValue}>{decoderNumber}</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Fee</ThemedText>
-                <ThemedText style={styles.summaryValue}>N200</ThemedText>
-              </View>
-              <View style={styles.summaryRow}>
-                <ThemedText style={styles.summaryLabel}>Amount</ThemedText>
-                <ThemedText style={styles.summaryValue}>N{amount}</ThemedText>
-              </View>
+            <View style={styles.pinInputContainer}>
+              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+              {pendingTransactionData && (
+                <View style={styles.paymentSummaryContainer}>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                  </View>
+                  <View style={styles.paymentSummaryRow}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                  </View>
+                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                  </View>
+                </View>
+              )}
+              <TextInput
+                style={styles.pinInput}
+                value={pin}
+                onChangeText={setPin}
+                keyboardType="numeric"
+                secureTextEntry
+                maxLength={6}
+                placeholder="Enter PIN"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                autoFocus
+              />
             </View>
-
-            {/* Complete Button */}
             <TouchableOpacity
-              style={styles.completeButton}
-              onPress={handleComplete}
+              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+              onPress={handleConfirmPayment}
+              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
             >
-              <ThemedText style={styles.completeButtonText}>Proceed</ThemedText>
+              {confirmMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -591,7 +1154,7 @@ const CableTv = () => {
           amount: transactionDetails.amount,
           fee: transactionDetails.fee,
           mobileNumber: transactionDetails.smartCardNumber,
-          networkProvider: transactionDetails.billerType,
+          networkProvider: billerTypes.find((b) => b.id === String(selectedBillerType))?.name || transactionDetails.billerType,
           country: transactionDetails.country,
           transactionType: 'billPayment',
         }}
@@ -765,6 +1328,7 @@ const styles = StyleSheet.create({
     fontSize: 14 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
+    marginRight: 12 * SCALE,
   },
   accountNameContainer: {
     flex: 1,
@@ -849,13 +1413,6 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   planModalContent: {
-    backgroundColor: '#020C19',
-    borderTopLeftRadius: 20 * SCALE,
-    borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    maxHeight: '80%',
-  },
-  summaryModalContent: {
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
@@ -964,6 +1521,21 @@ const styles = StyleSheet.create({
   countryFlagEmoji: {
     fontSize: 24 * 1,
   },
+  countryFlagEmojiSmall: {
+    fontSize: 20 * 1,
+  },
+  countryFlagCode: {
+    fontSize: 12 * 1,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+    width: 30 * SCALE,
+    textAlign: 'center',
+  },
+  countryFlagImageModal: {
+    width: 30 * SCALE,
+    height: 30 * SCALE,
+    borderRadius: 15 * SCALE,
+  },
   countryNameModal: {
     flex: 1,
     fontSize: 14 * 1,
@@ -983,45 +1555,207 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#000000',
   },
-  summaryDetails: {
+  pinModalContent: {
+    backgroundColor: '#020C19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+    maxHeight: '50%',
+  },
+  pinInputContainer: {
     paddingHorizontal: 20 * SCALE,
-    marginTop: 20 * SCALE,
-    marginBottom: 20 * SCALE,
+    paddingVertical: 20 * SCALE,
   },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12 * SCALE,
-    borderBottomWidth: 0.3,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: '#FFFFFF0D',
-    borderRadius: 10 * SCALE,
-    padding: 12 * SCALE,
-    marginBottom: 10 * SCALE,
-  },
-  summaryLabel: {
-    fontSize: 12 * 1,
-    fontWeight: '300',
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-  summaryValue: {
-    fontSize: 14 * 1,
+  pinLabel: {
+    fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#FFFFFF',
+    marginBottom: 15 * SCALE,
+    textAlign: 'center',
   },
-  completeButton: {
+  pinInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 15 * SCALE,
+    fontSize: 18 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 8,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  confirmButton: {
     backgroundColor: '#A9EF45',
     borderRadius: 100,
-    paddingVertical: 18 * SCALE,
+    paddingVertical: 22 * SCALE,
     marginHorizontal: 20 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  completeButtonText: {
-    fontSize: 14 * 1,
+  confirmButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+  },
+  confirmButtonText: {
+    fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#000000',
+  },
+  paymentSummaryContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    padding: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  paymentSummaryTotal: {
+    marginTop: 8 * SCALE,
+    paddingTop: 8 * SCALE,
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  paymentSummaryLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  paymentSummaryValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  recentSection: {
+    paddingHorizontal: SCREEN_WIDTH * 0.047,
+    marginTop: 20 * SCALE,
+    marginBottom: 10 * SCALE,
+  },
+  recentTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 12 * SCALE,
+  },
+  recentScrollContent: {
+    gap: 12 * SCALE,
+    paddingRight: SCREEN_WIDTH * 0.047,
+  },
+  recentItem: {
+    alignItems: 'center',
+    marginRight: 8 * SCALE,
+  },
+  recentIcon: {
+    width: 71 * SCALE,
+    height: 71 * SCALE,
+    borderRadius: 35.5 * SCALE,
+    marginBottom: 4 * SCALE,
+  },
+  recentDecoder: {
+    fontSize: 10 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 2 * SCALE,
+    textAlign: 'center',
+  },
+  recentBiller: {
+    fontSize: 6 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+  },
+  recentTransactionsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 15 * SCALE,
+    padding: 14 * SCALE,
+    marginTop: 10 * SCALE,
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+  },
+  recentTransactionsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20 * SCALE,
+  },
+  recentTransactionsTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  viewAllText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: '#A9EF45',
+  },
+  transactionsList: {
+    gap: 8 * SCALE,
+  },
+  transactionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10 * SCALE,
+    backgroundColor: '#FFFFFF08',
+    borderRadius: 10 * SCALE,
+    padding: 10 * SCALE,
+  },
+  transactionIcon: {
+    width: 40 * SCALE,
+    height: 40 * SCALE,
+    borderRadius: 20 * SCALE,
+    marginRight: 12 * SCALE,
+  },
+  transactionDetails: {
+    flex: 1,
+    marginRight: 12 * SCALE,
+  },
+  transactionDecoder: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  transactionMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4 * SCALE,
+  },
+  transactionPlan: {
+    fontSize: 8 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  transactionDot: {
+    width: 3 * SCALE,
+    height: 3 * SCALE,
+    borderRadius: 1.5 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+  },
+  transactionBiller: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  transactionRight: {
+    alignItems: 'flex-end',
+  },
+  transactionAmount: {
+    fontSize: 12 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  transactionDate: {
+    fontSize: 8 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 });
 

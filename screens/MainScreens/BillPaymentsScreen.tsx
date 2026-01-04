@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,8 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { useGetBillPayments } from '../../queries/transactionHistory.queries';
+import { API_BASE_URL } from '../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -58,19 +61,65 @@ const BillPaymentsScreen = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
+  // Prepare API params based on filters
+  const apiParams = useMemo(() => {
+    const params: any = {
+      limit: 50,
+      offset: 0,
+    };
+    
+    if (selectedCurrency !== 'All') {
+      params.currency = selectedCurrency;
+    }
+    
+    if (selectedStatus !== 'All') {
+      // Map UI status to API status
+      const statusMap: { [key: string]: string } = {
+        'Completed': 'completed',
+        'Pending': 'pending',
+        'Failed': 'failed',
+      };
+      params.status = statusMap[selectedStatus] || selectedStatus.toLowerCase();
+    }
+    
+    if (selectedType !== 'All') {
+      // Map biller type to category code if needed
+      // For now, we'll use categoryCode if it matches known categories
+      const categoryMap: { [key: string]: string } = {
+        'MTN': 'data',
+        'Airtel': 'airtime',
+        'GLO': 'data',
+        '9mobile': 'airtime',
+        'DSTV': 'cable_tv',
+        'GOTV': 'cable_tv',
+        'EKEDC': 'electricity',
+        'PHED': 'electricity',
+        'Spectranet': 'internet',
+      };
+      if (categoryMap[selectedType]) {
+        params.categoryCode = categoryMap[selectedType];
+      }
+    }
+    
+    return params;
+  }, [selectedCurrency, selectedStatus, selectedType]);
+
+  // Fetch bill payment transactions from API
+  const {
+    data: billPaymentsData,
+    isLoading: isLoadingTransactions,
+    refetch: refetchBillPayments,
+  } = useGetBillPayments(apiParams);
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest bill payment transactions
-        // - Fetch updated summary data
-        // - Update any other data that needs refreshing
-        console.log('Refreshing bill payment data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[BillPaymentsScreen] Refreshing bill payment data...');
+    try {
+      await refetchBillPayments();
+      console.log('[BillPaymentsScreen] Bill payment data refreshed successfully');
+    } catch (error) {
+      console.error('[BillPaymentsScreen] Error refreshing bill payment data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -78,121 +127,105 @@ const BillPaymentsScreen = () => {
     refreshDelay: 2000,
   });
 
-  // Mock data - Replace with API calls later
-  const billPaymentTransactions: BillPaymentTransaction[] = [
-    {
-      id: '1',
-      recipientName: 'Data Recharge - MTN',
-      amountNGN: 'N2,000',
-      amountUSD: '$5.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      transferAmount: 'N2,000',
-      fee: 'N0',
-      paymentAmount: 'N2,000',
-      billerType: 'MTN',
-      mobileNumber: '08012456789',
-      plan: '1.5 GB for 30 Days',
-      transactionId: '12dwerkxywurcksc',
-      dateTime: 'Oct 16, 2025 - 07:22AM',
-    },
-    {
-      id: '2',
-      recipientName: 'Airtime - Airtel',
-      amountNGN: 'N1,000',
-      amountUSD: '$2.50',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      billerType: 'Airtel',
-      mobileNumber: '08012345678',
-      plan: 'N1,000 Airtime',
-    },
-    {
-      id: '3',
-      recipientName: 'Electricity - EKEDC',
-      amountNGN: 'N5,000',
-      amountUSD: '$12.50',
-      date: 'Oct 15,2025',
-      status: 'Pending',
-      paymentMethod: 'Bank Transfer',
-      billerType: 'EKEDC',
-      mobileNumber: '08098765432',
-      plan: 'Prepaid Meter',
-    },
-    {
-      id: '4',
-      recipientName: 'Cable TV - DSTV',
-      amountNGN: 'N3,500',
-      amountUSD: '$8.75',
-      date: 'Oct 15,2025',
-      status: 'Failed',
-      paymentMethod: 'Bank Transfer',
-      billerType: 'DSTV',
-      mobileNumber: '08011223344',
-      plan: 'Compact Package',
-    },
-    {
-      id: '5',
-      recipientName: 'Internet - Spectranet',
-      amountNGN: 'N10,000',
-      amountUSD: '$25.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      billerType: 'Spectranet',
-      mobileNumber: '08055443322',
-      plan: '50GB Monthly',
-    },
-    {
-      id: '6',
-      recipientName: 'Data Recharge - GLO',
-      amountNGN: 'N1,500',
-      amountUSD: '$3.75',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      billerType: 'GLO',
-      mobileNumber: '08099887766',
-      plan: '1GB for 7 Days',
-    },
-    {
-      id: '7',
-      recipientName: 'Airtime - MTN',
-      amountNGN: 'N500',
-      amountUSD: '$1.25',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      billerType: 'MTN',
-      mobileNumber: '08077665544',
-      plan: 'N500 Airtime',
-    },
-    {
-      id: '8',
-      recipientName: 'Electricity - PHED',
-      amountNGN: 'N2,500',
-      amountUSD: '$6.25',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      billerType: 'PHED',
-      mobileNumber: '08033445566',
-      plan: 'Postpaid Meter',
-    },
-  ];
-
-  const summaryData = {
-    incoming: {
-      ngn: '2,000,000.00',
-      usd: '$20,000',
-    },
-    outgoing: {
-      ngn: '500.00',
-      usd: '$0.001',
-    },
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount.replace(/[^0-9.-]/g, '')) : amount;
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
+
+  // Transform API transactions to UI format
+  const billPaymentTransactions: BillPaymentTransaction[] = useMemo(() => {
+    if (!billPaymentsData?.data || !Array.isArray(billPaymentsData.data)) {
+      return [];
+    }
+
+    return billPaymentsData.data.map((tx: any) => {
+      const amount = parseFloat(tx.amount || '0');
+      const currency = tx.currency || 'NGN';
+      const formattedAmount = currency === 'NGN' 
+        ? `N${formatBalance(amount)}`
+        : `$${formatBalance(amount)}`;
+      
+      const date = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+          })
+        : 'N/A';
+
+      // Map API status to UI status
+      const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
+        'completed': 'Successful',
+        'pending': 'Pending',
+        'failed': 'Failed',
+      };
+      const uiStatus = statusMap[tx.status?.toLowerCase()] || 'Pending';
+
+      // Get provider/category info
+      const providerName = tx.provider?.name || tx.category?.name || 'Unknown';
+      const categoryName = tx.category?.name || '';
+      const recipientName = `${categoryName} - ${providerName}`;
+
+      return {
+        id: String(tx.id),
+        recipientName: recipientName,
+        amountNGN: formattedAmount,
+        amountUSD: currency === 'USD' ? formattedAmount : `$${formatBalance(amount * 0.001)}`, // Placeholder conversion
+        date: date,
+        status: uiStatus,
+        paymentMethod: tx.paymentMethod || 'Mobile Money',
+        transferAmount: formattedAmount,
+        fee: tx.fee ? `${currency}${formatBalance(tx.fee)}` : 'N0',
+        paymentAmount: formattedAmount,
+        billerType: tx.provider?.code || tx.provider?.name || '',
+        mobileNumber: tx.accountNumber || '',
+        plan: tx.plan?.name || '',
+        transactionId: tx.reference || tx.id,
+        dateTime: tx.createdAt
+          ? new Date(tx.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : date,
+        accountNumber: tx.accountNumber,
+        accountName: tx.accountName || recipientName,
+        country: tx.countryCode || 'NG',
+      };
+    });
+  }, [billPaymentsData?.data]);
+
+  // Calculate summary data from transactions
+  const summaryData = useMemo(() => {
+    const incoming = billPaymentTransactions
+      .filter(tx => tx.status === 'Successful')
+      .reduce((sum, tx) => {
+        const amount = parseFloat(tx.amountNGN.replace(/[^0-9.-]/g, ''));
+        return sum + amount;
+      }, 0);
+
+    const outgoing = billPaymentTransactions
+      .filter(tx => tx.status === 'Successful')
+      .reduce((sum, tx) => {
+        const amount = parseFloat(tx.amountNGN.replace(/[^0-9.-]/g, ''));
+        return sum + amount;
+      }, 0);
+
+    return {
+      incoming: {
+        ngn: formatBalance(incoming),
+        usd: `$${formatBalance(incoming * 0.001)}`, // Placeholder conversion
+      },
+      outgoing: {
+        ngn: formatBalance(outgoing),
+        usd: `$${formatBalance(outgoing * 0.001)}`, // Placeholder conversion
+      },
+    };
+  }, [billPaymentTransactions]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -376,13 +409,19 @@ const BillPaymentsScreen = () => {
               </View>
               <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
             </View>
-            <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
-              </View>
-            </View>
-            <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
+            {isLoadingTransactions ? (
+              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginVertical: 10 }} />
+            ) : (
+              <>
+                <View style={styles.summaryAmountContainer}>
+                  <View style={styles.summaryAmountRow}>
+                    <ThemedText style={styles.summaryAmountMain}>{summaryData.incoming.ngn}</ThemedText>
+                    <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
+                  </View>
+                </View>
+                <ThemedText style={styles.summaryUSD}>{summaryData.incoming.usd}</ThemedText>
+              </>
+            )}
           </LinearGradient>
 
           <View style={styles.summaryCardWhite}>
@@ -396,13 +435,19 @@ const BillPaymentsScreen = () => {
               </View>
               <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
             </View>
-            <View style={styles.summaryAmountContainer}>
-              <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
-                <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
-              </View>
-            </View>
-            <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
+            {isLoadingTransactions ? (
+              <ActivityIndicator size="small" color="#000000" style={{ marginVertical: 10 }} />
+            ) : (
+              <>
+                <View style={styles.summaryAmountContainer}>
+                  <View style={styles.summaryAmountRow}>
+                    <ThemedText style={styles.summaryAmountMainWhite}>{summaryData.outgoing.ngn}</ThemedText>
+                    <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
+                  </View>
+                </View>
+                <ThemedText style={styles.summaryUSDWhite}>{summaryData.outgoing.usd}</ThemedText>
+              </>
+            )}
           </View>
         </View>
 
@@ -466,9 +511,14 @@ const BillPaymentsScreen = () => {
 
         {/* Transaction List Card */}
         <View style={styles.transactionCard}>
-          <ThemedText style={styles.cardTitle}>Today</ThemedText>
-          <View style={styles.transactionList}>
-            {filteredTransactions.map((transaction) => (
+          <ThemedText style={styles.cardTitle}>Bill Payments</ThemedText>
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : filteredTransactions.length > 0 ? (
+            <View style={styles.transactionList}>
+              {filteredTransactions.map((transaction) => (
               <TouchableOpacity
                 key={transaction.id}
                 style={styles.transactionItem}
@@ -511,8 +561,15 @@ const BillPaymentsScreen = () => {
                   <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
                 </View>
               </TouchableOpacity>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No bill payment transactions found
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}

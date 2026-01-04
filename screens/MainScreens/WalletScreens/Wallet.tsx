@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,8 @@ import {
   RefreshControl,
   Modal,
   Alert,
+  ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +21,10 @@ import QRCode from 'react-native-qrcode-svg';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import { useGetWallets, useGetWalletBalances, useGetWalletTransactions } from '../../../queries/wallet.queries';
+import { useGetHomeData } from '../../../queries/home.queries';
+import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -61,110 +67,347 @@ interface CryptoAsset {
   icon: any;
   trend: 'up' | 'down'; // For line graph color
   trendData: number[]; // Simple data points for line graph
+  rawData?: any; // Raw API data for filtering/searching
 }
 
 const Wallet = () => {
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<'fiat' | 'crypto'>('fiat');
   const [balanceVisible, setBalanceVisible] = useState(true);
-  const [walletId] = useState('NGN1234');
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showCopyMessage, setShowCopyMessage] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<RecentTransaction | null>(null);
+  const [cryptoSearchQuery, setCryptoSearchQuery] = useState<string>('');
+  const [showCryptoSearch, setShowCryptoSearch] = useState(false);
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
+  const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
+  const [currencySearchQuery, setCurrencySearchQuery] = useState<string>('');
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Mock data - Replace with API calls later
-  const fiatWallets: Wallet[] = [
-    {
-      id: '1',
-      currencyCode: 'NGN',
-      currencyName: 'Nigerian Naira',
-      balance: 'N150,000.00',
-      balanceUSD: '$20,000',
-      icon: require('../../../assets/login/nigeria-flag.png'),
-      userName: 'Qamardeen AbdulMalik',
-    },
-    {
-      id: '2',
-      currencyCode: 'KSH',
-      currencyName: 'Kenya Shilling',
-      balance: 'ksh10,000.00',
-      balanceUSD: '$20,000',
-      flagIcon: require('../../../assets/login/south-africa-flag.png'), // Using South Africa flag as placeholder for Kenya
-      userName: 'Qamardeen AbdulMalik',
-    },
+  // Fetch user data for name
+  const { data: homeData, isLoading: isLoadingUser } = useGetHomeData();
+  const user = homeData?.data?.user;
+
+  // Fetch all wallets
+  const { 
+    data: walletsData, 
+    isLoading: isLoadingWallets, 
+    refetch: refetchWallets 
+  } = useGetWallets();
+
+  // Fetch wallet balances (fiat + crypto with USDT conversion)
+  const { 
+    data: balancesData, 
+    isLoading: isLoadingBalances, 
+    refetch: refetchBalances 
+  } = useGetWalletBalances();
+
+  // Fetch virtual accounts for crypto
+  const { 
+    data: virtualAccountsData, 
+    isLoading: isLoadingVirtualAccounts, 
+    refetch: refetchVirtualAccounts 
+  } = useGetVirtualAccounts();
+
+  // Get selected wallet ID from first fiat wallet or use first wallet
+  const firstWalletId = useMemo(() => {
+    if (walletsData?.data && Array.isArray(walletsData.data)) {
+      const fiatWallets = walletsData.data.filter((w: any) => w.type === 'fiat' && w.isActive);
+      if (fiatWallets.length > 0) {
+        return String(fiatWallets[0].id);
+      }
+      return String(walletsData.data[0]?.id || '');
+    }
+    return null;
+  }, [walletsData]);
+
+  // Fetch transactions for selected wallet
+  const walletIdForTransactions = selectedWalletId || firstWalletId || '';
+  const { 
+    data: transactionsData, 
+    isLoading: isLoadingTransactions, 
+    refetch: refetchTransactions 
+  } = useGetWalletTransactions(
+    { walletId: walletIdForTransactions, limit: 10 },
+    { enabled: !!walletIdForTransactions } as any
+  );
+
+  // Get currency name mapping
+  const getCurrencyName = (currency: string, wallet?: any) => {
+    if (wallet?.currencyName) return wallet.currencyName;
+    const currencyNames: { [key: string]: string } = {
+      'NGN': 'Nigerian Naira',
+      'KES': 'Kenya Shilling',
+      'GHS': 'Ghana Cedi',
+      'ZAR': 'South African Rand',
+      'TZS': 'Tanzanian Shilling',
+      'UGX': 'Ugandan Shilling',
+      'USD': 'US Dollar',
+      'EUR': 'Euro',
+      'GBP': 'British Pound',
+      'BTC': 'Bitcoin',
+      'ETH': 'Ethereum',
+      'USDT': 'Tether USD',
+      'USDT_ETH': 'Tether USD (Ethereum)',
+      'USDT_TRON': 'Tether USD (TRON)',
+      'USDT_BSC': 'Tether USD (BSC)',
+      'USDT_SOL': 'Tether USD (Solana)',
+      'USDT_POLYGON': 'Tether USD (Polygon)',
+      'BNB': 'Binance Coin',
+      'SOL': 'Solana',
+      'DOGE': 'Dogecoin',
+      'LTC': 'Litecoin',
+      'XRP': 'Ripple',
+      'TRX': 'Tron',
+      'MATIC': 'Polygon',
+      'USDC': 'USD Coin',
+    };
+    // Try exact match first, then try base currency (before underscore)
+    if (currencyNames[currency]) {
+      return currencyNames[currency];
+    }
+    const baseCurrency = currency.split('_')[0];
+    return currencyNames[baseCurrency] || currency;
+  };
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Transform API wallets to UI format
+  const fiatWallets: Wallet[] = useMemo(() => {
+    if (!walletsData?.data || !Array.isArray(walletsData.data)) return [];
+    
+    // Filter for active fiat wallets
+    const fiatWalletsFromAPI = walletsData.data.filter((w: any) => w.type === 'fiat' && w.isActive !== false);
+    
+    return fiatWalletsFromAPI.map((w: any) => {
+      const balance = formatBalance(w.balance || '0');
+      const flagUri = w.flag ? `${API_BASE_URL.replace('/api', '')}${w.flag}` : null;
+      
+      return {
+        id: String(w.id),
+        currencyCode: w.currency || '',
+        currencyName: getCurrencyName(w.currency, w),
+        balance: balance,
+        balanceUSD: `$${formatBalance(parseFloat(w.balance || '0') * 0.001)}`, // Placeholder conversion
+        icon: flagUri ? { uri: flagUri } : require('../../../assets/login/nigeria-flag.png'),
+        userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User' : 'User',
+        rawData: w,
+      };
+    });
+  }, [walletsData?.data, user]);
+
+  // Get wallet ID from first fiat wallet
+  const walletId = useMemo(() => {
+    if (fiatWallets.length > 0) {
+      return fiatWallets[0].id;
+    }
+    return firstWalletId || 'NGN1234';
+  }, [fiatWallets, firstWalletId]);
+
+  // Transform API virtual accounts to UI format
+  const cryptoAssets: CryptoAsset[] = useMemo(() => {
+    // Use virtual accounts data if available, otherwise fallback to balancesData
+    const accountsData = virtualAccountsData?.data || [];
+    
+    if (!Array.isArray(accountsData) || accountsData.length === 0) {
+      // Fallback to balancesData if virtual accounts not available
+      if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) return [];
+      
+      return balancesData.data.crypto.map((asset: any) => {
+        const balance = parseFloat(asset.balance || '0');
+        const balanceInUSDT = parseFloat(asset.balanceInUSDT || '0');
+        const iconUri = asset.icon ? `${API_BASE_URL.replace('/api', '')}${asset.icon}` : null;
+        
+        // Determine trend (placeholder - would need price history)
+        const trend: 'up' | 'down' = balanceInUSDT > 0 ? 'up' : 'down';
+        const trendData = [20, 30, 25, 40, 35, 50, 45]; // Placeholder data
+        
+        return {
+          id: String(asset.id),
+          name: getCurrencyName(asset.currency),
+          ticker: asset.currency || '',
+          balance: balance.toFixed(8).replace(/\.?0+$/, ''), // Remove trailing zeros
+          balanceUSD: `$${formatBalance(balanceInUSDT)}`,
+          icon: iconUri ? { uri: iconUri } : require('../../../assets/login/bitcoin-coin.png'),
+          trend: trend,
+          trendData: trendData,
+          rawData: asset,
+        };
+      });
+    }
+    
+    // Transform virtual accounts to crypto assets format
+    return accountsData
+      .filter((account: any) => account.active !== false) // Only active accounts
+      .map((account: any) => {
+        const balance = parseFloat(account.accountBalance || account.availableBalance || '0');
+        const currency = account.currency || '';
+        const blockchain = account.blockchain || '';
+        
+        // Get currency name
+        const currencyName = getCurrencyName(currency);
+        
+        // Determine trend (placeholder - would need price history)
+        const trend: 'up' | 'down' = balance > 0 ? 'up' : 'down';
+        const trendData = [20, 30, 25, 40, 35, 50, 45]; // Placeholder data
+        
+        // Get icon based on currency
+        let icon = require('../../../assets/login/bitcoin-coin.png'); // Default
+        if (currency.includes('BTC') || currency === 'BTC') {
+          icon = require('../../../assets/login/bitcoin-coin.png');
+        } else if (currency.includes('ETH') || currency === 'ETH') {
+          icon = require('../../../assets/login/usdt-coin.png'); // Placeholder for ETH
+        } else if (currency.includes('USDT') || currency.includes('USDC')) {
+          icon = require('../../../assets/login/usdt-coin.png');
+        } else if (currency.includes('BNB') || currency === 'BNB') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        } else if (currency.includes('SOL') || currency === 'SOL') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        } else if (currency.includes('DOGE') || currency === 'DOGE') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        } else if (currency.includes('LTC') || currency === 'LTC') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        } else if (currency.includes('XRP') || currency === 'XRP') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        } else if (currency.includes('TRX') || currency === 'TRX') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        } else if (currency.includes('MATIC') || currency === 'MATIC') {
+          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
+        }
+        
+        // Format balance - show at least 8 decimal places for crypto, remove trailing zeros
+        const formattedBalance = balance === 0 
+          ? '0' 
+          : balance.toFixed(8).replace(/\.?0+$/, '');
+        
+        // Calculate USD value (placeholder - would need actual price conversion)
+        // For now, use a simple conversion or 0
+        // Note: In production, this should use actual crypto prices from an API
+        const balanceUSD = balance > 0 ? `$${formatBalance(balance * 0.001)}` : '$0.00';
+        
+        return {
+          id: String(account.id),
+          name: currencyName,
+          ticker: currency,
+          balance: formattedBalance,
+          balanceUSD: balanceUSD,
+          icon: icon,
+          trend: trend,
+          trendData: trendData,
+          rawData: account, // Store full account data for search/filtering
+        };
+      });
+  }, [virtualAccountsData?.data, balancesData?.data?.crypto]);
+
+  // Calculate total crypto balance from API (always in USD for now)
+  const totalCryptoBalanceUSD = useMemo(() => {
+    // First try to get from balancesData totals
+    if (balancesData?.data?.totals?.cryptoInUSDT) {
+      return parseFloat(balancesData.data.totals.cryptoInUSDT);
+    }
+    
+    // Calculate from virtual accounts if available
+    if (virtualAccountsData?.data && Array.isArray(virtualAccountsData.data)) {
+      const activeAccounts = virtualAccountsData.data.filter((account: any) => account.active !== false);
+      // Sum all account balances (using availableBalance as it's the actual usable balance)
+      const total = activeAccounts.reduce((sum: number, account: any) => {
+        const balance = parseFloat(account.availableBalance || account.accountBalance || '0');
+        // For now, use placeholder conversion (would need actual price API)
+        // Using a simple multiplier - in production, would fetch real prices
+        return sum + (balance * 0.001); // Placeholder: 0.001 conversion rate
+      }, 0);
+      return total;
+    }
+    
+    // Fallback: calculate from crypto assets
+    return cryptoAssets.reduce((sum, asset) => {
+      const usdValue = parseFloat(asset.balanceUSD.replace(/[$,]/g, ''));
+      return sum + usdValue;
+    }, 0);
+  }, [balancesData?.data?.totals?.cryptoInUSDT, virtualAccountsData?.data, cryptoAssets]);
+
+  // Currency options for dropdown
+  const currencyOptions = [
+    { code: 'USD', symbol: '$', name: 'US Dollar' },
+    { code: 'USDT', symbol: '$', name: 'Tether USD' },
+    { code: 'BTC', symbol: '₿', name: 'Bitcoin' },
+    { code: 'ETH', symbol: 'Ξ', name: 'Ethereum' },
+    { code: 'BNB', symbol: '', name: 'Binance Coin' },
+    { code: 'SOL', symbol: '', name: 'Solana' },
+    { code: 'DOGE', symbol: '', name: 'Dogecoin' },
+    { code: 'LTC', symbol: '', name: 'Litecoin' },
+    { code: 'XRP', symbol: '', name: 'Ripple' },
+    { code: 'TRX', symbol: '', name: 'Tron' },
+    { code: 'MATIC', symbol: '', name: 'Polygon' },
+    { code: 'USDC', symbol: '$', name: 'USD Coin' },
   ];
 
-  // Crypto assets for the new design
-  const cryptoAssets: CryptoAsset[] = [
-    {
-      id: '1',
-      name: 'Bitcoin',
-      ticker: 'BTC',
-      balance: '0.0001',
-      balanceUSD: '$111,250',
-      icon: require('../../../assets/login/bitcoin-coin.png'),
-      trend: 'up',
-      trendData: [20, 30, 25, 40, 35, 50, 45],
-    },
-    {
-      id: '2',
-      name: 'Ethereum',
-      ticker: 'ETH',
-      balance: '0.0001',
-      balanceUSD: '$111,250',
-      icon: require('../../../assets/login/usdt-coin.png'),
-      trend: 'up',
-      trendData: [25, 35, 30, 45, 40, 55, 50],
-    },
-    {
-      id: '3',
-      name: 'Solana',
-      ticker: 'SOL',
-      balance: '0.0001',
-      balanceUSD: '$111,250',
-      icon: require('../../../assets/login/bitcoin-coin.png'), // Replace with Solana icon
-      trend: 'down',
-      trendData: [50, 45, 40, 35, 30, 25, 20],
-    },
-    {
-      id: '4',
-      name: 'Solana',
-      ticker: 'SOL',
-      balance: '0.0001',
-      balanceUSD: '$111,250',
-      icon: require('../../../assets/login/bitcoin-coin.png'), // Replace with Solana icon
-      trend: 'down',
-      trendData: [50, 45, 40, 35, 30, 25, 20],
-    },
-    {
-      id: '5',
-      name: 'Solana',
-      ticker: 'SOL',
-      balance: '0.0001',
-      balanceUSD: '$111,250',
-      icon: require('../../../assets/login/bitcoin-coin.png'), // Replace with Solana icon
-      trend: 'down',
-      trendData: [50, 45, 40, 35, 30, 25, 20],
-    },
-    {
-      id: '6',
-      name: 'Solana',
-      ticker: 'SOL',
-      balance: '0.0001',
-      balanceUSD: '$111,250',
-      icon: require('../../../assets/login/bitcoin-coin.png'), // Replace with Solana icon
-      trend: 'down',
-      trendData: [50, 45, 40, 35, 30, 25, 20],
-    },
-  ];
+  // Filter currency options based on search query
+  const filteredCurrencyOptions = useMemo(() => {
+    if (!currencySearchQuery.trim()) {
+      return currencyOptions;
+    }
+    const query = currencySearchQuery.toLowerCase().trim();
+    return currencyOptions.filter((currency) => {
+      return (
+        currency.code.toLowerCase().includes(query) ||
+        currency.name.toLowerCase().includes(query)
+      );
+    });
+  }, [currencySearchQuery]);
 
-  // Calculate total crypto balance
-  const totalCryptoBalance = cryptoAssets.reduce((sum, asset) => {
-    const usdValue = parseFloat(asset.balanceUSD.replace(/[$,]/g, ''));
-    return sum + usdValue;
-  }, 0);
+  // Get currency symbol for display
+  const getCurrencySymbol = (currency: string) => {
+    const option = currencyOptions.find(opt => opt.code === currency);
+    return option?.symbol || '';
+  };
+
+  // Format balance based on selected currency
+  const formatBalanceByCurrency = (balanceUSD: number, currency: string) => {
+    // For now, all balances are in USD
+    // In production, this would convert using exchange rates
+    // Placeholder conversion rates (would need real API)
+    const conversionRates: { [key: string]: number } = {
+      'USD': 1,
+      'USDT': 1,
+      'BTC': 0.000023, // Placeholder: 1 USD = 0.000023 BTC
+      'ETH': 0.00038, // Placeholder: 1 USD = 0.00038 ETH
+      'BNB': 0.0018, // Placeholder
+      'SOL': 0.0045, // Placeholder
+    };
+
+    const rate = conversionRates[currency] || 1;
+    const convertedBalance = balanceUSD * rate;
+
+    if (currency === 'USD' || currency === 'USDT') {
+      return `${getCurrencySymbol(currency)}${convertedBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } else {
+      // For crypto, show more decimal places
+      return `${getCurrencySymbol(currency)}${convertedBalance.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 8 })}`;
+    }
+  };
+
+  // Filter crypto assets based on search query
+  const filteredCryptoAssets = useMemo(() => {
+    if (!cryptoSearchQuery.trim()) {
+      return cryptoAssets;
+    }
+    const query = cryptoSearchQuery.toLowerCase().trim();
+    return cryptoAssets.filter((asset) => {
+      return (
+        asset.name.toLowerCase().includes(query) ||
+        asset.ticker.toLowerCase().includes(query) ||
+        asset.rawData?.blockchain?.toLowerCase().includes(query)
+      );
+    });
+  }, [cryptoAssets, cryptoSearchQuery]);
 
   const quickActions: QuickAction[] = [
     { id: '1', title: 'Send', icon: require('../../../assets/send-square-white.png') },
@@ -180,35 +423,46 @@ const Wallet = () => {
     { id: '3', title: 'P2P', icon: require('../../../assets/profile-2user.png') }, // Replace with P2P icon when available
   ];
 
-  const recentTransactions: RecentTransaction[] = [
-    {
-      id: '1',
-      title: 'Fund Wallet',
-      subtitle: 'Successful',
-      amount: '+N20,000',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/send-2.png'),
-    },
-    {
-      id: '2',
-      title: 'NGN to GHC',
-      subtitle: 'Successful',
-      amount: 'N20,000 to c200',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/arrow-swap.png'),
-    },
-    {
-      id: '3',
-      title: 'Fund Wallet',
-      subtitle: 'Successful',
-      amount: '+N20,000',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      icon: require('../../../assets/send-2.png'),
-    },
-  ];
+  // Helper function to get icon from transaction type
+  const getIconFromType = (type: string): any => {
+    const typeLower = type.toLowerCase();
+    if (typeLower.includes('fund') || typeLower.includes('deposit')) return require('../../../assets/send-2.png');
+    if (typeLower.includes('send') || typeLower.includes('withdraw')) return require('../../../assets/send-2.png');
+    if (typeLower.includes('bill')) return require('../../../assets/arrow-swap.png');
+    if (typeLower.includes('p2p')) return require('../../../assets/arrow-swap.png');
+    if (typeLower.includes('convert') || typeLower.includes('exchange')) return require('../../../assets/arrow-swap.png');
+    return require('../../../assets/send-2.png');
+  };
+
+  // Transform API transactions to UI format
+  const recentTransactions: RecentTransaction[] = useMemo(() => {
+    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) return [];
+    
+    return transactionsData.data.map((tx: any) => {
+      const date = tx.createdAt 
+        ? new Date(tx.createdAt).toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+          })
+        : 'N/A';
+      
+      const amount = parseFloat(tx.amount || '0');
+      const isPositive = tx.type === 'deposit' || tx.type === 'credit';
+      const formattedAmount = `${isPositive ? '+' : ''}${tx.currency || ''}${formatBalance(amount)}`;
+      
+      return {
+        id: String(tx.id),
+        title: tx.type || 'Transaction',
+        subtitle: tx.status || 'Completed',
+        amount: formattedAmount,
+        date: date,
+        status: (tx.status === 'completed' ? 'Successful' : tx.status === 'pending' ? 'Pending' : 'Failed') as 'Successful' | 'Pending' | 'Failed',
+        icon: getIconFromType(tx.type || ''),
+        rawData: tx,
+      };
+    });
+  }, [transactionsData?.data]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -373,19 +627,18 @@ const Wallet = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest wallet balances
-        // - Fetch latest fiat wallets
-        // - Fetch latest crypto assets
-        // - Fetch latest recent transactions
-        // - Update any other data that needs refreshing
-        console.log('Refreshing wallet data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[Wallet] Refreshing wallet data...');
+    try {
+      await Promise.all([
+        refetchWallets(),
+        refetchBalances(),
+        refetchTransactions(),
+        refetchVirtualAccounts(), // Add virtual accounts refresh
+      ]);
+      console.log('[Wallet] Wallet data refreshed successfully');
+    } catch (error) {
+      console.error('[Wallet] Error refreshing wallet data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -709,17 +962,21 @@ const Wallet = () => {
                 end={{ x: 1, y: 1 }}
                 style={styles.totalBalanceCard}
               >
-                <TouchableOpacity style={styles.currencyDropdown}>
-                  <ThemedText style={styles.currencyDropdownText}>USD</ThemedText>
+                <TouchableOpacity 
+                  style={styles.currencyDropdown}
+                  onPress={() => setShowCurrencyDropdown(true)}
+                >
+                  <ThemedText style={styles.currencyDropdownText}>{selectedCurrency}</ThemedText>
                   <MaterialCommunityIcons name="chevron-down" size={16 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
                 <View style={styles.totalBalanceHeader}>
                   <ThemedText style={styles.totalBalanceLabel}>Total Balance</ThemedText>
-
                 </View>
-                {balanceVisible ? (
+                {isLoadingBalances || isLoadingVirtualAccounts ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" style={{ marginVertical: 20 }} />
+                ) : balanceVisible ? (
                   <ThemedText fontFamily='Agbalumo-Regular' style={styles.totalBalanceAmount}>
-                    ${totalCryptoBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {formatBalanceByCurrency(totalCryptoBalanceUSD, selectedCurrency)}
                   </ThemedText>
                 ) : (
                   <ThemedText style={styles.totalBalanceAmount}>••••••</ThemedText>
@@ -779,13 +1036,39 @@ const Wallet = () => {
             <View style={styles.allCryptoCard}>
               <View style={styles.allCryptoHeader}>
                 <ThemedText style={styles.allCryptoTitle}>All Crypto</ThemedText>
-                <TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowCryptoSearch(!showCryptoSearch)}>
                   <MaterialCommunityIcons name="magnify" size={24 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.cryptoAssetsList}>
-                {cryptoAssets.map((asset) => (
+              {/* Search Input */}
+              {showCryptoSearch && (
+                <View style={styles.searchInputContainer}>
+                  <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" style={styles.searchIcon} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search crypto assets..."
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={cryptoSearchQuery}
+                    onChangeText={setCryptoSearchQuery}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {cryptoSearchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setCryptoSearchQuery('')}>
+                      <MaterialCommunityIcons name="close-circle" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
+              {isLoadingVirtualAccounts ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                </View>
+              ) : filteredCryptoAssets.length > 0 ? (
+                <View style={styles.cryptoAssetsList}>
+                  {filteredCryptoAssets.map((asset) => (
                   <TouchableOpacity
                     key={asset.id}
                     style={styles.cryptoAssetItem}
@@ -837,8 +1120,15 @@ const Wallet = () => {
                       </View>
                     </View>
                   </TouchableOpacity>
-                ))}
-              </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                    {cryptoSearchQuery.trim() ? 'No crypto assets found matching your search' : 'No crypto assets found'}
+                  </ThemedText>
+                </View>
+              )}
             </View>
           </>
         )}
@@ -891,55 +1181,67 @@ const Wallet = () => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.transactionsList}>
-            {recentTransactions.map((transaction) => (
-              <TouchableOpacity
-                key={transaction.id}
-                style={styles.transactionItem}
-                onPress={() => handleTransactionPress(transaction)}
-              >
-                <View style={styles.transactionIconContainer}>
-                  <View style={styles.transactionIconCircle}>
-                        <Image
-                          source={transaction.icon}
-                          style={{ width: 14 * SCALE, height: 14 * SCALE, tintColor: '#A9EF45' }}
-                          resizeMode="contain"
-                    />
+          {isLoadingTransactions ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+            </View>
+          ) : recentTransactions.length > 0 ? (
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction) => (
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={styles.transactionItem}
+                  onPress={() => handleTransactionPress(transaction)}
+                >
+                  <View style={styles.transactionIconContainer}>
+                    <View style={styles.transactionIconCircle}>
+                          <Image
+                            source={transaction.icon}
+                            style={{ width: 14 * SCALE, height: 14 * SCALE, tintColor: '#A9EF45' }}
+                            resizeMode="contain"
+                      />
+                    </View>
                   </View>
-                </View>
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
-                  <View style={styles.transactionStatusRow}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: getStatusColor(transaction.status) },
-                      ]}
-                    />
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
+                    <View style={styles.transactionStatusRow}>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: getStatusColor(transaction.status) },
+                        ]}
+                      />
+                      <ThemedText
+                        style={[
+                          styles.transactionStatus,
+                          { color: getStatusColor(transaction.status) },
+                        ]}
+                      >
+                        {transaction.subtitle}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionAmountContainer}>
                     <ThemedText
                       style={[
-                        styles.transactionStatus,
-                        { color: getStatusColor(transaction.status) },
+                        styles.transactionAmount,
+                        transaction.status === 'Successful' && styles.transactionAmountGreen,
                       ]}
                     >
-                      {transaction.subtitle}
+                      {transaction.amount}
                     </ThemedText>
+                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                   </View>
-                </View>
-                <View style={styles.transactionAmountContainer}>
-                  <ThemedText
-                    style={[
-                      styles.transactionAmount,
-                      transaction.status === 'Successful' && styles.transactionAmountGreen,
-                    ]}
-                  >
-                    {transaction.amount}
-                  </ThemedText>
-                  <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No transactions found
+              </ThemedText>
+            </View>
+          )}
         </View>
           </>
         )}
@@ -947,6 +1249,99 @@ const Wallet = () => {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Currency Dropdown Modal */}
+      <Modal
+        visible={showCurrencyDropdown}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowCurrencyDropdown(false);
+          setCurrencySearchQuery(''); // Clear search when closing
+        }}
+      >
+        <TouchableOpacity
+          style={styles.currencyModalOverlay}
+          activeOpacity={1}
+          onPress={() => {
+            setShowCurrencyDropdown(false);
+            setCurrencySearchQuery(''); // Clear search when closing
+          }}
+        >
+          <View style={styles.currencyModalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.currencyModalHeader}>
+              <ThemedText style={styles.currencyModalTitle}>Select Currency</ThemedText>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowCurrencyDropdown(false);
+                  setCurrencySearchQuery(''); // Clear search when closing
+                }}
+                style={styles.currencyModalCloseButton}
+              >
+                <MaterialCommunityIcons name="close" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            
+            {/* Search Input */}
+            <View style={styles.currencySearchInputContainer}>
+              <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" style={styles.currencySearchIcon} />
+              <TextInput
+                style={styles.currencySearchInput}
+                placeholder="Search currencies..."
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={currencySearchQuery}
+                onChangeText={setCurrencySearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {currencySearchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setCurrencySearchQuery('')}>
+                  <MaterialCommunityIcons name="close-circle" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Scrollable Currency Options List */}
+            <ScrollView
+              style={styles.currencyOptionsScrollView}
+              contentContainerStyle={styles.currencyOptionsList}
+              showsVerticalScrollIndicator={true}
+              indicatorStyle="white"
+            >
+              {filteredCurrencyOptions.length > 0 ? (
+                filteredCurrencyOptions.map((currency) => (
+                  <TouchableOpacity
+                    key={currency.code}
+                    style={[
+                      styles.currencyOptionItem,
+                      selectedCurrency === currency.code && styles.currencyOptionItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedCurrency(currency.code);
+                      setShowCurrencyDropdown(false);
+                      setCurrencySearchQuery(''); // Clear search when selecting
+                    }}
+                  >
+                    <View style={styles.currencyOptionInfo}>
+                      <ThemedText style={styles.currencyOptionCode}>{currency.code}</ThemedText>
+                      <ThemedText style={styles.currencyOptionName}>{currency.name}</ThemedText>
+                    </View>
+                    {selectedCurrency === currency.code && (
+                      <MaterialCommunityIcons name="check-circle" size={20 * SCALE} color="#A9EF45" />
+                    )}
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <View style={styles.currencyEmptyState}>
+                  <ThemedText style={styles.currencyEmptyText}>
+                    No currencies found matching "{currencySearchQuery}"
+                  </ThemedText>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* QR Code Modal */}
       <Modal
@@ -1543,6 +1938,26 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
   },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 12 * SCALE,
+    marginBottom: 15 * SCALE,
+    minHeight: 45 * SCALE,
+  },
+  searchIcon: {
+    marginRight: 8 * SCALE,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12 * 1,
+    color: '#FFFFFF',
+    paddingVertical: 10 * SCALE,
+  },
   cryptoAssetsList: {
     gap: 10 * SCALE,
   },
@@ -1668,6 +2083,102 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
     lineHeight: 16 * SCALE,
+  },
+  currencyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  currencyModalContent: {
+    backgroundColor: '#020C19',
+    borderRadius: 20 * SCALE,
+    width: SCREEN_WIDTH * 0.85,
+    maxHeight: '70%',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  currencyModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 18 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  currencyModalTitle: {
+    fontSize: 16 * 1,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  currencyModalCloseButton: {
+    padding: 4 * SCALE,
+  },
+  currencySearchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 12 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginVertical: 15 * SCALE,
+    minHeight: 45 * SCALE,
+  },
+  currencySearchIcon: {
+    marginRight: 8 * SCALE,
+  },
+  currencySearchInput: {
+    flex: 1,
+    fontSize: 12 * 1,
+    color: '#FFFFFF',
+    paddingVertical: 10 * SCALE,
+  },
+  currencyOptionsScrollView: {
+    maxHeight: 400 * SCALE,
+  },
+  currencyOptionsList: {
+    paddingVertical: 10 * SCALE,
+    paddingBottom: 20 * SCALE,
+  },
+  currencyEmptyState: {
+    paddingVertical: 40 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencyEmptyText: {
+    fontSize: 12 * 1,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+  },
+  currencyOptionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 15 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  currencyOptionItemSelected: {
+    backgroundColor: 'rgba(169, 239, 69, 0.1)',
+  },
+  currencyOptionInfo: {
+    flex: 1,
+  },
+  currencyOptionCode: {
+    fontSize: 14 * 1,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  currencyOptionName: {
+    fontSize: 11 * 1,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 });
 

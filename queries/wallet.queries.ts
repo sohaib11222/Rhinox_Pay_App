@@ -124,3 +124,29 @@ export const useGetWalletTransactions = (
   });
 };
 
+/**
+ * Get all wallet balances (fiat + crypto) with USDT conversion
+ */
+export const getWalletBalances = async (): Promise<ApiResponse> => {
+  try {
+    console.log('[getWalletBalances] Fetching all wallet balances...');
+    const response = await apiClient.get(API_ROUTES.WALLET.GET_BALANCES);
+    console.log('[getWalletBalances] Response received:', JSON.stringify(response.data, null, 2));
+    return response.data;
+  } catch (error: any) {
+    console.error('[getWalletBalances] Error:', error);
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Query hook for getting all wallet balances
+ */
+export const useGetWalletBalances = (options?: UseQueryOptions<ApiResponse, Error>) => {
+  return useQuery<ApiResponse, Error>({
+    queryKey: ['wallets', 'balances'],
+    queryFn: getWalletBalances,
+    ...options,
+  });
+};
+
