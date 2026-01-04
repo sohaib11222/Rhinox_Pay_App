@@ -8,27 +8,29 @@ import {
   ScrollView,
   Modal,
   Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
-
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬' },
-  { id: 2, name: 'Botswana', flag: '🇧🇼' },
-  { id: 3, name: 'Ghana', flag: '🇬🇭' },
-  { id: 4, name: 'Kenya', flag: '🇰🇪' },
-  { id: 5, name: 'South Africa', flag: '🇿🇦' },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿' },
-  { id: 7, name: 'Uganda', flag: '🇺🇬' },
-];
+import { useSubmitKYC } from '../../mutations/kyc.mutations';
+import { useGetCountries } from '../../queries/country.queries';
+import { API_BASE_URL } from '../../utils/apiConfig';
 
 const ID_TYPES = [
-  { id: 1, name: 'International Passport' },
-  { id: 2, name: 'National ID Card' },
-  { id: 3, name: 'Voters Card' },
-  { id: 4, name: 'Drivers License' },
+  { id: 1, name: 'International Passport', apiValue: 'passport' },
+  { id: 2, name: 'National ID Card', apiValue: 'national_id' },
+  { id: 3, name: 'Voters Card', apiValue: 'voters_card' },
+  { id: 4, name: 'Drivers License', apiValue: 'drivers_license' },
 ];
+
+interface Country {
+  id: number;
+  name: string;
+  code: string;
+  flag: string | null;
+}
 
 const KYC = () => {
   const navigation = useNavigation();
@@ -45,6 +47,15 @@ const KYC = () => {
   const [showDOBModal, setShowDOBModal] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
   const [selectedIDType, setSelectedIDType] = useState<number | null>(null);
+
+  // Fetch countries from API
+  const { data: countriesData, isLoading: countriesLoading, error: countriesError } = useGetCountries({
+    queryKey: ['countries'],
+    retry: 2,
+    retryDelay: 1000,
+  });
+
+  const countries: Country[] = countriesData?.data || [];
   
   const [day, setDay] = useState('DD');
   const [month, setMonth] = useState('MM');
@@ -76,17 +87,90 @@ const KYC = () => {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 100 }, (_, i) => (currentYear - i).toString());
 
+  // KYC Submission Mutation
+  const submitKYCMutation = useSubmitKYC({
+    onSuccess: (data) => {
+      console.log('[KYC] Submission successful:', JSON.stringify(data, null, 2));
+      Alert.alert(
+        'KYC Submitted',
+        'Your KYC information has been submitted successfully.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              navigation.navigate('FacialRegister' as never);
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      console.error('[KYC] Submission error:', error);
+      Alert.alert(
+        'Submission Failed',
+        error.message || 'Failed to submit KYC information. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Check if form is valid
+  const isFormValid = () => {
+    return (
+      selectedCountry !== null &&
+      firstName.trim().length > 0 &&
+      lastName.trim().length > 0 &&
+      dob.length > 0 &&
+      selectedIDType !== null &&
+      idNumber.trim().length > 0
+    );
+  };
+
+  // Format date from DD/MM/YYYY to YYYY-MM-DD
+  const formatDateForAPI = (dateStr: string): string => {
+    const [day, month, year] = dateStr.split('/');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Get API value for ID type
+  const getIDTypeAPIValue = (): string => {
+    const selectedType = ID_TYPES.find(type => type.id === selectedIDType);
+    return selectedType?.apiValue || '';
+  };
+
   const handleProceed = () => {
-    navigation.navigate('FacialRegister' as never);
+    if (!isFormValid()) {
+      Alert.alert('Validation Error', 'Please fill in all required fields.');
+      return;
+    }
+
+    // Format date of birth
+    const formattedDate = formatDateForAPI(dob);
+    const idTypeAPIValue = getIDTypeAPIValue();
+
+    // Prepare KYC data
+    const kycData = {
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      middleName: middleName.trim() || undefined,
+      dateOfBirth: formattedDate,
+      idType: idTypeAPIValue,
+      idNumber: idNumber.trim(),
+      countryId: selectedCountry!,
+      // idDocumentUrl will be added later with file upload functionality
+    };
+
+    console.log('[KYC] Submitting KYC data:', JSON.stringify(kycData, null, 2));
+    submitKYCMutation.mutate(kycData);
   };
 
   const handleContinueLater = () => {
     console.log('Continue later');
   };
 
-  const handleCountrySelect = (id: number, name: string) => {
-    setSelectedCountry(id);
-    setCountry(name);
+  const handleCountrySelect = (country: Country) => {
+    setSelectedCountry(country.id);
+    setCountry(country.name);
   };
 
   const handleIDTypeSelect = (id: number, name: string) => {
@@ -276,11 +360,26 @@ const KYC = () => {
 
       {/* Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.proceedButton} onPress={handleProceed}>
-          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+        <TouchableOpacity
+          style={[
+            styles.proceedButton,
+            (!isFormValid() || submitKYCMutation.isPending) && styles.proceedButtonDisabled,
+          ]}
+          onPress={handleProceed}
+          disabled={!isFormValid() || submitKYCMutation.isPending}
+        >
+          {submitKYCMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+          )}
         </TouchableOpacity>
         
-        <TouchableOpacity style={styles.continueButton} onPress={handleContinueLater}>
+        <TouchableOpacity
+          style={styles.continueButton}
+          onPress={handleContinueLater}
+          disabled={submitKYCMutation.isPending}
+        >
           <ThemedText style={styles.continueButtonText}>Continue Later</ThemedText>
         </TouchableOpacity>
       </View>
@@ -301,21 +400,50 @@ const KYC = () => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.countryItem}
-                  onPress={() => handleCountrySelect(c.id, c.name)}
-                >
-                  <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
-                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
+              {countriesLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                  <ThemedText style={styles.loadingText}>Loading countries...</ThemedText>
+                </View>
+              ) : countriesError ? (
+                <View style={styles.errorContainer}>
+                  <ThemedText style={styles.errorText}>
+                    Failed to load countries. Please try again.
+                  </ThemedText>
+                </View>
+              ) : countries.length === 0 ? (
+                <View style={styles.errorContainer}>
+                  <ThemedText style={styles.errorText}>No countries available</ThemedText>
+                </View>
+              ) : (
+                countries.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.countryItem}
+                    onPress={() => handleCountrySelect(c)}
+                  >
+                    {c.flag ? (
+                      <Image
+                        source={{
+                          uri: c.flag.startsWith('/')
+                            ? `${API_BASE_URL.replace('/api', '')}${c.flag}`
+                            : c.flag,
+                        }}
+                        style={styles.countryFlagImage}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
+                    )}
+                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24}
+                      color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
             <TouchableOpacity style={styles.applyButton} onPress={handleApplyCountry}>
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
@@ -674,6 +802,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
+  proceedButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    opacity: 0.5,
+  },
   proceedButtonText: {
     fontSize: 11.2,
     fontWeight: '400',
@@ -731,6 +863,32 @@ const styles = StyleSheet.create({
   countryFlag: {
     fontSize: 20,
     marginRight: 15,
+  },
+  countryFlagImage: {
+    width: 30,
+    height: 20,
+    marginRight: 15,
+    borderRadius: 4,
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 11.2,
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10,
+  },
+  errorContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorText: {
+    fontSize: 11.2,
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
   },
   countryName: {
     flex: 1,

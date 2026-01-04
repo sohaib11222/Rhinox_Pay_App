@@ -6,13 +6,36 @@ import {
   StatusBar,
   ScrollView,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+import { usePullToRefresh } from '../../hooks';
 
 const Verification = () => {
   const navigation = useNavigation();
+
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    // Refresh verification status and KYC data
+    // You can add API calls here to fetch latest status
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        // Here you would typically:
+        // - Fetch latest KYC status
+        // - Fetch verification status
+        // - Update any other data that needs refreshing
+        console.log('Refreshing verification data...');
+        resolve();
+      }, 1000);
+    });
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
 
   const handleProceedToKYC = () => {
     navigation.navigate('KYC' as never);
@@ -56,7 +79,18 @@ const Verification = () => {
         </View>
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+          />
+        }
+      >
         {/* Shield Icon */}
         <View style={styles.iconContainer}>
           <Image

@@ -15,13 +15,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Token storage keys
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
+const BIOMETRIC_ENABLED_KEY = 'biometricEnabled';
 
 /**
  * Get stored access token
  */
 export const getAccessToken = async (): Promise<string | null> => {
   try {
-    return await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+    const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+    if (token) {
+      console.log('[getAccessToken] Token retrieved (preview):', token.substring(0, 50) + '...');
+    } else {
+      console.log('[getAccessToken] No token found in storage');
+    }
+    return token;
   } catch (error) {
     console.error('Error getting access token:', error);
     return null;
@@ -46,6 +53,12 @@ export const getRefreshToken = async (): Promise<string | null> => {
 export const setAccessToken = async (token: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(ACCESS_TOKEN_KEY, token);
+    console.log('[setAccessToken] Token stored successfully');
+    console.log('[setAccessToken] Token (full):', token);
+    console.log('[setAccessToken] Token (preview):', token.substring(0, 50) + '...');
+    // Verify it was stored
+    const stored = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+    console.log('[setAccessToken] Verification - Token retrieved:', stored ? stored.substring(0, 50) + '...' : 'null');
   } catch (error) {
     console.error('Error setting access token:', error);
   }
@@ -74,6 +87,31 @@ export const clearTokens = async (): Promise<void> => {
 };
 
 /**
+ * Get biometric login preference
+ */
+export const getBiometricEnabled = async (): Promise<boolean> => {
+  try {
+    const value = await AsyncStorage.getItem(BIOMETRIC_ENABLED_KEY);
+    return value === 'true';
+  } catch (error) {
+    console.error('Error getting biometric preference:', error);
+    return false;
+  }
+};
+
+/**
+ * Set biometric login preference
+ */
+export const setBiometricEnabled = async (enabled: boolean): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled.toString());
+    console.log('[setBiometricEnabled] Biometric preference saved:', enabled);
+  } catch (error) {
+    console.error('Error setting biometric preference:', error);
+  }
+};
+
+/**
  * Create axios instance
  */
 const apiClient: AxiosInstance = axios.create({
@@ -92,7 +130,27 @@ apiClient.interceptors.request.use(
     try {
       const token = await getAccessToken();
       if (token && config.headers) {
-        config.headers.Authorization = `Bearer ${token}`;
+        // Ensure token is trimmed and properly formatted
+        const trimmedToken = token.trim();
+        config.headers.Authorization = `Bearer ${trimmedToken}`;
+      }
+      
+      // Log request details
+      const method = config.method?.toUpperCase() || 'UNKNOWN';
+      const url = config.url || '';
+      const fullUrl = `${config.baseURL}${url}`;
+      console.log(`\n[API REQUEST] ${method} ${fullUrl}`);
+      if (config.data) {
+        console.log('[API REQUEST] Body:', JSON.stringify(config.data, null, 2));
+      }
+      if (token) {
+        console.log('[API REQUEST] Token (full):', token);
+        console.log('[API REQUEST] Token (preview):', token.substring(0, 50) + '...');
+      } else {
+        console.log('[API REQUEST] No token available');
+      }
+      if (config.headers?.Authorization) {
+        console.log('[API REQUEST] Authorization header:', config.headers.Authorization.substring(0, 50) + '...');
       }
     } catch (error) {
       console.error('Error in request interceptor:', error);
@@ -109,9 +167,30 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
+    // Log successful response
+    const method = response.config.method?.toUpperCase() || 'UNKNOWN';
+    const url = response.config.url || '';
+    const fullUrl = `${response.config.baseURL}${url}`;
+    console.log(`\n[API RESPONSE] ${method} ${fullUrl} - Status: ${response.status}`);
+    if (response.data) {
+      console.log('[API RESPONSE] Data:', JSON.stringify(response.data, null, 2));
+    }
     return response;
   },
   async (error: AxiosError) => {
+    // Log error response
+    if (error.config) {
+      const method = error.config.method?.toUpperCase() || 'UNKNOWN';
+      const url = error.config.url || '';
+      const fullUrl = `${error.config.baseURL}${url}`;
+      console.log(`\n[API ERROR] ${method} ${fullUrl} - Status: ${error.response?.status || 'NO RESPONSE'}`);
+      if (error.response?.data) {
+        console.log('[API ERROR] Response:', JSON.stringify(error.response.data, null, 2));
+      }
+      if (error.message) {
+        console.log('[API ERROR] Message:', error.message);
+      }
+    }
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // Handle 401 Unauthorized - Token expired or invalid

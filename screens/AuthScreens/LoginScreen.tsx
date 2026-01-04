@@ -17,7 +17,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
-import { useLogin } from '../../mutations/auth.mutations';
+import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword } from '../../mutations/auth.mutations';
+import { getBiometricEnabled, setBiometricEnabled } from '../../utils/apiClient';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -29,7 +30,9 @@ const LoginScreen = () => {
   const [forgotEmail, setForgotEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
   const [countdown, setCountdown] = useState(59);
+  const [forgotPasswordStep, setForgotPasswordStep] = useState<'email' | 'otp' | 'reset'>('email');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -37,10 +40,19 @@ const LoginScreen = () => {
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [biometricLoginEnabled, setBiometricLoginEnabled] = useState(false);
 
   // Login mutation
   const loginMutation = useLogin({
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      console.log('[LoginScreen] Login successful');
+      // Check if user has biometric enabled and update preference
+      const biometricEnabled = await getBiometricEnabled();
+      if (biometricEnabled) {
+        console.log('[LoginScreen] Biometric login is enabled for this user');
+      } else {
+        console.log('[LoginScreen] Biometric login is disabled for this user');
+      }
       // Navigate to Main screen on successful login
       navigation.navigate('Main' as never);
     },
@@ -53,10 +65,94 @@ const LoginScreen = () => {
     },
   });
 
+  // Forgot password mutation
+  const forgotPasswordMutation = useForgotPassword({
+    onSuccess: (data) => {
+      console.log('[LoginScreen] Forgot password OTP sent:', JSON.stringify(data, null, 2));
+      setEmailVerified(true);
+      setForgotPasswordStep('otp');
+      setCountdown(59); // Start countdown
+      Alert.alert(
+        'OTP Sent',
+        'A 5-digit code has been sent to your email address.',
+        [{ text: 'OK' }]
+      );
+    },
+    onError: (error: any) => {
+      console.error('[LoginScreen] Forgot password error:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to send password reset code. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Verify password reset OTP mutation
+  const verifyOtpMutation = useVerifyPasswordResetOtp({
+    onSuccess: (data) => {
+      console.log('[LoginScreen] OTP verified:', JSON.stringify(data, null, 2));
+      setOtpVerified(true);
+      setForgotPasswordStep('reset');
+      setShowForgotPasswordModal(false);
+      setShowChangePasswordModal(true);
+      Alert.alert(
+        'OTP Verified',
+        'OTP verified successfully. You can now reset your password.',
+        [{ text: 'OK' }]
+      );
+    },
+    onError: (error: any) => {
+      console.error('[LoginScreen] OTP verification error:', error);
+      Alert.alert(
+        'Verification Failed',
+        error.message || 'Invalid or expired OTP code. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Reset password mutation
+  const resetPasswordMutation = useResetPassword({
+    onSuccess: (data) => {
+      console.log('[LoginScreen] Password reset successful:', JSON.stringify(data, null, 2));
+      Alert.alert(
+        'Password Reset Successful',
+        'Your password has been reset successfully. Please login with your new password.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Reset all states
+              setShowForgotPasswordModal(false);
+              setShowChangePasswordModal(false);
+              setForgotEmail('');
+              setVerificationCode('');
+              setEmailVerified(false);
+              setOtpVerified(false);
+              setNewPassword('');
+              setConfirmPassword('');
+              setForgotPasswordStep('email');
+              setCountdown(59);
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      console.error('[LoginScreen] Password reset error:', error);
+      Alert.alert(
+        'Reset Failed',
+        error.message || 'Failed to reset password. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
   // Countdown timer for resend code
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (showForgotPasswordModal && emailVerified && countdown > 0) {
+    if (showForgotPasswordModal && emailVerified && forgotPasswordStep === 'otp' && countdown > 0) {
       timer = setInterval(() => {
         setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
       }, 1000);
@@ -64,22 +160,33 @@ const LoginScreen = () => {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [showForgotPasswordModal, emailVerified, countdown]);
+  }, [showForgotPasswordModal, emailVerified, forgotPasswordStep, countdown]);
 
   // Reset countdown when modal opens
   useEffect(() => {
-    if (showForgotPasswordModal) {
+    if (showForgotPasswordModal && forgotPasswordStep === 'email') {
       setCountdown(59);
       setEmailVerified(false);
-      setForgotEmail('');
-      setVerificationCode('');
+      setOtpVerified(false);
     }
-  }, [showForgotPasswordModal]);
+  }, [showForgotPasswordModal, forgotPasswordStep]);
 
-  // Check biometric availability on mount
+  // Check biometric availability and preference on mount
   useEffect(() => {
     checkBiometrics();
+    loadBiometricPreference();
   }, []);
+
+  const loadBiometricPreference = async () => {
+    try {
+      const enabled = await getBiometricEnabled();
+      setBiometricLoginEnabled(enabled);
+      console.log('[LoginScreen] Biometric login enabled:', enabled);
+    } catch (error) {
+      console.error('[LoginScreen] Error loading biometric preference:', error);
+      setBiometricLoginEnabled(false);
+    }
+  };
 
   const checkBiometrics = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -100,6 +207,16 @@ const LoginScreen = () => {
   };
 
   const handleBiometricLogin = async () => {
+    // Check if biometric login is enabled in settings
+    if (!biometricLoginEnabled) {
+      Alert.alert(
+        'Biometric Login Disabled',
+        'Biometric login is disabled in your settings. Please enable it in Settings > Security > Login with biometrics, or use email and password to login.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (!isBiometricAvailable) {
       Alert.alert(
         'Biometrics Not Available',
@@ -121,8 +238,20 @@ const LoginScreen = () => {
       setIsScanning(false);
 
       if (result.success) {
-        // Navigate to Main screen on successful authentication
-        navigation.navigate('Main' as never);
+        // Check if user still has biometric enabled preference (in case it was disabled during auth)
+        const biometricEnabled = await getBiometricEnabled();
+        if (biometricEnabled) {
+          console.log('[LoginScreen] Biometric authentication successful, navigating to Main');
+          // Navigate to Main screen on successful authentication
+          navigation.navigate('Main' as never);
+        } else {
+          // If preference was disabled while authenticating, show message
+          Alert.alert(
+            'Biometric Login Disabled',
+            'Biometric login has been disabled in settings. Please use email and password to login.',
+            [{ text: 'OK' }]
+          );
+        }
       } else {
         if (result.error === 'user_cancel') {
           // User cancelled - do nothing
@@ -163,33 +292,63 @@ const LoginScreen = () => {
 
   const handleForgotPassword = () => {
     setShowForgotPasswordModal(true);
+    setForgotPasswordStep('email');
+    setForgotEmail('');
+    setVerificationCode('');
+    setEmailVerified(false);
+    setOtpVerified(false);
+    setNewPassword('');
+    setConfirmPassword('');
+    setCountdown(59);
   };
 
   const handleEmailChange = (text: string) => {
     setForgotEmail(text);
-    // Simulate email verification when email is entered
-    if (text.includes('@') && text.includes('.')) {
-      setTimeout(() => {
-        setEmailVerified(true);
-      }, 500);
-    } else {
-      setEmailVerified(false);
-    }
+    setEmailVerified(false);
   };
 
-  const handleProceed = () => {
-    if (emailVerified && verificationCode.length > 0) {
-      setShowForgotPasswordModal(false);
-      setShowChangePasswordModal(true);
+  const handleSendOtp = () => {
+    if (!forgotEmail.trim() || !forgotEmail.includes('@') || !forgotEmail.includes('.')) {
+      Alert.alert('Validation Error', 'Please enter a valid email address.');
+      return;
     }
+
+    forgotPasswordMutation.mutate({ email: forgotEmail.trim() });
+  };
+
+  const handleVerifyOtp = () => {
+    if (verificationCode.length !== 5) {
+      Alert.alert('Validation Error', 'Please enter the complete 5-digit code.');
+      return;
+    }
+
+    verifyOtpMutation.mutate({
+      email: forgotEmail.trim(),
+      otp: verificationCode,
+    });
   };
 
   const handleSavePassword = () => {
-    // Add password change logic here
-    console.log('Password changed');
-    setShowChangePasswordModal(false);
-    setNewPassword('');
-    setConfirmPassword('');
+    if (newPassword.length === 0 || confirmPassword.length === 0) {
+      Alert.alert('Validation Error', 'Please enter both new password and confirmation.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert('Validation Error', 'Passwords do not match. Please try again.');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      Alert.alert('Validation Error', 'Password must be at least 8 characters long.');
+      return;
+    }
+
+    resetPasswordMutation.mutate({
+      email: forgotEmail.trim(),
+      otp: verificationCode,
+      newPassword: newPassword,
+    });
   };
 
 const handleRegister = () => {
@@ -276,7 +435,7 @@ const handleRegister = () => {
                 />
                 <TouchableOpacity
                   onPress={handleBiometricLogin}
-                  disabled={isScanning || !isBiometricAvailable}
+                  disabled={isScanning || !isBiometricAvailable || !biometricLoginEnabled}
                   style={styles.fingerprintButton}
                 >
                   {isScanning ? (
@@ -285,7 +444,7 @@ const handleRegister = () => {
                     <MaterialCommunityIcons
                       name="fingerprint"
                       size={24}
-                      color={isBiometricAvailable ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
+                      color={isBiometricAvailable && biometricLoginEnabled ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
                     />
                   )}
                 </TouchableOpacity>
@@ -328,8 +487,19 @@ const handleRegister = () => {
             </TouchableOpacity>
 
             {/* Login Button */}
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-              <ThemedText style={styles.loginButtonText}>Login</ThemedText>
+            <TouchableOpacity
+              style={[
+                styles.loginButton,
+                (!isLoginButtonEnabled || loginMutation.isPending) && styles.loginButtonDisabled,
+              ]}
+              onPress={handleLogin}
+              disabled={!isLoginButtonEnabled || loginMutation.isPending}
+            >
+              {loginMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.loginButtonText}>Login</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -369,64 +539,108 @@ const handleRegister = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Enter Email Address Section */}
-            <View style={styles.modalSection}>
-              <ThemedText style={styles.modalSectionTitle}>Enter Email Addresss</ThemedText>
-              <View style={styles.modalInputWrapper}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Input your email address"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={forgotEmail}
-                  onChangeText={handleEmailChange}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-              {emailVerified && (
-                <View style={styles.verificationMessage}>
-                  <MaterialCommunityIcons name="check-circle" size={20} color="#A9EF45" />
-                  <ThemedText style={styles.verificationText}>Email Address Verified</ThemedText>
+            {/* Step 1: Enter Email Address */}
+            {forgotPasswordStep === 'email' && (
+              <>
+                <View style={styles.modalSection}>
+                  <ThemedText style={styles.modalSectionTitle}>Enter Email Address</ThemedText>
+                  <View style={styles.modalInputWrapper}>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Input your email address"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={forgotEmail}
+                      onChangeText={handleEmailChange}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      editable={!forgotPasswordMutation.isPending}
+                    />
+                  </View>
                 </View>
-              )}
-              {emailVerified && (
-                <ThemedText style={styles.countdownText}>
-                  A 5 digit code has been sent to your registered email. Resend in{' '}
-                  <ThemedText style={styles.countdownTimer}>
-                    {String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')} Sec
-                  </ThemedText>
-                </ThemedText>
-              )}
-            </View>
 
-            {/* Input Code Section */}
-            <View style={styles.modalSection}>
-              <ThemedText style={styles.modalSectionTitle}>Input Code</ThemedText>
-              <View style={styles.modalInputWrapper}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Input code sent to email"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={verificationCode}
-                  onChangeText={setVerificationCode}
-                  keyboardType="number-pad"
-                  maxLength={5}
-                />
-              </View>
-            </View>
+                {/* Next Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.modalProceedButton,
+                    (!forgotEmail.trim() || !forgotEmail.includes('@') || !forgotEmail.includes('.') || forgotPasswordMutation.isPending) && styles.modalButtonDisabled,
+                  ]}
+                  onPress={handleSendOtp}
+                  disabled={!forgotEmail.trim() || !forgotEmail.includes('@') || !forgotEmail.includes('.') || forgotPasswordMutation.isPending}
+                >
+                  {forgotPasswordMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#000000" />
+                  ) : (
+                    <ThemedText style={styles.modalProceedButtonText}>Next</ThemedText>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
 
-            {/* Proceed Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalProceedButton,
-                (!emailVerified || verificationCode.length === 0) && styles.modalButtonDisabled,
-              ]}
-              onPress={handleProceed}
-              disabled={!emailVerified || verificationCode.length === 0}
-            >
-              <ThemedText style={styles.modalProceedButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
+            {/* Step 2: Verify OTP */}
+            {forgotPasswordStep === 'otp' && (
+              <>
+                <View style={styles.modalSection}>
+                  <ThemedText style={styles.modalSectionTitle}>Enter Email Address</ThemedText>
+                  <View style={styles.modalInputWrapper}>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Input your email address"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={forgotEmail}
+                      editable={false}
+                    />
+                  </View>
+                  {emailVerified && (
+                    <View style={styles.verificationMessage}>
+                      <MaterialCommunityIcons name="check-circle" size={20} color="#A9EF45" />
+                      <ThemedText style={styles.verificationText}>Email Address Verified</ThemedText>
+                    </View>
+                  )}
+                  {emailVerified && (
+                    <ThemedText style={styles.countdownText}>
+                      A 5 digit code has been sent to your registered email. Resend in{' '}
+                      <ThemedText style={styles.countdownTimer}>
+                        {String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')} Sec
+                      </ThemedText>
+                    </ThemedText>
+                  )}
+                </View>
+
+                {/* Input Code Section */}
+                <View style={styles.modalSection}>
+                  <ThemedText style={styles.modalSectionTitle}>Input Code</ThemedText>
+                  <View style={styles.modalInputWrapper}>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="Input code sent to email"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={verificationCode}
+                      onChangeText={setVerificationCode}
+                      keyboardType="number-pad"
+                      maxLength={5}
+                      editable={!verifyOtpMutation.isPending}
+                    />
+                  </View>
+                </View>
+
+                {/* Verify Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.modalProceedButton,
+                    (verificationCode.length !== 5 || verifyOtpMutation.isPending) && styles.modalButtonDisabled,
+                  ]}
+                  onPress={handleVerifyOtp}
+                  disabled={verificationCode.length !== 5 || verifyOtpMutation.isPending}
+                >
+                  {verifyOtpMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#000000" />
+                  ) : (
+                    <ThemedText style={styles.modalProceedButtonText}>Verify</ThemedText>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -518,12 +732,16 @@ const handleRegister = () => {
             <TouchableOpacity
               style={[
                 styles.modalSaveButton,
-                (newPassword.length === 0 || confirmPassword.length === 0) && styles.modalButtonDisabled,
+                (newPassword.length === 0 || confirmPassword.length === 0 || newPassword !== confirmPassword || resetPasswordMutation.isPending) && styles.modalButtonDisabled,
               ]}
               onPress={handleSavePassword}
-              disabled={newPassword.length === 0 || confirmPassword.length === 0}
+              disabled={newPassword.length === 0 || confirmPassword.length === 0 || newPassword !== confirmPassword || resetPasswordMutation.isPending}
             >
-              <ThemedText style={styles.modalSaveButtonText}>Save</ThemedText>
+              {resetPasswordMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.modalSaveButtonText}>Save</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -855,6 +1073,10 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   modalButtonDisabled: {
+    opacity: 0.5,
+  },
+  loginButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
     opacity: 0.5,
   },
 });

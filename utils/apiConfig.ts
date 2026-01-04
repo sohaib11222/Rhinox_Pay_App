@@ -4,7 +4,30 @@ Based on Rhinox Pay API Postman Collection
 Base URL: http://localhost:3000/api
  */
 
-export const API_BASE_URL = 'http://localhost:3000/api';
+import { Platform } from 'react-native';
+
+// Get the API base URL based on platform
+// For Android emulator: use 10.0.2.2 (special IP that maps to host machine's localhost)
+// For Android physical device: use your computer's IP address (e.g., 192.168.1.100)
+// For iOS simulator: localhost works fine
+// For iOS physical device: use your computer's IP address
+const getApiBaseUrl = (): string => {
+  // You can also use environment variables or a config file
+  // For now, we'll use platform detection
+  
+  if (Platform.OS === 'android') {
+    // For Android emulator, use 10.0.2.2
+    // For physical device, replace with your computer's IP address
+    // Example: return 'http://192.168.1.100:3000/api';
+    return 'http://10.118.170.151:3000/api';
+  }
+  
+  // For iOS simulator, localhost works
+  // For iOS physical device, you may need to use your computer's IP
+  return 'http://localhost:3000/api';
+};
+
+export const API_BASE_URL = getApiBaseUrl();
 
 /**
  * API Routes organized by module
@@ -21,6 +44,9 @@ export const API_ROUTES = {
     REFRESH_TOKEN: '/auth/refresh',
     SETUP_PIN: '/auth/setup-pin',
     MARK_FACE_VERIFIED: '/auth/mark-face-verified',
+    FORGOT_PASSWORD: '/auth/forgot-password',
+    VERIFY_PASSWORD_RESET_OTP: '/auth/verify-password-reset-otp',
+    RESET_PASSWORD: '/auth/reset-password',
   },
 
   // Bank Accounts Routes

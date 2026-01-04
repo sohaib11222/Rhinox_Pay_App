@@ -10,24 +10,29 @@ import {
   Platform,
   ScrollView,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+import { useRegister, useVerifyEmail, useResendVerification } from '../../mutations/auth.mutations';
+import { useGetCountries } from '../../queries/country.queries';
+import { API_BASE_URL } from '../../utils/apiConfig';
 
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬', selected: false },
-  { id: 2, name: 'Botswana', flag: '🇧🇼', selected: false },
-  { id: 3, name: 'Ghana', flag: '🇬🇭', selected: false },
-  { id: 4, name: 'Kenya', flag: '🇰🇪', selected: false },
-  { id: 5, name: 'South Africa', flag: '🇿🇦', selected: false },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿', selected: false },
-  { id: 7, name: 'Uganda', flag: '🇺🇬', selected: false },
-];
+interface Country {
+  id: number;
+  name: string;
+  code: string;
+  flag: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
   const [country, setCountry] = useState('');
+  const [countryId, setCountryId] = useState<string>('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -41,6 +46,7 @@ const RegisterScreen = () => {
   const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
   const [emailCode, setEmailCode] = useState(['', '', '', '', '']);
   const [phoneCode, setPhoneCode] = useState(['', '', '', '', '']);
+  const [userId, setUserId] = useState<string>(''); // Store user ID from registration
   
   // Refs for auto-focus
   const emailCodeRefs = useRef<(TextInput | null)[]>([]);
@@ -59,13 +65,166 @@ const RegisterScreen = () => {
     hasLetterOrSymbol: false,
   });
 
-  const handleRegister = () => {
-    navigation.navigate('SetBiometrics' as never);
+  // Fetch countries from API
+  const { 
+    data: countriesData, 
+    isLoading: countriesLoading, 
+    error: countriesError,
+    refetch: refetchCountries 
+  } = useGetCountries();
+  
+  // Extract countries array from API response
+  // API response structure: { success: true, data: [...] }
+  // The query returns response.data which is the ApiResponse object
+  const countries: Country[] = React.useMemo(() => {
+    if (!countriesData) return [];
+    
+    // Handle both possible response structures
+    if (Array.isArray(countriesData)) {
+      return countriesData;
+    }
+    
+    if (countriesData.data && Array.isArray(countriesData.data)) {
+      return countriesData.data;
+    }
+    
+    return [];
+  }, [countriesData]);
+  
+  // Debug logging (remove in production)
+  React.useEffect(() => {
+    if (countriesData) {
+      console.log('Countries Data:', JSON.stringify(countriesData, null, 2));
+      console.log('Extracted Countries:', countries.length);
+    }
+    if (countriesError) {
+      console.error('Countries Error:', countriesError);
+    }
+  }, [countriesData, countriesError, countries.length]);
+
+  // Register mutation
+  const registerMutation = useRegister({
+    onSuccess: (data) => {
+      // Registration successful - OTP sent to email
+      // Store user ID from response
+      const user = data?.data?.user;
+      if (user?.id) {
+        setUserId(user.id);
+        // Open email verification modal
+        setShowEmailVerifyModal(true);
+      } else {
+        Alert.alert(
+          'Registration Successful',
+          'A 5-digit OTP code has been sent to your email address. Please verify your email to continue.',
+          [{ text: 'OK' }]
+        );
+      }
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        'Registration Failed',
+        error.message || 'Failed to register. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Verify email mutation
+  const verifyEmailMutation = useVerifyEmail({
+    onSuccess: async (data) => {
+      console.log('[RegisterScreen] Email verification successful');
+      console.log('[RegisterScreen] Response data:', JSON.stringify(data, null, 2));
+      
+      // Wait longer to ensure tokens are fully stored and persisted
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Verify token was stored
+      const apiClientModule = await import('../../utils/apiClient');
+      const storedToken = await apiClientModule.getAccessToken();
+      if (storedToken) {
+        console.log('[RegisterScreen] Token verified after storage (preview):', storedToken.substring(0, 50) + '...');
+      } else {
+        console.error('[RegisterScreen] ERROR: Token not found after storage!');
+      }
+      
+      Alert.alert(
+        'Email Verified',
+        'Your email has been verified successfully. Crypto wallets have been initialized.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowEmailVerifyModal(false);
+              // Navigate to SetBiometrics screen
+              navigation.navigate('SetBiometrics' as never);
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        'Verification Failed',
+        error.message || 'Invalid or expired OTP code. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Resend verification mutation
+  const resendVerificationMutation = useResendVerification({
+    onSuccess: () => {
+      setEmailResendTimer(60);
+      setEmailResendClicked(true);
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        'Resend Failed',
+        error.message || 'Failed to resend OTP. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Check if all required fields are filled
+  const isFormValid = () => {
+    return (
+      countryId.trim() !== '' &&
+      firstName.trim() !== '' &&
+      lastName.trim() !== '' &&
+      email.trim() !== '' &&
+      phone.trim() !== '' &&
+      password.trim() !== '' &&
+      passwordValid.noNameEmail &&
+      passwordValid.minLength &&
+      passwordValid.hasLetterOrSymbol &&
+      agreeTerms
+    );
   };
 
-  const handleCountrySelect = (id: number, name: string) => {
-    setSelectedCountry(id);
-    setCountry(name);
+  const handleRegister = () => {
+    if (!isFormValid()) {
+      Alert.alert('Validation Error', 'Please fill in all required fields and accept the terms.');
+      return;
+    }
+
+    // Call register API
+    registerMutation.mutate({
+      email: email.trim(),
+      phone: phone.trim(),
+      password: password,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      countryId: countryId,
+      termsAccepted: agreeTerms,
+    });
+  };
+
+  const handleCountrySelect = (country: Country) => {
+    setSelectedCountry(country.id);
+    setCountry(country.name);
+    // Convert numeric ID to string for the register API
+    setCountryId(String(country.id));
   };
 
   const handleApplyCountry = () => {
@@ -84,28 +243,48 @@ const RegisterScreen = () => {
   };
 
   const handleVerifyEmail = () => {
-    setShowEmailVerifyModal(false);
-  };
+    if (!userId) {
+      Alert.alert('Error', 'User ID not found. Please try registering again.');
+      return;
+    }
 
-  const handleVerifyPhone = () => {
-    setShowPhoneVerifyModal(false);
+    const code = emailCode.join('');
+    if (code.length !== 5) {
+      Alert.alert('Validation Error', 'Please enter the complete 5-digit code.');
+      return;
+    }
+
+    // Call verify email API
+    verifyEmailMutation.mutate({
+      userId: userId,
+      code: code,
+    });
   };
 
   // Handle email resend
   const handleEmailResend = () => {
-    setEmailResendTimer(60); // 1 minute = 60 seconds
-    setEmailResendClicked(true);
-    // TODO: Call API to resend email OTP
-    console.log('Resending email OTP...');
+    if (!userId) {
+      Alert.alert('Error', 'User ID not found. Please try registering again.');
+      return;
+    }
+
+    // Call resend verification API
+    resendVerificationMutation.mutate({
+      userId: userId,
+    });
   };
 
-  // Handle phone resend
-  const handlePhoneResend = () => {
-    setPhoneResendTimer(60); // 1 minute = 60 seconds
-    setPhoneResendClicked(true);
-    // TODO: Call API to resend phone OTP
-    console.log('Resending phone OTP...');
-  };
+  // Phone verification handlers (commented out for now)
+  // const handleVerifyPhone = () => {
+  //   setShowPhoneVerifyModal(false);
+  // };
+
+  // const handlePhoneResend = () => {
+  //   setPhoneResendTimer(60); // 1 minute = 60 seconds
+  //   setPhoneResendClicked(true);
+  //   // TODO: Call API to resend phone OTP
+  //   console.log('Resending phone OTP...');
+  // };
 
   // Auto-focus first input when email modal opens
   useEffect(() => {
@@ -295,9 +474,6 @@ const RegisterScreen = () => {
                     keyboardType="email-address"
                     autoCapitalize="none"
                   />
-                  <TouchableOpacity onPress={() => setShowEmailVerifyModal(true)}>
-                    <ThemedText style={styles.verifyText}>Verify</ThemedText>
-                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -313,9 +489,6 @@ const RegisterScreen = () => {
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
                   />
-                  <TouchableOpacity onPress={() => setShowPhoneVerifyModal(true)}>
-                    <ThemedText style={styles.verifyText}>Verify</ThemedText>
-                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -390,8 +563,19 @@ const RegisterScreen = () => {
             </TouchableOpacity>
 
             {/* Register Button */}
-            <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-              <ThemedText style={styles.registerButtonText}>Register</ThemedText>
+            <TouchableOpacity
+              style={[
+                styles.registerButton,
+                (!isFormValid() || registerMutation.isPending) && styles.registerButtonDisabled,
+              ]}
+              onPress={handleRegister}
+              disabled={!isFormValid() || registerMutation.isPending}
+            >
+              {registerMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.registerButtonText}>Register</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -424,21 +608,55 @@ const RegisterScreen = () => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.countryItem}
-                  onPress={() => handleCountrySelect(c.id, c.name)}
-                >
-                  <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
-                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
+              {countriesLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#A9EF45" />
+                  <ThemedText style={styles.loadingText}>Loading countries...</ThemedText>
+                </View>
+              ) : countriesError ? (
+                <View style={styles.loadingContainer}>
+                  <ThemedText style={styles.errorText}>
+                    Error loading countries. Please try again.
+                  </ThemedText>
+                  <ThemedText style={styles.errorSubtext}>
+                    {countriesError instanceof Error ? countriesError.message : 'Unknown error'}
+                  </ThemedText>
+                  <TouchableOpacity 
+                    style={styles.retryButton} 
+                    onPress={() => refetchCountries()}
+                  >
+                    <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              ) : countries.length === 0 ? (
+                <View style={styles.loadingContainer}>
+                  <ThemedText style={styles.loadingText}>No countries available</ThemedText>
+                </View>
+              ) : (
+                countries.map((c) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.countryItem}
+                    onPress={() => handleCountrySelect(c)}
+                  >
+                    {c.flag ? (
+                      <Image
+                        source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                        style={styles.countryFlagImage}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <ThemedText style={styles.countryFlagEmoji}>🏳️</ThemedText>
+                    )}
+                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24}
+                      color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
             <TouchableOpacity style={styles.applyButton} onPress={handleApplyCountry}>
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
@@ -470,20 +688,31 @@ const RegisterScreen = () => {
               />
             </View>
             <ThemedText style={styles.verifyTitle}>Verify your email address</ThemedText>
-            <ThemedText style={styles.verifySubtitle}>
-              {emailResendClicked
-                ? 'A 5 digit code has been sent again to your registered email address'
-                : 'A 5 digit code has been sent to your registered email address'}{' '}
+            <View style={styles.verifySubtitleContainer}>
+              <ThemedText style={styles.verifySubtitle}>
+                {emailResendClicked
+                  ? 'A 5 digit code has been sent again to your registered email address'
+                  : 'A 5 digit code has been sent to your registered email address'}
+                {' '}
+              </ThemedText>
               {emailResendTimer > 0 ? (
                 <ThemedText style={styles.resendTextDisabled}>
                   Resend ({emailResendTimer}s)
                 </ThemedText>
               ) : (
-                <TouchableOpacity onPress={handleEmailResend} activeOpacity={0.7}>
-                  <ThemedText style={styles.resendText}>Resend</ThemedText>
+                <TouchableOpacity 
+                  onPress={handleEmailResend} 
+                  activeOpacity={0.7}
+                  disabled={resendVerificationMutation.isPending}
+                >
+                  {resendVerificationMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                  ) : (
+                    <ThemedText style={styles.resendText}>Resend</ThemedText>
+                  )}
                 </TouchableOpacity>
               )}
-            </ThemedText>
+            </View>
             <View style={styles.codeContainer}>
               {[0, 1, 2, 3, 4].map((index) => (
                 <View key={index} style={styles.codeInput}>
@@ -518,19 +747,23 @@ const RegisterScreen = () => {
             <TouchableOpacity 
               style={[
                 styles.verifyButton,
-                emailCode.every(digit => digit !== '') ? {} : styles.verifyButtonDisabled
+                (emailCode.every(digit => digit !== '') && !verifyEmailMutation.isPending) ? {} : styles.verifyButtonDisabled
               ]} 
               onPress={handleVerifyEmail}
-              disabled={!emailCode.every(digit => digit !== '')}
+              disabled={!emailCode.every(digit => digit !== '') || verifyEmailMutation.isPending}
             >
-              <ThemedText style={styles.verifyButtonText}>Proceed</ThemedText>
+              {verifyEmailMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.verifyButtonText}>Proceed</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Phone Verification Modal */}
-      <Modal
+      {/* Phone Verification Modal - Commented out for now */}
+      {/* <Modal
         visible={showPhoneVerifyModal}
         animationType="slide"
         transparent={true}
@@ -552,10 +785,13 @@ const RegisterScreen = () => {
               /> 
             </View>
             <ThemedText style={styles.verifyTitle}>Verify your phone number</ThemedText>
-            <ThemedText style={styles.verifySubtitle}>
-              {phoneResendClicked
-                ? 'A 5 digit code has been sent again to your registered phone number'
-                : 'A 5 digit code has been sent to your registered phone number'}{' '}
+            <View style={styles.verifySubtitleContainer}>
+              <ThemedText style={styles.verifySubtitle}>
+                {phoneResendClicked
+                  ? 'A 5 digit code has been sent again to your registered phone number'
+                  : 'A 5 digit code has been sent to your registered phone number'}
+                {' '}
+              </ThemedText>
               {phoneResendTimer > 0 ? (
                 <ThemedText style={styles.resendTextDisabled}>
                   Resend ({phoneResendTimer}s)
@@ -565,7 +801,7 @@ const RegisterScreen = () => {
                   <ThemedText style={styles.resendText}>Resend</ThemedText>
                 </TouchableOpacity>
               )}
-            </ThemedText>
+            </View>
             <View style={styles.codeContainer}>
               {[0, 1, 2, 3, 4].map((index) => (
                 <View key={index} style={styles.codeInput}>
@@ -609,7 +845,7 @@ const RegisterScreen = () => {
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </Modal> */}
 
       <View style={[styles.decorativeCircle, styles.circleTop]} />
       <View style={[styles.decorativeCircle, styles.circleBottom]} />
@@ -893,6 +1129,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginRight: 15,
   },
+  countryFlagEmoji: {
+    fontSize: 20,
+    marginRight: 15,
+  },
+  countryFlagImage: {
+    width: 24,
+    height: 18,
+    marginRight: 15,
+  },
   countryName: {
     flex: 1,
     fontSize: 11.2,
@@ -932,13 +1177,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 10,
   },
+  verifySubtitleContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 40,
+    marginBottom: 30,
+  },
   verifySubtitle: {
     fontSize: 9.8,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
-    marginHorizontal: 40,
-    marginBottom: 30,
   },
   resendText: {
     color: '#A9EF45',
@@ -983,6 +1234,47 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   verifyButtonText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  registerButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    opacity: 0.5,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 14,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10,
+  },
+  errorText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#FF6B6B',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  errorSubtext: {
+    fontSize: 12,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 16,
+  },
+  retryButtonText: {
     fontSize: 14,
     fontWeight: '400',
     color: '#000000',

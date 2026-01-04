@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,11 +10,15 @@ import {
   Switch,
   Modal,
   RefreshControl,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useLogout } from '../../../mutations/auth.mutations';
+import { clearTokens, getBiometricEnabled, setBiometricEnabled } from '../../../utils/apiClient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -38,13 +42,120 @@ interface SettingsSection {
 
 const Settings = () => {
   const navigation = useNavigation();
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [showDeleteWarningModal, setShowDeleteWarningModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [agreements, setAgreements] = useState({
     loseAccess: true,
     cannotLogin: true,
     balancesDeleted: true,
+  });
+
+  // Load biometric preference on mount
+  useEffect(() => {
+    loadBiometricPreference();
+  }, []);
+
+  const loadBiometricPreference = async () => {
+    try {
+      const enabled = await getBiometricEnabled();
+      setBiometricEnabledState(enabled);
+      console.log('[Settings] Loaded biometric preference:', enabled);
+    } catch (error) {
+      console.error('[Settings] Error loading biometric preference:', error);
+    }
+  };
+
+  const handleBiometricToggle = async (value: boolean) => {
+    try {
+      setBiometricEnabledState(value);
+      await setBiometricEnabled(value);
+      console.log('[Settings] Biometric preference updated:', value);
+    } catch (error) {
+      console.error('[Settings] Error saving biometric preference:', error);
+      // Revert state on error
+      setBiometricEnabledState(!value);
+      Alert.alert('Error', 'Failed to save biometric preference. Please try again.');
+    }
+  };
+
+  // Helper function to navigate to login
+  const navigateToLogin = async () => {
+    // Clear tokens from storage (even if logout API failed)
+    await clearTokens();
+    console.log('[Settings] Tokens cleared, navigating to Login...');
+    
+    // Navigate to Auth/Login screen
+    // Settings is in: SettingsStack -> MainTab -> RootStack
+    // We need to get RootStack to navigate to Auth
+    const rootNavigation = navigation.getParent()?.getParent()?.getParent();
+    if (rootNavigation) {
+      rootNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: 'Auth' as never,
+              params: {
+                screen: 'Login' as never,
+              },
+            },
+          ],
+        })
+      );
+    } else {
+      // Fallback: try to navigate directly
+      try {
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [
+              {
+                name: 'Auth' as never,
+                params: {
+                  screen: 'Login' as never,
+                },
+              },
+            ],
+          })
+        );
+      } catch (error) {
+        console.error('[Settings] Navigation error:', error);
+        // Last resort: navigate to Auth
+        (navigation as any).navigate('Auth', { screen: 'Login' });
+      }
+    }
+  };
+
+  // Logout mutation
+  const logoutMutation = useLogout({
+    onSuccess: async (data) => {
+      console.log('[Settings] Logout successful:', JSON.stringify(data, null, 2));
+      await navigateToLogin();
+    },
+    onError: async (error: any) => {
+      console.error('[Settings] Logout error:', error);
+      
+      // If 401 error (token expired/invalid), still clear tokens and navigate to login
+      if (error.status === 401 || error.message?.includes('not logged in') || error.message?.includes('expired')) {
+        console.log('[Settings] Token expired or invalid (401), clearing tokens and navigating to login...');
+        await navigateToLogin();
+      } else {
+        // For other errors, show alert but still try to navigate to login
+        Alert.alert(
+          'Logout Failed',
+          error.message || 'Failed to logout. You will be redirected to login.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await navigateToLogin();
+              },
+            },
+          ]
+        );
+      }
+    },
   });
 
   // Mock user data - Replace with API call
@@ -148,6 +259,26 @@ const Settings = () => {
       (navigation as any).navigate('Settings', {
         screen: 'Support',
       });
+    } else if (item.id === 'logout') {
+      // Show confirmation before logout
+      Alert.alert(
+        'Logout',
+        'Are you sure you want to logout?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Logout',
+            style: 'destructive',
+            onPress: () => {
+              console.log('[Settings] Logging out...');
+              logoutMutation.mutate();
+            },
+          },
+        ]
+      );
     } else {
       console.log('Pressed:', item.id);
     }
@@ -250,6 +381,7 @@ const Settings = () => {
                     key={item.id}
                     style={styles.settingsItem}
                     onPress={() => handleItemPress(item)}
+                    disabled={item.id === 'logout' && logoutMutation.isPending}
                   >
                     <View style={styles.itemIconContainer}>
                       <Image
@@ -272,11 +404,15 @@ const Settings = () => {
                     {item.hasToggle && (
                       <Switch
                         value={biometricEnabled}
-                        onValueChange={setBiometricEnabled}
+                        onValueChange={handleBiometricToggle}
                         trackColor={{ false: 'rgba(255, 255, 255, 0.1)', true: '#A9EF45' }}
                         thumbColor={biometricEnabled ? '#FFFFFF' : '#FFFFFF'}
                         style={styles.toggle}
+                        disabled={logoutMutation.isPending}
                       />
+                    )}
+                    {item.id === 'logout' && logoutMutation.isPending && (
+                      <ActivityIndicator size="small" color="#FFFFFF" style={styles.logoutLoader} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -751,6 +887,9 @@ const styles = StyleSheet.create({
     fontSize: 10 * SCALE,
     fontWeight: '400',
     color: 'rgba(255, 255, 255, 0.7)',
+  },
+  logoutLoader: {
+    marginRight: 8 * SCALE,
   },
 });
 

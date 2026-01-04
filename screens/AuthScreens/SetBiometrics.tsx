@@ -13,6 +13,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
+import { useSetupPin, useMarkFaceVerified } from '../../mutations/auth.mutations';
+import { getAccessToken } from '../../utils/apiClient';
 
 const SetBiometrics = () => {
   const navigation = useNavigation();
@@ -24,6 +26,53 @@ const SetBiometrics = () => {
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState<string>('');
   const [isScanning, setIsScanning] = useState(false);
+
+  // Setup PIN mutation
+  const setupPinMutation = useSetupPin({
+    onSuccess: (data) => {
+      Alert.alert(
+        'PIN Setup Successful',
+        'Your transaction PIN has been set up successfully.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setShowPinModal(false);
+              // Reset PIN states
+              setPin('');
+              setConfirmPin('');
+              setPinStep('setup');
+              // Navigate to Verification screen
+              navigation.navigate('Verification' as never);
+            },
+          },
+        ]
+      );
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        'PIN Setup Failed',
+        error.message || 'Failed to setup PIN. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
+
+  // Mark face verified mutation
+  const markFaceVerifiedMutation = useMarkFaceVerified({
+    onSuccess: () => {
+      // Face verification marked successfully
+      console.log('Face verification marked successfully');
+    },
+    onError: (error: any) => {
+      console.error('Error marking face verified:', error);
+      // If it's a 401, the token might not be available yet
+      // This is not critical - user can continue without it
+      if (error.status === 401) {
+        console.warn('Token not available for mark-face-verified. User can continue.');
+      }
+    },
+  });
 
   // Check biometric availability on mount
   useEffect(() => {
@@ -80,7 +129,26 @@ const SetBiometrics = () => {
       });
 
       if (result.success) {
-        // Biometric setup successful
+        // Biometric setup successful - mark face as verified
+        // Wait a moment to ensure any previous token operations are complete
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Check if token is available before calling API
+        try {
+          const token = await getAccessToken();
+          if (token) {
+            console.log('Token available, calling mark-face-verified');
+            // Call mark-face-verified API
+            markFaceVerifiedMutation.mutate();
+          } else {
+            console.warn('No access token available for mark-face-verified. This may happen if email is not verified yet.');
+            // Continue anyway - face verification can be done later
+          }
+        } catch (error) {
+          console.error('Error checking token:', error);
+          // Continue anyway - not critical for user flow
+        }
+        
         Alert.alert(
           'Biometrics Setup Successful',
           `You can now use ${biometricType} to login.`,
@@ -88,7 +156,6 @@ const SetBiometrics = () => {
             {
               text: 'Continue',
               onPress: () => {
-                // TODO: Save biometric preference to backend/AsyncStorage
                 navigation.navigate('Verification' as never);
               },
             },
@@ -166,13 +233,7 @@ const SetBiometrics = () => {
       if (confirmPin.length < 5) {
         const newConfirmPin = confirmPin + num;
         setConfirmPin(newConfirmPin);
-
-        if (newConfirmPin.length === 5) {
-          setTimeout(() => {
-            setShowPinModal(false);
-            navigation.navigate('Verification' as never);
-          }, 300);
-        }
+        // Don't auto-navigate - let user click Proceed button to verify and call API
       }
     }
   };
@@ -227,11 +288,14 @@ const SetBiometrics = () => {
       <View style={styles.buttonContainer}>
         {isBiometricAvailable && (
           <TouchableOpacity
-            style={[styles.proceedButton, isScanning && styles.proceedButtonDisabled]}
+            style={[
+              styles.proceedButton, 
+              (isScanning || markFaceVerifiedMutation.isPending) && styles.proceedButtonDisabled
+            ]}
             onPress={handleSetupBiometrics}
-            disabled={isScanning}
+            disabled={isScanning || markFaceVerifiedMutation.isPending}
           >
-            {isScanning ? (
+            {(isScanning || markFaceVerifiedMutation.isPending) ? (
               <ActivityIndicator color="#000000" />
             ) : (
               <ThemedText style={styles.proceedButtonText}>
@@ -247,7 +311,7 @@ const SetBiometrics = () => {
             isBiometricAvailable && styles.pinButtonWithBiometric,
           ]}
           onPress={() => setShowPinModal(true)}
-          disabled={isScanning}
+          disabled={isScanning || markFaceVerifiedMutation.isPending || setupPinMutation.isPending}
         >
           <ThemedText style={styles.pinButtonText}>Setup PIN</ThemedText>
         </TouchableOpacity>
@@ -255,7 +319,7 @@ const SetBiometrics = () => {
         <TouchableOpacity
           style={styles.skipButton}
           onPress={handleSkip}
-          disabled={isScanning}
+          disabled={isScanning || markFaceVerifiedMutation.isPending || setupPinMutation.isPending}
         >
           <ThemedText style={styles.skipButtonText}>Skip</ThemedText>
         </TouchableOpacity>
@@ -445,7 +509,7 @@ const SetBiometrics = () => {
                 (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5) &&
                   styles.proceedButtonDisabled,
               ]}
-              onPress={() => {
+              onPress={async () => {
                 if (pinStep === 'setup' && pin.length === 5) {
                   // PIN setup complete, move to confirm
                   setPinStep('confirm');
@@ -453,9 +517,35 @@ const SetBiometrics = () => {
                 } else if (pinStep === 'confirm' && confirmPin.length === 5) {
                   // Verify PINs match
                   if (pin === confirmPin) {
-                    // TODO: Save PIN to backend/secure storage
-                    setShowPinModal(false);
-                    navigation.navigate('Verification' as never);
+                    // Wait longer to ensure token is fully available
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Check if token is available before calling API
+                    try {
+                      const token = await getAccessToken();
+                      if (token) {
+                        console.log('[SetBiometrics] Token available, calling setup-pin');
+                        console.log('[SetBiometrics] Token (full):', token);
+                        console.log('[SetBiometrics] Token (preview):', token.substring(0, 50) + '...');
+                        // Wait a bit more before making the API call
+                        await new Promise(resolve => setTimeout(resolve, 200));
+                        // Call setup PIN API
+                        setupPinMutation.mutate({ pin: pin });
+                      } else {
+                        Alert.alert(
+                          'Authentication Required',
+                          'Please verify your email first to set up your PIN.',
+                          [{ text: 'OK' }]
+                        );
+                      }
+                    } catch (error) {
+                      console.error('Error checking token:', error);
+                      Alert.alert(
+                        'Error',
+                        'Unable to verify authentication. Please try again.',
+                        [{ text: 'OK' }]
+                      );
+                    }
                   } else {
                     Alert.alert(
                       'PIN Mismatch',
@@ -475,10 +565,15 @@ const SetBiometrics = () => {
                 }
               }}
               disabled={
-                pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5
+                (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5) ||
+                setupPinMutation.isPending
               }
             >
-              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+              {setupPinMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
@@ -622,12 +717,12 @@ const styles = StyleSheet.create({
   },
   pinContent: {
     alignItems: 'center',
-    marginTop: 30,
+    marginTop: 20, // Reduced from 30
     paddingHorizontal: 40,
   },
   pinBar: {
     alignItems: 'center',
-    marginTop: 22,
+    marginTop: 18, // Reduced from 22
   },
   pinBarInner: {
     height: 60,
@@ -660,28 +755,29 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.5)',
   },
   numpad: {
-    marginTop: 35,
+    marginTop: 25,
     paddingHorizontal: 20,
+    paddingBottom: 180, // Add padding at bottom to prevent overlap with buttons
   },
   numpadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 12, // Reduced from 20
   },
   numpadButton: {
-    width: 117,
+    width: 110, // Slightly reduced from 117
     alignItems: 'center',
   },
   numpadCircle: {
-    width: 53,
-    height: 53,
-    borderRadius: 26.5,
+    width: 48, // Reduced from 53
+    height: 48, // Reduced from 53
+    borderRadius: 24, // Adjusted for new size
     backgroundColor: '#081729',
     alignItems: 'center',
     justifyContent: 'center',
   },
   numpadText: {
-    fontSize: 19.2, // 24 * 0.8
+    fontSize: 18, // Slightly reduced from 19.2
     fontWeight: '400',
     color: '#FFFFFF',
   },
@@ -692,16 +788,15 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   ghostCircle: {
-    width: 53,
-    height: 53,
-    borderRadius: 26.5,
+    width: 48, // Reduced from 53
+    height: 48, // Reduced from 53
+    borderRadius: 24, // Adjusted for new size
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   backspaceSquare: {
-    width: 53,
-    height: 53,
-
-    borderRadius: 26.5,
+    width: 48, // Reduced from 53
+    height: 48, // Reduced from 53
+    borderRadius: 24, // Adjusted for new size
     backgroundColor: '#081729',
     alignItems: 'center',
     justifyContent: 'center',
@@ -711,7 +806,6 @@ const styles = StyleSheet.create({
     bottom: 8,
     left: 20,
     right: 20,
-
   },
 });
 
