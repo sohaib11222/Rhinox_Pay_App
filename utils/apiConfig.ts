@@ -1,0 +1,212 @@
+/**
+ * API Configuration and Route Definitions
+Based on Rhinox Pay API Postman Collection
+Base URL: http://localhost:3000/api
+ */
+
+export const API_BASE_URL = 'http://localhost:3000/api';
+
+/**
+ * API Routes organized by module
+ */
+export const API_ROUTES = {
+  // Auth Routes
+  AUTH: {
+    ME: '/auth/me',
+    LOGIN: '/auth/login',
+    LOGOUT: '/auth/logout',
+    REGISTER: '/auth/register',
+    VERIFY_EMAIL: '/auth/verify-email',
+    RESEND_VERIFICATION: '/auth/resend-verification',
+    REFRESH_TOKEN: '/auth/refresh',
+    SETUP_PIN: '/auth/setup-pin',
+    MARK_FACE_VERIFIED: '/auth/mark-face-verified',
+  },
+
+  // Bank Accounts Routes
+  BANK_ACCOUNTS: {
+    GET_ALL: '/bank-accounts',
+  },
+
+  // Conversion Routes
+  CONVERSION: {
+    CALCULATE: '/conversion/calculate',
+    INITIATE: '/conversion/initiate',
+    CONFIRM: '/conversion/confirm',
+    RECEIPT: '/conversion/receipt',
+  },
+
+  // Country Routes
+  COUNTRY: {
+    GET_ALL: '/countries',
+    GET_BY_CODE: '/countries',
+  },
+
+  // Crypto Routes
+  CRYPTO: {
+    TOKENS_BY_SYMBOL: '/crypto/tokens',
+    USDT_TOKENS: '/crypto/usdt-tokens',
+    DEPOSIT_ADDRESS: '/crypto/deposit-address',
+    VIRTUAL_ACCOUNTS: '/crypto/virtual-accounts',
+    TATUM_WEBHOOK: '/crypto/webhooks/tatum',
+  },
+
+  // Deposit Routes
+  DEPOSIT: {
+    INITIATE: '/deposit/initiate',
+    CONFIRM: '/deposit/confirm',
+    BANK_DETAILS: '/deposit/bank-details',
+    MOBILE_MONEY_PROVIDERS: '/deposit/mobile-money-providers',
+    RECEIPT: '/deposit/receipt',
+  },
+
+  // Exchange Routes
+  EXCHANGE: {
+    CONVERT: '/exchange/convert',
+    RATES: '/exchange/rates',
+    RATES_BY_BASE: '/exchange/rates',
+    RATE: '/exchange/rate',
+    SET_RATE: '/exchange/set-rate',
+  },
+
+  // Health Routes
+  HEALTH: {
+    ROOT: '/',
+    CHECK: '/health',
+  },
+
+  // Home Routes
+  HOME: {
+    DASHBOARD: '/home',
+    WALLETS: '/home/wallets',
+  },
+
+  // KYC Routes
+  KYC: {
+    STATUS: '/kyc/status',
+    SUBMIT: '/kyc/submit',
+    UPLOAD_ID: '/kyc/upload-id',
+    FACE_VERIFICATION: '/kyc/face-verification',
+    ADMIN_APPROVE: '/kyc/admin/approve',
+    ADMIN_REJECT: '/kyc/admin/reject',
+  },
+
+  // P2P Public Routes
+  P2P_PUBLIC: {
+    BROWSE_ADS: '/p2p/ads/browse',
+    GET_AD_DETAILS: '/p2p/ads',
+  },
+
+  // P2P User Routes
+  P2P_USER: {
+    BROWSE_BUY_ADS: '/p2p/user/ads/buy',
+    BROWSE_SELL_ADS: '/p2p/user/ads/sell',
+    CREATE_ORDER: '/p2p/orders',
+    GET_ORDERS: '/p2p/orders',
+    GET_ORDER_DETAILS: '/p2p/orders',
+    CANCEL_ORDER: '/p2p/user/orders',
+    PAYMENT_RECEIVED: '/p2p/user/orders',
+    PAYMENT_MADE: '/p2p/orders',
+  },
+
+  // P2P Vendor Routes - Ad Creation
+  P2P_VENDOR_ADS: {
+    CREATE_BUY_AD: '/p2p/ads/buy',
+    CREATE_SELL_AD: '/p2p/ads/sell',
+  },
+
+  // P2P Vendor Routes - Ad Management
+  P2P_VENDOR_AD_MGMT: {
+    GET_MY_ADS: '/p2p/ads',
+    GET_AD_DETAILS: '/p2p/ads',
+    UPDATE_AD: '/p2p/ads',
+    UPDATE_AD_STATUS: '/p2p/ads',
+  },
+
+  // P2P Vendor Routes - Order Management
+  P2P_VENDOR_ORDERS: {
+    GET_VENDOR_ORDERS: '/p2p/vendor/orders',
+    ACCEPT_ORDER: '/p2p/orders',
+    DECLINE_ORDER: '/p2p/orders',
+    CANCEL_ORDER: '/p2p/vendor/orders',
+    PAYMENT_MADE: '/p2p/vendor/orders',
+    PAYMENT_RECEIVED: '/p2p/orders',
+  },
+
+  // P2P Chat Routes
+  P2P_CHAT: {
+    GET_MESSAGES: '/p2p/orders',
+    SEND_MESSAGE: '/p2p/orders',
+    MARK_AS_READ: '/p2p/orders',
+    UNREAD_COUNT: '/p2p/chat/unread-count',
+  },
+
+  // P2P Review Routes
+  P2P_REVIEW: {
+    CREATE_REVIEW: '/p2p/orders',
+    UPDATE_REVIEW: '/p2p/reviews',
+    DELETE_REVIEW: '/p2p/reviews',
+    GET_VENDOR_REVIEWS: '/p2p/vendors',
+    GET_AD_REVIEWS: '/p2p/ads',
+  },
+
+  // Payment Settings Routes
+  PAYMENT_SETTINGS: {
+    GET_ALL: '/payment-settings',
+    GET_BY_ID: '/payment-settings',
+    ADD_BANK_ACCOUNT: '/payment-settings/bank-account',
+    ADD_MOBILE_MONEY: '/payment-settings/mobile-money',
+    UPDATE: '/payment-settings',
+    DELETE: '/payment-settings',
+    SET_DEFAULT: '/payment-settings',
+    MOBILE_MONEY_PROVIDERS: '/payment-settings/mobile-money-providers',
+  },
+
+  // Transfer Routes
+  TRANSFER: {
+    ELIGIBILITY: '/transfer/eligibility',
+    INITIATE: '/transfer/initiate',
+    VERIFY: '/transfer/verify',
+    RECEIPT: '/transfer/receipt',
+  },
+
+  // Wallet Routes
+  WALLET: {
+    GET_ALL: '/wallets',
+    GET_BY_CURRENCY: '/wallets',
+    GET_BALANCE: '/wallets',
+    GET_TRANSACTIONS: '/wallets',
+    CREATE: '/wallets/create',
+  },
+} as const;
+
+/**
+ * Helper function to build full API URL
+ */
+export const buildApiUrl = (route: string, params?: Record<string, string | number>): string => {
+  let url = `${API_BASE_URL}${route}`;
+  
+  if (params) {
+    const queryString = Object.entries(params)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+    url += `?${queryString}`;
+  }
+  
+  return url;
+};
+
+/**
+ * Helper function to build route with path parameters
+ */
+export const buildRouteWithParams = (
+  baseRoute: string,
+  params: Record<string, string | number>
+): string => {
+  let route = baseRoute;
+  Object.entries(params).forEach(([key, value]) => {
+    route = route.replace(`{${key}}`, String(value));
+  });
+  return route;
+};
+

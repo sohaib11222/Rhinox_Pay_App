@@ -2,7 +2,19 @@ import React from "react";
 import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import RootNavigator from "./navigation/RootNavigator";
+
+// Create a client for React Query
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  },
+});
 
 // Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
@@ -37,5 +49,9 @@ export default function App() {
     return null;
   }
 
-  return <RootNavigator />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RootNavigator />
+    </QueryClientProvider>
+  );
 }
