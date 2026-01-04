@@ -49,6 +49,32 @@ const KYC = () => {
   const [day, setDay] = useState('DD');
   const [month, setMonth] = useState('MM');
   const [year, setYear] = useState('YYYY');
+  const [showDayPicker, setShowDayPicker] = useState(false);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showYearPicker, setShowYearPicker] = useState(false);
+  
+  // Generate days (1-31)
+  const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString().padStart(2, '0'));
+  
+  // Generate months (1-12)
+  const months = [
+    { value: '01', label: 'January' },
+    { value: '02', label: 'February' },
+    { value: '03', label: 'March' },
+    { value: '04', label: 'April' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'June' },
+    { value: '07', label: 'July' },
+    { value: '08', label: 'August' },
+    { value: '09', label: 'September' },
+    { value: '10', label: 'October' },
+    { value: '11', label: 'November' },
+    { value: '12', label: 'December' },
+  ];
+  
+  // Generate years (current year back to 100 years ago)
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 100 }, (_, i) => (currentYear - i).toString());
 
   const handleProceed = () => {
     navigation.navigate('FacialRegister' as never);
@@ -77,8 +103,25 @@ const KYC = () => {
   };
 
   const handleApplyDOB = () => {
-    setDob(`${day}/${month}/${year}`);
-    setShowDOBModal(false);
+    if (day !== 'DD' && month !== 'MM' && year !== 'YYYY') {
+      setDob(`${day}/${month}/${year}`);
+      setShowDOBModal(false);
+    }
+  };
+
+  const handleDaySelect = (selectedDay: string) => {
+    setDay(selectedDay);
+    setShowDayPicker(false);
+  };
+
+  const handleMonthSelect = (selectedMonth: string) => {
+    setMonth(selectedMonth);
+    setShowMonthPicker(false);
+  };
+
+  const handleYearSelect = (selectedYear: string) => {
+    setYear(selectedYear);
+    setShowYearPicker(false);
   };
 
   return (
@@ -185,11 +228,18 @@ const KYC = () => {
               <TouchableOpacity
                 style={styles.inputWrapper}
                 onPress={() => setShowDOBModal(true)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
               >
-                <ThemedText style={[styles.input, !dob && styles.placeholderStyle]}>
+                <ThemedText 
+                  style={[styles.input, !dob && styles.placeholderStyle]}
+                  pointerEvents="none"
+                >
                   {dob || 'Enter your date of birth'}
                 </ThemedText>
-                <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                <View pointerEvents="none">
+                  <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                </View>
               </TouchableOpacity>
             </View>
 
@@ -329,27 +379,170 @@ const KYC = () => {
             </View>
             <ThemedText style={styles.dobSubtitle}>Select your date of birth</ThemedText>
             <View style={styles.dobInputs}>
-              <TouchableOpacity style={styles.dobInput}>
-                <ThemedText style={styles.dobText}>{day}</ThemedText>
+              <TouchableOpacity
+                style={styles.dobInput}
+                onPress={() => setShowDayPicker(true)}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={[styles.dobText, day !== 'DD' && styles.dobTextSelected]}>
+                  {day}
+                </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={16} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dobInput}>
-                <ThemedText style={styles.dobText}>{month}</ThemedText>
+              <TouchableOpacity
+                style={styles.dobInput}
+                onPress={() => setShowMonthPicker(true)}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={[styles.dobText, month !== 'MM' && styles.dobTextSelected]}>
+                  {month === 'MM' ? month : months.find(m => m.value === month)?.label || month}
+                </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={16} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.dobInputLarge}>
-                <ThemedText style={styles.dobText}>{year}</ThemedText>
+              <TouchableOpacity
+                style={styles.dobInputLarge}
+                onPress={() => setShowYearPicker(true)}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={[styles.dobText, year !== 'YYYY' && styles.dobTextSelected]}>
+                  {year}
+                </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={16} color="rgba(255, 255, 255, 0.5)" />
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.applyButton} onPress={handleApplyDOB}>
+            <TouchableOpacity
+              style={[
+                styles.applyButton,
+                (day === 'DD' || month === 'MM' || year === 'YYYY') && styles.applyButtonDisabled,
+              ]}
+              onPress={handleApplyDOB}
+              disabled={day === 'DD' || month === 'MM' || year === 'YYYY'}
+            >
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      
+      {/* Day Picker Modal */}
+      <Modal
+        visible={showDayPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDayPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Day</ThemedText>
+              <TouchableOpacity onPress={() => setShowDayPicker(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerList}>
+              {days.map((d) => (
+                <TouchableOpacity
+                  key={d}
+                  style={styles.pickerItem}
+                  onPress={() => handleDaySelect(d)}
+                >
+                  <ThemedText
+                    style={[
+                      styles.pickerItemText,
+                      day === d && styles.pickerItemTextSelected,
+                    ]}
+                  >
+                    {d}
+                  </ThemedText>
+                  {day === d && (
+                    <MaterialCommunityIcons name="check" size={20} color="#A9EF45" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Month Picker Modal */}
+      <Modal
+        visible={showMonthPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowMonthPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Month</ThemedText>
+              <TouchableOpacity onPress={() => setShowMonthPicker(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerList}>
+              {months.map((m) => (
+                <TouchableOpacity
+                  key={m.value}
+                  style={styles.pickerItem}
+                  onPress={() => handleMonthSelect(m.value)}
+                >
+                  <ThemedText
+                    style={[
+                      styles.pickerItemText,
+                      month === m.value && styles.pickerItemTextSelected,
+                    ]}
+                  >
+                    {m.label}
+                  </ThemedText>
+                  {month === m.value && (
+                    <MaterialCommunityIcons name="check" size={20} color="#A9EF45" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Year Picker Modal */}
+      <Modal
+        visible={showYearPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowYearPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerModalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Year</ThemedText>
+              <TouchableOpacity onPress={() => setShowYearPicker(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.pickerList}>
+              {years.map((y) => (
+                <TouchableOpacity
+                  key={y}
+                  style={styles.pickerItem}
+                  onPress={() => handleYearSelect(y)}
+                >
+                  <ThemedText
+                    style={[
+                      styles.pickerItemText,
+                      year === y && styles.pickerItemTextSelected,
+                    ]}
+                  >
+                    {y}
+                  </ThemedText>
+                  {year === y && (
+                    <MaterialCommunityIcons name="check" size={20} color="#A9EF45" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -633,6 +826,41 @@ const styles = StyleSheet.create({
     fontSize: 11.2,
     fontWeight: '400',
     color: 'rgba(255, 255, 255, 0.5)',
+  },
+  dobTextSelected: {
+    color: '#FFFFFF',
+  },
+  applyButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    opacity: 0.5,
+  },
+  pickerModalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    maxHeight: '70%',
+  },
+  pickerList: {
+    maxHeight: 400,
+    paddingHorizontal: 20,
+  },
+  pickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  pickerItemText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  pickerItemTextSelected: {
+    color: '#A9EF45',
+    fontWeight: '500',
   },
 });
 

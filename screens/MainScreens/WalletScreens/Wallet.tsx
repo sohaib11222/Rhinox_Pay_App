@@ -8,13 +8,17 @@ import {
   Dimensions,
   StatusBar,
   RefreshControl,
+  Modal,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
+import QRCode from 'react-native-qrcode-svg';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -64,6 +68,10 @@ const Wallet = () => {
   const [activeTab, setActiveTab] = useState<'fiat' | 'crypto'>('fiat');
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [walletId] = useState('NGN1234');
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [showCopyMessage, setShowCopyMessage] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<RecentTransaction | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Mock data - Replace with API calls later
@@ -320,8 +328,33 @@ const Wallet = () => {
   };
 
   const handleCopyWalletId = async () => {
-    await Clipboard.setStringAsync(walletId);
-    // TODO: Show toast notification
+    try {
+      await Clipboard.setStringAsync(walletId);
+      setShowCopyMessage(true);
+      // Hide the message after 2 seconds
+      setTimeout(() => {
+        setShowCopyMessage(false);
+      }, 2000);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to copy wallet ID');
+    }
+  };
+
+  const handleShowQR = () => {
+    setShowQRModal(true);
+  };
+
+  const handleViewAllPress = () => {
+    // Navigate to Transactions tab
+    // @ts-ignore - allow parent route name
+    navigation.navigate('Transactions' as never, {
+      screen: 'TransactionsList' as never,
+    } as never);
+  };
+
+  const handleTransactionPress = (transaction: RecentTransaction) => {
+    setSelectedTransaction(transaction);
+    setShowReceiptModal(true);
   };
 
   const scrollLeft = () => {
@@ -620,14 +653,27 @@ const Wallet = () => {
                 key={action.id}
                 style={styles.quickActionButton}
                 onPress={() => {
-                  if (action.id === '3' && action.title === 'Withdraw') {
+                  if (action.id === '1' && action.title === 'Send') {
+                    // Navigate to SendFunds screen in Settings stack
                     // @ts-ignore - allow parent route name
-                    navigation.navigate('Withdrawal' as never);
+                    navigation.navigate('Settings' as never, {
+                      screen: 'SendFunds' as never,
+                    } as never);
                   } else if (action.id === '2' && action.title === 'Fund') {
+                    // Navigate to Fund screen in Wallet stack
                     // @ts-ignore - allow parent route name
                     navigation.navigate('Fund' as never);
+                  } else if (action.id === '3' && action.title === 'Withdraw') {
+                    // Navigate to Withdrawal screen in Wallet stack
+                    // @ts-ignore - allow parent route name
+                    navigation.navigate('Withdrawal' as never);
+                  } else if (action.id === '4' && action.title === 'Convert') {
+                    // Navigate to Conversion screen in Settings stack
+                    // @ts-ignore - allow parent route name
+                    navigation.navigate('Settings' as never, {
+                      screen: 'Conversion' as never,
+                    } as never);
                   }
-                  // TODO: Add navigation for other actions (Send, Convert)
                 }}
               >
                 <View style={styles.quickActionIconCircle}>
@@ -682,7 +728,31 @@ const Wallet = () => {
                 {/* Overlaid Quick Actions Card */}
                 <View style={styles.cryptoOverlaidActionsCard}>
                   {cryptoQuickActions.map((action) => (
-                    <TouchableOpacity key={action.id} style={styles.cryptoOverlaidActionButton}>
+                    <TouchableOpacity
+                      key={action.id}
+                      style={styles.cryptoOverlaidActionButton}
+                      onPress={() => {
+                        if (action.id === '1' && action.title === 'Deposit') {
+                          // Navigate to CryptoDeposit screen in Transactions stack
+                          // @ts-ignore - allow parent route name
+                          navigation.navigate('Transactions' as never, {
+                            screen: 'CryptoDeposit' as never,
+                          } as never);
+                        } else if (action.id === '2' && action.title === 'Withdraw') {
+                          // Navigate to CryptoWithdrawals screen in Transactions stack
+                          // @ts-ignore - allow parent route name
+                          navigation.navigate('Transactions' as never, {
+                            screen: 'CryptoWithdrawals' as never,
+                          } as never);
+                        } else if (action.id === '3' && action.title === 'P2P') {
+                          // Navigate to P2PTransactions screen in Transactions stack
+                          // @ts-ignore - allow parent route name
+                          navigation.navigate('Transactions' as never, {
+                            screen: 'P2PTransactions' as never,
+                          } as never);
+                        }
+                      }}
+                    >
                       {action.id === '2' ? (
                         <View style={{ transform: [{ rotate: '180deg' }] }}>
                           <Image
@@ -786,7 +856,10 @@ const Wallet = () => {
               </ThemedText>
             </View>
             <View style={styles.walletIdActions}>
-              <TouchableOpacity style={styles.walletIdActionButton}>
+              <TouchableOpacity 
+                style={styles.walletIdActionButton}
+                onPress={handleShowQR}
+              >
                 <View style={styles.iconCircle}>
                   <MaterialCommunityIcons name="qrcode" size={24 * SCALE} color="#FFFFFF" />
                 </View>
@@ -802,20 +875,29 @@ const Wallet = () => {
             </View>
           </View>
           <ThemedText style={styles.walletIdValue}>{walletId}</ThemedText>
+          {showCopyMessage && (
+            <View style={styles.copyMessageContainer}>
+              <ThemedText style={styles.copyMessage}>Copied!</ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Recent Transactions */}
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
             <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={handleViewAllPress}>
               <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
           <View style={styles.transactionsList}>
             {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.transactionItem}>
+              <TouchableOpacity
+                key={transaction.id}
+                style={styles.transactionItem}
+                onPress={() => handleTransactionPress(transaction)}
+              >
                 <View style={styles.transactionIconContainer}>
                   <View style={styles.transactionIconCircle}>
                         <Image
@@ -855,7 +937,7 @@ const Wallet = () => {
                   </ThemedText>
                   <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -865,6 +947,62 @@ const Wallet = () => {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* QR Code Modal */}
+      <Modal
+        visible={showQRModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowQRModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.qrModalContainer}>
+            <View style={styles.qrModalHeader}>
+              <ThemedText style={styles.qrModalTitle}>Wallet QR Code</ThemedText>
+              <TouchableOpacity
+                onPress={() => setShowQRModal(false)}
+                style={styles.closeButton}
+              >
+                <MaterialCommunityIcons name="close" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.qrCodeContainer}>
+              <QRCode
+                value={walletId}
+                size={250 * SCALE}
+                color="#000000"
+                backgroundColor="#FFFFFF"
+              />
+            </View>
+            <ThemedText style={styles.qrWalletId}>{walletId}</ThemedText>
+            <ThemedText style={styles.qrModalDescription}>
+              Share this QR code to receive funds from other RhinoxPay users
+            </ThemedText>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Transaction Receipt Modal */}
+      {selectedTransaction && (
+        <TransactionReceiptModal
+          visible={showReceiptModal}
+          transaction={{
+            transactionTitle: selectedTransaction.title,
+            amountNGN: selectedTransaction.amount,
+            dateTime: selectedTransaction.date,
+            transactionType: selectedTransaction.title.includes('Fund')
+              ? 'fund'
+              : selectedTransaction.title.includes('NGN to') || selectedTransaction.title.includes('Convert')
+              ? 'convert'
+              : 'send',
+            transactionId: `TXN-${selectedTransaction.id}-${Date.now()}`,
+          }}
+          onClose={() => {
+            setShowReceiptModal(false);
+            setSelectedTransaction(null);
+          }}
+        />
+      )}
     </View>
   );
 };
@@ -1466,6 +1604,70 @@ const styles = StyleSheet.create({
     fontSize: 8 * 1,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
+  },
+  copyMessageContainer: {
+    marginTop: 10 * SCALE,
+    alignItems: 'center',
+  },
+  copyMessage: {
+    fontSize: 12 * 1,
+    fontWeight: '400',
+    color: '#A9EF45',
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SCREEN_WIDTH * 0.047,
+  },
+  qrModalContainer: {
+    backgroundColor: '#020c19',
+    borderRadius: 20 * SCALE,
+    padding: 20 * SCALE,
+    width: '100%',
+    maxWidth: 350 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+  },
+  qrModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 20 * SCALE,
+  },
+  qrModalTitle: {
+    fontSize: 16 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  closeButton: {
+    padding: 4 * SCALE,
+  },
+  qrCodeContainer: {
+    backgroundColor: '#FFFFFF',
+    padding: 20 * SCALE,
+    borderRadius: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrWalletId: {
+    fontSize: 20 * 1,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 10 * SCALE,
+    textAlign: 'center',
+  },
+  qrModalDescription: {
+    fontSize: 12 * 1,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+    lineHeight: 16 * SCALE,
   },
 });
 

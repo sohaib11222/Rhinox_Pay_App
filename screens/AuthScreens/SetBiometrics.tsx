@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,9 +6,12 @@ import {
   StatusBar,
   Modal,
   Image,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
 
 const SetBiometrics = () => {
@@ -18,9 +21,123 @@ const SetBiometrics = () => {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
 
-  const handleSetupBiometrics = () => {
-    setShowPinModal(true);
+  // Check biometric availability on mount
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const compatible = await LocalAuthentication.hasHardwareAsync();
+      if (!compatible) {
+        setIsBiometricAvailable(false);
+        return;
+      }
+
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!enrolled) {
+        setIsBiometricAvailable(false);
+        return;
+      }
+
+      const types = await LocalAuthentication.supportedAuthenticationTypesAsync();
+      setIsBiometricAvailable(true);
+      
+      // Determine biometric type
+      if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+        setBiometricType('Fingerprint');
+      } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+        setBiometricType('Fingerprint');
+      } else if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+        setBiometricType('Iris');
+      } else {
+        setBiometricType('Biometric');
+      }
+    } catch (error) {
+      console.error('Error checking biometric availability:', error);
+      setIsBiometricAvailable(false);
+    }
+  };
+
+  const handleSetupBiometrics = async () => {
+    if (!isBiometricAvailable) {
+      // If biometrics not available, go directly to PIN setup
+      setShowPinModal(true);
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Authenticate with ${biometricType}`,
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+        fallbackLabel: 'Use PIN',
+      });
+
+      if (result.success) {
+        // Biometric setup successful
+        Alert.alert(
+          'Biometrics Setup Successful',
+          `You can now use ${biometricType} to login.`,
+          [
+            {
+              text: 'Continue',
+              onPress: () => {
+                // TODO: Save biometric preference to backend/AsyncStorage
+                navigation.navigate('Verification' as never);
+              },
+            },
+          ]
+        );
+      } else {
+        // User cancelled or authentication failed
+        if (result.error === 'user_cancel') {
+          // User cancelled - do nothing
+        } else if (result.error === 'user_fallback') {
+          // User chose to use PIN instead
+          setShowPinModal(true);
+        } else {
+          Alert.alert(
+            'Authentication Failed',
+            'Biometric authentication failed. Please try again or set up a PIN.',
+            [
+              {
+                text: 'Try Again',
+                onPress: handleSetupBiometrics,
+              },
+              {
+                text: 'Setup PIN',
+                onPress: () => setShowPinModal(true),
+              },
+            ]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Biometric authentication error:', error);
+      Alert.alert(
+        'Error',
+        'An error occurred during biometric authentication. Please try again or set up a PIN.',
+        [
+          {
+            text: 'Setup PIN',
+            onPress: () => setShowPinModal(true),
+          },
+          {
+            text: 'Skip',
+            onPress: handleSkip,
+            style: 'cancel',
+          },
+        ]
+      );
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleSkip = () => {
@@ -108,11 +225,38 @@ const SetBiometrics = () => {
 
       {/* Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.proceedButton} onPress={handleSetupBiometrics}>
-          <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+        {isBiometricAvailable && (
+          <TouchableOpacity
+            style={[styles.proceedButton, isScanning && styles.proceedButtonDisabled]}
+            onPress={handleSetupBiometrics}
+            disabled={isScanning}
+          >
+            {isScanning ? (
+              <ActivityIndicator color="#000000" />
+            ) : (
+              <ThemedText style={styles.proceedButtonText}>
+                Use {biometricType}
+              </ThemedText>
+            )}
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.pinButton,
+            isBiometricAvailable && styles.pinButtonWithBiometric,
+          ]}
+          onPress={() => setShowPinModal(true)}
+          disabled={isScanning}
+        >
+          <ThemedText style={styles.pinButtonText}>Setup PIN</ThemedText>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
+        <TouchableOpacity
+          style={styles.skipButton}
+          onPress={handleSkip}
+          disabled={isScanning}
+        >
           <ThemedText style={styles.skipButtonText}>Skip</ThemedText>
         </TouchableOpacity>
       </View>
@@ -295,7 +439,45 @@ const SetBiometrics = () => {
 
           {/* Buttons */}
           <View style={styles.pinButtonContainer}>
-            <TouchableOpacity style={styles.proceedButton}>
+            <TouchableOpacity
+              style={[
+                styles.proceedButton,
+                (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5) &&
+                  styles.proceedButtonDisabled,
+              ]}
+              onPress={() => {
+                if (pinStep === 'setup' && pin.length === 5) {
+                  // PIN setup complete, move to confirm
+                  setPinStep('confirm');
+                  setConfirmPin('');
+                } else if (pinStep === 'confirm' && confirmPin.length === 5) {
+                  // Verify PINs match
+                  if (pin === confirmPin) {
+                    // TODO: Save PIN to backend/secure storage
+                    setShowPinModal(false);
+                    navigation.navigate('Verification' as never);
+                  } else {
+                    Alert.alert(
+                      'PIN Mismatch',
+                      'The PINs do not match. Please try again.',
+                      [
+                        {
+                          text: 'OK',
+                          onPress: () => {
+                            setPinStep('setup');
+                            setPin('');
+                            setConfirmPin('');
+                          },
+                        },
+                      ]
+                    );
+                  }
+                }
+              }}
+              disabled={
+                pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5
+              }
+            >
               <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
 
@@ -390,10 +572,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
+  proceedButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    opacity: 0.5,
+  },
   proceedButtonText: {
     fontSize: 14,
     fontWeight: '400',
     color: '#000000',
+  },
+  pinButton: {
+    height: 60,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  pinButtonWithBiometric: {
+    marginTop: 12,
+  },
+  pinButtonText: {
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#FFFFFF',
   },
   skipButton: {
     height: 60,
@@ -402,6 +605,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 0.3,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+    marginTop: 12,
   },
   skipButtonText: {
     fontSize: 14,

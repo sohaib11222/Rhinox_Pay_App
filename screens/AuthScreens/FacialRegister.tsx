@@ -1,14 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
   TouchableOpacity,
   StatusBar,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+
+// Face detector is not available in Expo Go - using simulation mode
+// To enable real face detection, create a development build:
+// 1. npm install expo-face-detector
+// 2. npx expo prebuild
+// 3. npx expo run:android (or run:ios)
+const faceDetectorAvailable = false;
 
 type ScanStatus = 'idle' | 'scanning' | 'success' | 'failed';
 
@@ -16,20 +26,233 @@ const FacialRegister = () => {
   const navigation = useNavigation();
   const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [facing, setFacing] = useState<CameraType>('front');
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceDetectionCount, setFaceDetectionCount] = useState(0);
+  const [scanProgress, setScanProgress] = useState(0);
+  const cameraRef = useRef<CameraView>(null);
+  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const noFaceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const scanStatusRef = useRef<ScanStatus>('idle');
 
-  const handleStartScan = () => {
+  // Request camera permission on mount
+  useEffect(() => {
+    if (!permission) {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
+
+  // Update scanStatusRef whenever scanStatus changes
+  useEffect(() => {
+    scanStatusRef.current = scanStatus;
+  }, [scanStatus]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+      }
+      if (noFaceTimeoutRef.current) {
+        clearTimeout(noFaceTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleStartScan = async () => {
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        Alert.alert(
+          'Camera Permission Required',
+          'Please grant camera permission to use face recognition.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+    }
     setScanStatus('scanning');
-    // Simulate scanning process
-    setTimeout(() => {
-      setScanStatus('success');
-      setTimeout(() => {
-        setShowSuccessModal(true);
-      }, 1000);
-    }, 3000);
+    setFaceDetected(false);
+    setFaceDetectionCount(0);
+    setScanProgress(0);
+    
+    // If face detector is not available, use simulation
+    if (!faceDetectorAvailable) {
+      simulateFaceDetection();
+    }
+    
+    // Set timeout for when no face is detected after 10 seconds
+    if (noFaceTimeoutRef.current) {
+      clearTimeout(noFaceTimeoutRef.current);
+    }
+    noFaceTimeoutRef.current = setTimeout(() => {
+      if (scanStatusRef.current === 'scanning') {
+        setScanStatus('failed');
+        Alert.alert(
+          'Face Not Detected',
+          'Please ensure your face is clearly visible in the frame and try again.',
+          [{ text: 'OK', onPress: handleRetry }]
+        );
+      }
+    }, 10000);
+  };
+
+  // Simulated face detection for when native module is not available
+  const simulateFaceDetection = () => {
+    // Simulate face detection after a short delay (user positions face)
+    const detectionDelay = setTimeout(() => {
+      if (scanStatusRef.current === 'scanning') {
+        setFaceDetected(true);
+        
+        // Simulate scanning progress
+        const progressInterval = setInterval(() => {
+          if (scanStatusRef.current !== 'scanning') {
+            clearInterval(progressInterval);
+            return;
+          }
+          
+          setFaceDetectionCount((prev) => {
+            const newCount = prev + 1;
+            const requiredFrames = 45; // ~1.5 seconds at 30fps
+            const progress = Math.min((newCount / requiredFrames) * 100, 100);
+            setScanProgress(progress);
+            
+            if (newCount >= requiredFrames) {
+              clearInterval(progressInterval);
+              if (noFaceTimeoutRef.current) {
+                clearTimeout(noFaceTimeoutRef.current);
+                noFaceTimeoutRef.current = null;
+              }
+              setScanStatus('success');
+              setScanProgress(100);
+              setTimeout(() => {
+                setShowSuccessModal(true);
+              }, 1000);
+            }
+            return newCount;
+          });
+        }, 33); // Update every 33ms to simulate ~30fps
+        
+        // Store interval for cleanup
+        scanTimeoutRef.current = progressInterval as any;
+      }
+    }, 1000); // Wait 1 second before detecting face
+    
+    // Store timeout for cleanup
+    if (scanTimeoutRef.current && typeof scanTimeoutRef.current === 'number') {
+      clearTimeout(scanTimeoutRef.current);
+    }
+    scanTimeoutRef.current = detectionDelay as any;
+  };
+
+  // Real face detection handler (only used when native module is available)
+  const handleFacesDetected = ({ faces }: { faces: any[] }) => {
+    if (!faceDetectorAvailable || scanStatusRef.current !== 'scanning') return;
+
+    if (faces.length > 0) {
+      const face = faces[0];
+      
+      // Enhanced face validation checks
+      const faceWidth = face.bounds.size.width;
+      const faceHeight = face.bounds.size.height;
+      
+      // Check if face is properly positioned and of adequate size
+      const isFaceSizeValid = 
+        faceWidth > 80 && 
+        faceWidth < 400 && 
+        faceHeight > 80 && 
+        faceHeight < 400;
+      
+      // Check if face is centered (roughly in the middle 60% of the frame)
+      const faceCenterX = face.bounds.origin.x + faceWidth / 2;
+      const faceCenterY = face.bounds.origin.y + faceHeight / 2;
+      // Assuming camera view is roughly 300x400, adjust based on actual dimensions
+      const isFaceCentered = 
+        faceCenterX > 60 && faceCenterX < 240 && 
+        faceCenterY > 80 && faceCenterY < 320;
+      
+      // Check for face landmarks (eyes, nose, mouth) - these indicate a real face
+      const hasLandmarks = 
+        face.leftEyePosition !== undefined &&
+        face.rightEyePosition !== undefined &&
+        face.noseBasePosition !== undefined;
+      
+      // Check eye openness (both eyes should be open for verification)
+      const eyesOpen = 
+        face.leftEyeOpenProbability !== undefined &&
+        face.rightEyeOpenProbability !== undefined &&
+        face.leftEyeOpenProbability > 0.5 &&
+        face.rightEyeOpenProbability > 0.5;
+      
+      const isFaceValid = 
+        isFaceSizeValid && 
+        isFaceCentered && 
+        hasLandmarks && 
+        eyesOpen;
+
+      if (isFaceValid) {
+        // Clear the no-face timeout since we detected a face
+        if (noFaceTimeoutRef.current) {
+          clearTimeout(noFaceTimeoutRef.current);
+          noFaceTimeoutRef.current = null;
+        }
+        
+        setFaceDetected(true);
+        setFaceDetectionCount((prev) => {
+          const newCount = prev + 1;
+          // Require face to be detected for at least 1.5 seconds (45 frames at ~30fps)
+          const requiredFrames = 45;
+          const progress = Math.min((newCount / requiredFrames) * 100, 100);
+          setScanProgress(progress);
+          
+          if (newCount >= requiredFrames) {
+            if (noFaceTimeoutRef.current) {
+              clearTimeout(noFaceTimeoutRef.current);
+              noFaceTimeoutRef.current = null;
+            }
+            // Face detected successfully
+            setScanStatus('success');
+            setScanProgress(100);
+            setTimeout(() => {
+              setShowSuccessModal(true);
+            }, 1000);
+          }
+          return newCount;
+        });
+      } else {
+        // Face detected but not valid - reset count but don't completely reset
+        if (faceDetectionCount > 0) {
+          setFaceDetectionCount((prev) => Math.max(0, prev - 1));
+          setScanProgress((prev) => Math.max(0, prev - 2));
+        } else {
+          setFaceDetected(false);
+        }
+      }
+    } else {
+      // No face detected - gradually decrease count
+      if (faceDetectionCount > 0) {
+        setFaceDetectionCount((prev) => Math.max(0, prev - 2));
+        setScanProgress((prev) => Math.max(0, prev - 2));
+      } else {
+        setFaceDetected(false);
+      }
+    }
   };
 
   const handleRetry = () => {
     setScanStatus('idle');
+    setFaceDetected(false);
+    setFaceDetectionCount(0);
+    setScanProgress(0);
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current);
+      scanTimeoutRef.current = null;
+    }
+    if (noFaceTimeoutRef.current) {
+      clearTimeout(noFaceTimeoutRef.current);
+      noFaceTimeoutRef.current = null;
+    }
   };
 
   const handleProceed = () => {
@@ -41,9 +264,47 @@ const FacialRegister = () => {
   };
 
   const handleHome = () => {
-    // Navigate to home/dashboard
-    console.log('Navigate to home');
+    // Close the success modal first
+    setShowSuccessModal(false);
+    
+    // Get the root navigator to navigate to Main
+    // FacialRegister is in AuthNavigator, which is a child of RootNavigator
+    const rootNavigation = navigation.getParent()?.getParent();
+    
+    if (rootNavigation) {
+      // Navigate to Main navigator, which will show the Home tab by default
+      rootNavigation.navigate('Main' as never);
+    } else {
+      // Fallback: use CommonActions to reset navigation stack to Main
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        })
+      );
+    }
   };
+
+  if (!permission) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color="#A9EF45" />
+        <ThemedText style={styles.statusText}>Requesting camera permission...</ThemedText>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <MaterialCommunityIcons name="camera-off" size={80} color="rgba(255, 255, 255, 0.5)" />
+        <ThemedText style={styles.statusText}>Camera permission is required</ThemedText>
+        <TouchableOpacity style={styles.proceedButton} onPress={requestPermission}>
+          <ThemedText style={styles.proceedButtonText}>Grant Permission</ThemedText>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -85,47 +346,71 @@ const FacialRegister = () => {
 
       {/* Face Scanner */}
       <View style={styles.scannerContainer}>
-        <View style={styles.scannerOuter}>
-          <View style={styles.scannerInner}>
-            {scanStatus === 'idle' && (
-              <TouchableOpacity onPress={handleStartScan}>
-                <MaterialCommunityIcons name="face-recognition" size={100} color="rgba(255, 255, 255, 0.3)" />
-              </TouchableOpacity>
-            )}
-            
-            {scanStatus === 'scanning' && (
-              <View style={styles.scanningContainer}>
-                <MaterialCommunityIcons name="face-recognition" size={100} color="#A9EF45" />
-                <View style={styles.scanLine} />
+        {scanStatus === 'scanning' ? (
+          <View style={styles.cameraContainer}>
+            <CameraView
+              ref={cameraRef}
+              style={styles.camera}
+              facing={facing}
+            >
+              <View style={styles.scannerOverlay}>
+                <View style={styles.scannerOuter}>
+                  <View style={styles.scannerInner}>
+                    {faceDetected ? (
+                      <>
+                        <MaterialCommunityIcons name="face-recognition" size={100} color="#A9EF45" />
+                        <View style={styles.progressContainerInner}>
+                          <ThemedText style={styles.progressText}>{Math.round(scanProgress)}%</ThemedText>
+                        </View>
+                      </>
+                    ) : (
+                      <MaterialCommunityIcons name="face-recognition" size={100} color="rgba(255, 255, 255, 0.3)" />
+                    )}
+                    {faceDetected && <View style={styles.scanLine} />}
+                  </View>
+                </View>
               </View>
-            )}
-            
-            {scanStatus === 'success' && (
-              <MaterialCommunityIcons name="check-circle" size={62} color="#A9EF45" />
-            )}
-            
-            {scanStatus === 'failed' && (
-              <MaterialCommunityIcons name="close-circle" size={62} color="#FF4444" />
-            )}
+            </CameraView>
           </View>
-        </View>
+        ) : (
+          <View style={styles.scannerOuter}>
+            <View style={styles.scannerInner}>
+              {scanStatus === 'idle' && (
+                <TouchableOpacity onPress={handleStartScan}>
+                  <MaterialCommunityIcons name="face-recognition" size={100} color="rgba(255, 255, 255, 0.3)" />
+                </TouchableOpacity>
+              )}
+              
+              {scanStatus === 'success' && (
+                <MaterialCommunityIcons name="check-circle" size={62} color="#A9EF45" />
+              )}
+              
+              {scanStatus === 'failed' && (
+                <MaterialCommunityIcons name="close-circle" size={62} color="#FF4444" />
+              )}
+            </View>
+          </View>
+        )}
       </View>
 
       {/* Audio Visualizer */}
       {scanStatus === 'scanning' && (
         <View style={styles.audioVisualizer}>
-          {[...Array(12)].map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.audioBar,
-                {
-                  height: Math.random() * 34,
-                  backgroundColor: '#A9EF45',
-                },
-              ]}
-            />
-          ))}
+          {[...Array(12)].map((_, index) => {
+            const isActive = faceDetected && index % 2 === 0;
+            return (
+              <View
+                key={index}
+                style={[
+                  styles.audioBar,
+                  {
+                    height: isActive ? 34 : 10,
+                    backgroundColor: isActive ? '#A9EF45' : 'rgba(169, 239, 69, 0.3)',
+                  },
+                ]}
+              />
+            );
+          })}
         </View>
       )}
 
@@ -137,9 +422,15 @@ const FacialRegister = () => {
         
         {scanStatus === 'scanning' && (
           <>
-            <ThemedText style={styles.statusText}>Face scanning in progress</ThemedText>
+            <ThemedText style={styles.statusText}>
+              {faceDetected
+                ? 'Face detected - Keep still...'
+                : 'Position your face in the frame'}
+            </ThemedText>
             <ThemedText style={styles.statusSubtext}>
-              Do not move your head unitl scan is complete
+              {faceDetected
+                ? 'Do not move your head until scan is complete'
+                : 'Make sure your face is clearly visible and well-lit'}
             </ThemedText>
           </>
         )}
@@ -221,6 +512,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#020c19',
   },
+  centerContent: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -292,6 +589,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 30,
   },
+  cameraContainer: {
+    width: 257,
+    height: 317,
+    borderRadius: 257,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  camera: {
+    width: 257,
+    height: 317,
+  },
+  scannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
   scannerOuter: {
     width: 257,
     height: 317,
@@ -300,6 +618,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(169, 239, 69, 0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   scannerInner: {
     width: 257,
@@ -309,6 +628,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(169, 239, 69, 0.5)',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+    backgroundColor: 'transparent',
   },
   scanningContainer: {
     alignItems: 'center',
@@ -320,6 +641,18 @@ const styles = StyleSheet.create({
     height: 2,
     backgroundColor: '#A9EF45',
     opacity: 0.8,
+    top: '50%',
+  },
+  progressContainerInner: {
+    position: 'absolute',
+    bottom: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#A9EF45',
   },
   audioVisualizer: {
     flexDirection: 'row',

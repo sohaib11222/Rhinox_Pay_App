@@ -8,7 +8,7 @@ import {
   Image,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 
 const Verification = () => {
@@ -19,8 +19,22 @@ const Verification = () => {
   };
 
   const handleContinueLater = () => {
-    // Navigate to home or dashboard
-    console.log('Continue later');
+    // Get the root navigator to navigate to Main
+    // Verification is in AuthNavigator, which is a child of RootNavigator
+    const rootNavigation = navigation.getParent()?.getParent();
+    
+    if (rootNavigation) {
+      // Navigate to Main navigator, which will show the Home tab by default
+      rootNavigation.navigate('Main' as never);
+    } else {
+      // Fallback: use CommonActions to reset navigation stack to Main
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        })
+      );
+    }
   };
 
   return (
@@ -76,7 +90,7 @@ const Verification = () => {
           {/* Progress Bars - Vertical Segments */}
           <View style={styles.progressBarsContainer}>
             <View style={styles.progressBarRow}>
-              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55].map((index) => (
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52,53].map((index) => (
                 <View key={index} style={styles.progressBarSegmentComplete} />
               ))}
             </View>
@@ -118,7 +132,7 @@ const Verification = () => {
           {/* Progress Bars - Vertical Segments (Incomplete) */}
           <View style={styles.progressBarsContainer}>
             <View style={styles.progressBarRow}>
-              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55].map((index) => (
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53].map((index) => (
                 <View
                   key={index}
                   style={[

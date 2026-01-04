@@ -48,35 +48,107 @@ const TransactionsScreen = () => {
     const navigation = useNavigation();
     const [selectedPeriod, setSelectedPeriod] = useState<'D' | 'W' | 'M' | 'Custom'>('D');
 
-    // Mock data - Replace with API calls later
-    const totalAmount = '$7,000.23';
-    const summaryData: SummaryData = {
-        incoming: {
-            ngn: '2,000,000.00NGN',
-            usd: '$20,000',
+    // Chart data for different periods - Replace with API data later
+    const chartDataByPeriod: Record<'D' | 'W' | 'M' | 'Custom', ChartData[]> = {
+        D: [
+            { time: '12 - 1 AM', value: 150 },
+            { time: '1 - 2 AM', value: 86 },
+            { time: '2 - 3 AM', value: 220 },
+            { time: '3 - 4 AM', value: 140 },
+            { time: '4 - 5 AM', value: 220 },
+        ],
+        W: [
+            { time: 'Mon', value: 180 },
+            { time: 'Tue', value: 120 },
+            { time: 'Wed', value: 200 },
+            { time: 'Thu', value: 160 },
+            { time: 'Fri', value: 240 },
+            { time: 'Sat', value: 100 },
+            { time: 'Sun', value: 140 },
+        ],
+        M: [
+            { time: 'Week 1', value: 200 },
+            { time: 'Week 2', value: 180 },
+            { time: 'Week 3', value: 220 },
+            { time: 'Week 4', value: 160 },
+        ],
+        Custom: [
+            { time: 'Period 1', value: 150 },
+            { time: 'Period 2', value: 200 },
+            { time: 'Period 3', value: 180 },
+            { time: 'Period 4', value: 160 },
+            { time: 'Period 5', value: 190 },
+        ],
+    };
+
+    // Total amounts for different periods
+    const totalAmountByPeriod: Record<'D' | 'W' | 'M' | 'Custom', string> = {
+        D: '$7,000.23',
+        W: '$45,000.50',
+        M: '$180,000.75',
+        Custom: '$25,000.00',
+    };
+
+    // Summary data for different periods
+    const summaryDataByPeriod: Record<'D' | 'W' | 'M' | 'Custom', SummaryData> = {
+        D: {
+            incoming: {
+                ngn: '2,000,000.00NGN',
+                usd: '$20,000',
+            },
+            outgoing: {
+                ngn: '500.00NGN',
+                usd: '$0.001',
+            },
         },
-        outgoing: {
-            ngn: '500.00NGN',
-            usd: '$0.001',
+        W: {
+            incoming: {
+                ngn: '12,000,000.00NGN',
+                usd: '$120,000',
+            },
+            outgoing: {
+                ngn: '3,500.00NGN',
+                usd: '$0.007',
+            },
+        },
+        M: {
+            incoming: {
+                ngn: '50,000,000.00NGN',
+                usd: '$500,000',
+            },
+            outgoing: {
+                ngn: '15,000.00NGN',
+                usd: '$0.03',
+            },
+        },
+        Custom: {
+            incoming: {
+                ngn: '8,000,000.00NGN',
+                usd: '$80,000',
+            },
+            outgoing: {
+                ngn: '2,000.00NGN',
+                usd: '$0.004',
+            },
         },
     };
 
-    // Chart data - Replace with API data (values represent bar heights in pixels from Figma)
-    // Chart area: 176px tall, but bars should not exceed the visible area
-    // Adjusting values to ensure bars fit within the chart area without being cut off
-    const chartData: ChartData[] = [
-        { time: '12 - 1 AM', value: 150 }, // Reduced to fit within chart
-        { time: '1 - 2 AM', value: 86 },    // Medium height
-        { time: '2 - 3 AM', value: 220 },  // Reduced to fit within chart
-        { time: '3 - 4 AM', value: 140 },  // Tallest bar (active)
-        { time: '4 - 5 AM', value: 220 },  // Reduced to fit within chart
-    ];
+    // Get current period data
+    const chartData = chartDataByPeriod[selectedPeriod];
+    const totalAmount = totalAmountByPeriod[selectedPeriod];
+    const summaryData = summaryDataByPeriod[selectedPeriod];
 
-    const maxChartValue = 176; // Maximum chart area height in pixels
+    // Calculate max value from current chart data
+    const maxChartValue = Math.max(...chartData.map(d => d.value), 176);
     const CHART_MAX_HEIGHT = 176 * SCALE;
     const CHART_BOTTOM_PADDING = 20 * SCALE; // Space for X-axis labels
     const CHART_TOP_PADDING = 5 * SCALE; // Space at top to prevent cutoff
     const AVAILABLE_CHART_HEIGHT = CHART_MAX_HEIGHT - CHART_BOTTOM_PADDING - CHART_TOP_PADDING;
+    
+    // Calculate chart area width based on number of data points
+    const CHART_BAR_WIDTH = 54 * SCALE;
+    const CHART_BAR_GAP = 10 * SCALE;
+    const CHART_AREA_WIDTH = chartData.length * (CHART_BAR_WIDTH + CHART_BAR_GAP) + CHART_BAR_GAP;
 
     // Transaction data - Replace with API calls
     const fiatTransactions: Transaction[] = [
@@ -212,7 +284,7 @@ const TransactionsScreen = () => {
                 {/* Chart Section */}
                 <View style={styles.chartCard}>
                     <View style={styles.chartHeader}>
-                        <ThemedText style={styles.chartLabel}>Total</ThemedText>
+                        <ThemedText style={styles.chartLabel}>Totals</ThemedText>
                         <ThemedText style={styles.chartAmount}>{totalAmount}</ThemedText>
                     </View>
 
@@ -270,24 +342,25 @@ const TransactionsScreen = () => {
                             contentContainerStyle={styles.chartScrollContent}
                             style={styles.chartScrollView}
                         >
-                            <View style={styles.chartArea}>
+                            <View style={[styles.chartArea, { width: CHART_AREA_WIDTH }]}>
                                 {/* Horizontal Grid Lines */}
-                                <View style={styles.gridLines}>
+                                <View style={[styles.gridLines, { width: CHART_AREA_WIDTH }]}>
                                     {[0, 1, 2, 3, 4].map((i) => (
-                                        <View key={i} style={styles.gridLine} />
+                                        <View key={i} style={[styles.gridLine, { width: CHART_AREA_WIDTH }]} />
                                     ))}
                                 </View>
 
                                 {/* Chart Bars */}
-                                <View style={styles.barsContainer}>
+                                <View style={[styles.barsContainer, { width: CHART_AREA_WIDTH }]}>
                                     {chartData.map((data, index) => {
                                         // Calculate bar height relative to available space, ensuring it doesn't exceed
                                         const barHeight = Math.min(
                                             (data.value / maxChartValue) * AVAILABLE_CHART_HEIGHT,
                                             AVAILABLE_CHART_HEIGHT
                                         );
-                                        // 4th bar (index 3) should be bright green, others light green
-                                        const isActive = index === 3;
+                                        // Find the index of the bar with the highest value, make it active
+                                        const maxValueIndex = chartData.findIndex(d => d.value === maxChartValue);
+                                        const isActive = index === maxValueIndex || (maxValueIndex === -1 && index === Math.floor(chartData.length / 2));
                                         return (
                                             <View key={index} style={styles.barWrapper}>
                                                 <View style={[
@@ -301,7 +374,7 @@ const TransactionsScreen = () => {
                                 </View>
 
                                 {/* X-axis Labels */}
-                                <View style={styles.xAxisLabels}>
+                                <View style={[styles.xAxisLabels, { width: CHART_AREA_WIDTH }]}>
                                     {chartData.map((data, index) => (
                                         <ThemedText key={index} style={styles.xAxisText}>
                                             {data.time}
@@ -334,7 +407,9 @@ const TransactionsScreen = () => {
                         </View>
                         <View style={styles.summaryAmountContainer}>
                             <View style={styles.summaryAmountRow}>
-                                <ThemedText style={styles.summaryAmountMain}>2,000,000.00</ThemedText>
+                                <ThemedText style={styles.summaryAmountMain}>
+                                    {summaryData.incoming.ngn.replace('NGN', '')}
+                                </ThemedText>
                                 <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
                             </View>
                         </View>
@@ -355,7 +430,9 @@ const TransactionsScreen = () => {
                         </View>
                         <View style={styles.summaryAmountContainer}>
                             <View style={styles.summaryAmountRow}>
-                                <ThemedText style={styles.summaryAmountMainWhite}>500.00</ThemedText>
+                                <ThemedText style={styles.summaryAmountMainWhite}>
+                                    {summaryData.outgoing.ngn.replace('NGN', '')}
+                                </ThemedText>
                                 <ThemedText style={styles.summaryAmountCurrencyWhite}>NGN</ThemedText>
                             </View>
                         </View>

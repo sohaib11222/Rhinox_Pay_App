@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -71,6 +72,8 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
   transaction,
   onClose,
 }) => {
+  const navigation = useNavigation();
+
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await Clipboard.setStringAsync(text);
@@ -235,7 +238,15 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               </View>
             </TouchableOpacity>
             <ThemedText style={styles.headerTitle}>Transaction Receipt</ThemedText>
-            <TouchableOpacity style={styles.helpButton}>
+            <TouchableOpacity
+              style={styles.helpButton}
+              onPress={() => {
+                onClose(); // Close the modal first
+                (navigation as any).navigate('Settings', {
+                  screen: 'Support',
+                });
+              }}
+            >
               <View style={styles.iconCircle}>
                 <MaterialCommunityIcons name="headset" size={24 * SCALE} color="#FFFFFF" />
               </View>

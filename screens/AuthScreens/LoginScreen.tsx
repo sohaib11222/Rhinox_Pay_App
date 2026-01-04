@@ -10,10 +10,14 @@ import {
   Platform,
   ScrollView,
   Modal,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
+import { useLogin } from '../../mutations/auth.mutations';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -30,6 +34,24 @@ const LoginScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<string | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+
+  // Login mutation
+  const loginMutation = useLogin({
+    onSuccess: (data) => {
+      // Navigate to Main screen on successful login
+      navigation.navigate('Main' as never);
+    },
+    onError: (error: any) => {
+      Alert.alert(
+        'Login Failed',
+        error.message || 'Invalid email or password. Please try again.',
+        [{ text: 'OK' }]
+      );
+    },
+  });
 
   // Countdown timer for resend code
   useEffect(() => {
@@ -54,18 +76,90 @@ const LoginScreen = () => {
     }
   }, [showForgotPasswordModal]);
 
-  const handleLogin = () => {
-    // Add login logic here
-    console.log('Login pressed', { email, password });
-    // Navigate to the Main (Home) tab stack
-    // We register all stacks in RootNavigator, so this route is always available
-    // Optionally, use reset to prevent going back to auth screens
-    // @ts-ignore - stack names from parent
-    // navigation.reset({ index: 0, routes: [{ name: 'Main' as never }] });
-    // Simple navigate is enough for now
-    // @ts-ignore - allow parent route name
-    navigation.navigate('Main' as never);
+  // Check biometric availability on mount
+  useEffect(() => {
+    checkBiometrics();
+  }, []);
+
+  const checkBiometrics = async () => {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    if (hasHardware) {
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (isEnrolled) {
+        setIsBiometricAvailable(true);
+        const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+        if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+          setBiometricType('Face ID');
+        } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+          setBiometricType('Fingerprint');
+        } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+          setBiometricType('Iris');
+        }
+      }
+    }
   };
+
+  const handleBiometricLogin = async () => {
+    if (!isBiometricAvailable) {
+      Alert.alert(
+        'Biometrics Not Available',
+        'Your device does not support biometrics or it is not set up. Please use email and password to login.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Authenticate with your ${biometricType} to login`,
+        fallbackLabel: 'Use Password',
+        disableDeviceFallback: false,
+        cancelLabel: 'Cancel',
+      });
+
+      setIsScanning(false);
+
+      if (result.success) {
+        // Navigate to Main screen on successful authentication
+        navigation.navigate('Main' as never);
+      } else {
+        if (result.error === 'user_cancel') {
+          // User cancelled - do nothing
+        } else {
+          Alert.alert(
+            'Authentication Failed',
+            'Biometric authentication failed. Please try again or use email and password.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Biometric authentication error:', error);
+      setIsScanning(false);
+      Alert.alert(
+        'Error',
+        'An error occurred during biometric authentication. Please try again or use email and password.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const handleLogin = () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Validation Error', 'Please enter both email and password.');
+      return;
+    }
+
+    // Call login API
+    loginMutation.mutate({
+      email: email.trim(),
+      password: password,
+    });
+  };
+
+  // Check if login button should be enabled
+  const isLoginButtonEnabled = email.trim().length > 0 && password.trim().length > 0 && !loginMutation.isPending;
 
   const handleForgotPassword = () => {
     setShowForgotPasswordModal(true);
@@ -98,7 +192,7 @@ const LoginScreen = () => {
     setConfirmPassword('');
   };
 
-  const handleRegister = () => {
+const handleRegister = () => {
     navigation.navigate('Register' as never);
   };
 
@@ -180,11 +274,21 @@ const LoginScreen = () => {
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
-                <MaterialCommunityIcons
-                  name="fingerprint"
-                  size={24}
-                  color="rgba(255, 255, 255, 0.5)"
-                />
+                <TouchableOpacity
+                  onPress={handleBiometricLogin}
+                  disabled={isScanning || !isBiometricAvailable}
+                  style={styles.fingerprintButton}
+                >
+                  {isScanning ? (
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                  ) : (
+                    <MaterialCommunityIcons
+                      name="fingerprint"
+                      size={24}
+                      color={isBiometricAvailable ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
+                    />
+                  )}
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -561,6 +665,12 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     padding: 4,
+  },
+  fingerprintButton: {
+    padding: 4,
+    minWidth: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   forgotPasswordContainer: {
     alignSelf: 'flex-end',

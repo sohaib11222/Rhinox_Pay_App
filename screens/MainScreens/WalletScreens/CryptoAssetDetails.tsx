@@ -14,6 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -67,6 +68,8 @@ const CryptoAssetDetails = () => {
 
   const [selectedTimeRange, setSelectedTimeRange] = useState<string>('1H');
   const [balanceVisible, setBalanceVisible] = useState(true);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<RecentActivity | null>(null);
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
@@ -82,6 +85,11 @@ const CryptoAssetDetails = () => {
     onRefresh: handleRefresh,
     refreshDelay: 2000,
   });
+
+  const handleActivityPress = (activity: RecentActivity) => {
+    setSelectedActivity(activity);
+    setShowReceiptModal(true);
+  };
 
   const timeRanges: TimeRange[] = [
     { id: '1H', label: '1H' },
@@ -373,7 +381,31 @@ const CryptoAssetDetails = () => {
               { id: '2', title: 'Withdraw', icon: require('../../../assets/send-2-white.png') },
               { id: '3', title: 'P2P', icon: require('../../../assets/profile-2user.png') },
             ].map((action) => (
-              <TouchableOpacity key={action.id} style={styles.quickActionButton}>
+              <TouchableOpacity
+                key={action.id}
+                style={styles.quickActionButton}
+                onPress={() => {
+                  if (action.id === '1' && action.title === 'Deposit') {
+                    // Navigate to CryptoDeposit screen in Transactions stack
+                    // @ts-ignore - allow parent route name
+                    navigation.navigate('Transactions' as never, {
+                      screen: 'CryptoDeposit' as never,
+                    } as never);
+                  } else if (action.id === '2' && action.title === 'Withdraw') {
+                    // Navigate to CryptoWithdrawals screen in Transactions stack
+                    // @ts-ignore - allow parent route name
+                    navigation.navigate('Transactions' as never, {
+                      screen: 'CryptoWithdrawals' as never,
+                    } as never);
+                  } else if (action.id === '3' && action.title === 'P2P') {
+                    // Navigate to P2PTransactions screen in Transactions stack
+                    // @ts-ignore - allow parent route name
+                    navigation.navigate('Transactions' as never, {
+                      screen: 'P2PTransactions' as never,
+                    } as never);
+                  }
+                }}
+              >
                 <View style={styles.quickActionIconCircle}>
                   {action.id === '2' ? (
                     <View style={{ transform: [{ rotate: '180deg' }] }}>
@@ -408,7 +440,11 @@ const CryptoAssetDetails = () => {
 
           <View style={styles.activityList}>
             {recentActivity.map((activity) => (
-              <View key={activity.id} style={styles.activityItem}>
+              <TouchableOpacity
+                key={activity.id}
+                style={styles.activityItem}
+                onPress={() => handleActivityPress(activity)}
+              >
                 <View style={styles.activityIconContainer}>
                   <View style={styles.activityIconCircle}>
                     <Image
@@ -448,7 +484,7 @@ const CryptoAssetDetails = () => {
                   </ThemedText>
                   <ThemedText style={styles.activityDate}>{activity.date}</ThemedText>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
@@ -456,6 +492,30 @@ const CryptoAssetDetails = () => {
         {/* Bottom spacing */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Transaction Receipt Modal */}
+      {selectedActivity && (
+        <TransactionReceiptModal
+          visible={showReceiptModal}
+          transaction={{
+            transactionType: selectedActivity.type === 'Deposit' 
+              ? 'cryptoDeposit' 
+              : selectedActivity.type === 'Withdraw'
+              ? 'cryptoWithdrawal'
+              : 'send',
+            cryptoType: assetData.name,
+            network: assetData.name,
+            quantity: selectedActivity.amount,
+            dateTime: selectedActivity.date,
+            transactionId: `TXN-${selectedActivity.id}-${Date.now()}`,
+            amountNGN: selectedActivity.amount,
+          }}
+          onClose={() => {
+            setShowReceiptModal(false);
+            setSelectedActivity(null);
+          }}
+        />
+      )}
     </View>
   );
 };

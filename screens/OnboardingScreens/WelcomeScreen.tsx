@@ -20,8 +20,7 @@ const WelcomeScreen = () => {
   };
 
   const handleRegister = () => {
-    // Navigate to register screen when implemented
-    console.log('Navigate to Register');
+    navigation.navigate('Register' as never);
   };
 
   return (

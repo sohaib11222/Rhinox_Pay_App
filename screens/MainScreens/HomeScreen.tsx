@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,12 +11,14 @@ import {
   Modal,
   TextInput,
   RefreshControl,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import TransactionReceiptModal from '../components/TransactionReceiptModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
@@ -55,6 +57,34 @@ const HomeScreen = () => {
   const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
   const [showFundWalletAssetModal, setShowFundWalletAssetModal] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  // Balance data for Fiat and Crypto
+  const [fiatBalance] = useState({
+    currency: 'N',
+    amount: '2,000,000.',
+    decimals: '00',
+    fullAmount: '2,000,000.00',
+  });
+  const [cryptoBalance] = useState({
+    currency: 'BTC',
+    amount: '0.00001',
+    decimals: '',
+    fullAmount: '0.00001',
+  });
+
+  // Transaction totals for Fiat and Crypto
+  const [fiatTransactionTotal] = useState({
+    currency: 'N',
+    amount: '150,000.',
+    decimals: '00',
+  });
+  const [cryptoTransactionTotal] = useState({
+    currency: 'BTC',
+    amount: '0.00150',
+    decimals: '',
+  });
 
   // Promotional banner images - using complete banner images
   const promoBanners = [
@@ -91,12 +121,45 @@ const HomeScreen = () => {
     refreshDelay: 2000,
   });
 
+  // Close dropdown when scrolling
+  const handleScroll = () => {
+    if (showFilterDropdown) {
+      setShowFilterDropdown(false);
+    }
+  };
+
+  // Handle transaction press - map simple transaction data to modal format
+  const handleTransactionPress = (transaction: typeof transactions[0]) => {
+    // Map the simple transaction data to the format expected by TransactionReceiptModal
+    const mappedTransaction = {
+      transactionTitle: transaction.title,
+      transactionId: `TXN-${transaction.id}-${Date.now()}`,
+      dateTime: transaction.date,
+      amountNGN: transaction.amount,
+      status: transaction.status,
+      transactionType: transaction.title.includes('Fund') ? 'fund' as const : 
+                      transaction.title.includes('NGN to') || transaction.title.includes('Convert') ? 'convert' as const :
+                      'send' as const,
+      // Add default values for other fields
+      recipientName: transaction.title.includes('Fund') ? 'Bank Account' : 'Recipient',
+      transferAmount: transaction.amount,
+      fee: '0.00',
+      paymentAmount: transaction.amount,
+      paymentMethod: transaction.subtitle || 'Bank Transfer',
+    };
+    
+    setSelectedTransaction(mappedTransaction);
+    setShowReceiptModal(true);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        onScrollBeginDrag={handleScroll}
+        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -159,9 +222,18 @@ const HomeScreen = () => {
           <ThemedText style={styles.balanceLabel}>Your balance</ThemedText>
           <View style={styles.balanceRow}>
             <ThemedText style={styles.balanceAmount}>
-              <ThemedText style={styles.balanceCurrency}>N</ThemedText>
-              {balanceVisible ? '2,000,000.' : '*******.'}
-              <ThemedText style={styles.balanceDecimals}>00</ThemedText>
+              {selectedFilter === 'Fiat' ? (
+                <>
+                  <ThemedText style={styles.balanceCurrency}>{fiatBalance.currency}</ThemedText>
+                  {balanceVisible ? fiatBalance.amount : '*******.'}
+                  <ThemedText style={styles.balanceDecimals}>{fiatBalance.decimals}</ThemedText>
+                </>
+              ) : (
+                <>
+                  <ThemedText>{balanceVisible ? cryptoBalance.amount : '*******'} </ThemedText>
+                  <ThemedText style={styles.balanceCurrency}>{cryptoBalance.currency}</ThemedText>
+                </>
+              )}
             </ThemedText>
             <TouchableOpacity
               onPress={() => setBalanceVisible(!balanceVisible)}
@@ -198,7 +270,13 @@ const HomeScreen = () => {
               />            </View>
             <ThemedText style={styles.actionButtonText}>Fund</ThemedText>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity 
+            style={styles.actionButton}
+            onPress={() => {
+              // Navigate to Conversion screen in Settings stack
+              (navigation as any).navigate('Settings', { screen: 'Conversion' });
+            }}
+          >
             <Image
               source={require('../../assets/arrow-swap.png')}
               style={[{ width: 42, height: 42 }]}
@@ -210,7 +288,13 @@ const HomeScreen = () => {
         {/* Active Wallets Section */}
         <View style={styles.walletsHeader}>
           <ThemedText style={styles.walletsTitle}>Active Wallets</ThemedText>
-          <TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              (navigation as any).navigate('Wallet', {
+                screen: 'WalletMain',
+              });
+            }}
+          >
             <ThemedText style={styles.viewAllText}>View All</ThemedText>
           </TouchableOpacity>
         </View>
@@ -351,7 +435,18 @@ const HomeScreen = () => {
             </View>
           </View>
           <ThemedText style={styles.transactionTotalAmount}>
-            <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>N</ThemedText> <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}> 150,000.</ThemedText><ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalDecimals}>00</ThemedText>
+            {selectedFilter === 'Fiat' ? (
+              <>
+                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>{fiatTransactionTotal.currency} </ThemedText>
+                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}>{fiatTransactionTotal.amount}</ThemedText>
+                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalDecimals}>{fiatTransactionTotal.decimals}</ThemedText>
+              </>
+            ) : (
+              <>
+                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalAmount}>{cryptoTransactionTotal.amount} </ThemedText>
+                <ThemedText fontFamily='Agbalumo-Regular' style={styles.transactionTotalCurrency}>{cryptoTransactionTotal.currency}</ThemedText>
+              </>
+            )}
           </ThemedText>
 
           {/* Chart Bars */}
@@ -387,13 +482,24 @@ const HomeScreen = () => {
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
             <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                (navigation as any).navigate('Transactions', {
+                  screen: 'TransactionsList',
+                });
+              }}
+            >
               <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
 
           {transactions.map((transaction) => (
-            <View key={transaction.id} style={styles.transactionItem}>
+            <TouchableOpacity
+              key={transaction.id}
+              style={styles.transactionItem}
+              onPress={() => handleTransactionPress(transaction)}
+              activeOpacity={0.7}
+            >
               <View style={styles.transactionIconContainer}>
                 <View style={styles.transactionIconCircle}>
                   <MaterialCommunityIcons
@@ -414,7 +520,7 @@ const HomeScreen = () => {
                 <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
                 <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -1329,7 +1435,19 @@ const HomeScreen = () => {
             </View>
           </View>
         </Modal>
-      </Modal>
+        </Modal>
+
+      {/* Transaction Receipt Modal */}
+      {selectedTransaction && (
+        <TransactionReceiptModal
+          visible={showReceiptModal}
+          transaction={selectedTransaction}
+          onClose={() => {
+            setShowReceiptModal(false);
+            setSelectedTransaction(null);
+          }}
+        />
+      )}
 
       {/* Decorative Circles */}
 

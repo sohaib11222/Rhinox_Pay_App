@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -41,6 +41,16 @@ const RegisterScreen = () => {
   const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
   const [emailCode, setEmailCode] = useState(['', '', '', '', '']);
   const [phoneCode, setPhoneCode] = useState(['', '', '', '', '']);
+  
+  // Refs for auto-focus
+  const emailCodeRefs = useRef<(TextInput | null)[]>([]);
+  const phoneCodeRefs = useRef<(TextInput | null)[]>([]);
+
+  // Resend timer states
+  const [emailResendTimer, setEmailResendTimer] = useState(0);
+  const [phoneResendTimer, setPhoneResendTimer] = useState(0);
+  const [emailResendClicked, setEmailResendClicked] = useState(false);
+  const [phoneResendClicked, setPhoneResendClicked] = useState(false);
 
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
   const [passwordValid, setPasswordValid] = useState({
@@ -80,6 +90,90 @@ const RegisterScreen = () => {
   const handleVerifyPhone = () => {
     setShowPhoneVerifyModal(false);
   };
+
+  // Handle email resend
+  const handleEmailResend = () => {
+    setEmailResendTimer(60); // 1 minute = 60 seconds
+    setEmailResendClicked(true);
+    // TODO: Call API to resend email OTP
+    console.log('Resending email OTP...');
+  };
+
+  // Handle phone resend
+  const handlePhoneResend = () => {
+    setPhoneResendTimer(60); // 1 minute = 60 seconds
+    setPhoneResendClicked(true);
+    // TODO: Call API to resend phone OTP
+    console.log('Resending phone OTP...');
+  };
+
+  // Auto-focus first input when email modal opens
+  useEffect(() => {
+    if (showEmailVerifyModal) {
+      setTimeout(() => {
+        emailCodeRefs.current[0]?.focus();
+      }, 100);
+    } else {
+      // Reset email code when modal closes
+      setEmailCode(['', '', '', '', '']);
+      setEmailResendTimer(0);
+      setEmailResendClicked(false);
+    }
+  }, [showEmailVerifyModal]);
+
+  // Auto-focus first input when phone modal opens
+  useEffect(() => {
+    if (showPhoneVerifyModal) {
+      setTimeout(() => {
+        phoneCodeRefs.current[0]?.focus();
+      }, 100);
+    } else {
+      // Reset phone code when modal closes
+      setPhoneCode(['', '', '', '', '']);
+      setPhoneResendTimer(0);
+      setPhoneResendClicked(false);
+    }
+  }, [showPhoneVerifyModal]);
+
+  // Email resend countdown timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (emailResendTimer > 0) {
+      interval = setInterval(() => {
+        setEmailResendTimer((prev) => {
+          if (prev <= 1) {
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [emailResendTimer]);
+
+  // Phone resend countdown timer
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (phoneResendTimer > 0) {
+      interval = setInterval(() => {
+        setPhoneResendTimer((prev) => {
+          if (prev <= 1) {
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [phoneResendTimer]);
 
   return (
     <KeyboardAvoidingView
@@ -145,11 +239,18 @@ const RegisterScreen = () => {
                 <TouchableOpacity
                   style={styles.inputWrapper}
                   onPress={() => setShowCountryModal(true)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
                 >
-                  <ThemedText style={[styles.input, !country && styles.placeholderStyle]}>
+                  <ThemedText 
+                    style={[styles.input, !country && styles.placeholderStyle]}
+                    pointerEvents="none"
+                  >
                     {country || 'Select your country'}
                   </ThemedText>
-                  <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                  <View pointerEvents="none">
+                    <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                  </View>
                 </TouchableOpacity>
               </View>
 
@@ -370,13 +471,26 @@ const RegisterScreen = () => {
             </View>
             <ThemedText style={styles.verifyTitle}>Verify your email address</ThemedText>
             <ThemedText style={styles.verifySubtitle}>
-              A 5 digit code has been sent to your registered email address{' '}
-              <ThemedText style={styles.resendText}>Resend</ThemedText>
+              {emailResendClicked
+                ? 'A 5 digit code has been sent again to your registered email address'
+                : 'A 5 digit code has been sent to your registered email address'}{' '}
+              {emailResendTimer > 0 ? (
+                <ThemedText style={styles.resendTextDisabled}>
+                  Resend ({emailResendTimer}s)
+                </ThemedText>
+              ) : (
+                <TouchableOpacity onPress={handleEmailResend} activeOpacity={0.7}>
+                  <ThemedText style={styles.resendText}>Resend</ThemedText>
+                </TouchableOpacity>
+              )}
             </ThemedText>
             <View style={styles.codeContainer}>
               {[0, 1, 2, 3, 4].map((index) => (
                 <View key={index} style={styles.codeInput}>
                   <TextInput
+                    ref={(ref) => {
+                      emailCodeRefs.current[index] = ref;
+                    }}
                     style={styles.codeText}
                     maxLength={1}
                     keyboardType="number-pad"
@@ -385,12 +499,30 @@ const RegisterScreen = () => {
                       const newCode = [...emailCode];
                       newCode[index] = text;
                       setEmailCode(newCode);
+                      
+                      // Auto-focus to next input if digit entered
+                      if (text && index < 4) {
+                        emailCodeRefs.current[index + 1]?.focus();
+                      }
+                    }}
+                    onKeyPress={({ nativeEvent }) => {
+                      // Handle backspace to go to previous input
+                      if (nativeEvent.key === 'Backspace' && !emailCode[index] && index > 0) {
+                        emailCodeRefs.current[index - 1]?.focus();
+                      }
                     }}
                   />
                 </View>
               ))}
             </View>
-            <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyEmail}>
+            <TouchableOpacity 
+              style={[
+                styles.verifyButton,
+                emailCode.every(digit => digit !== '') ? {} : styles.verifyButtonDisabled
+              ]} 
+              onPress={handleVerifyEmail}
+              disabled={!emailCode.every(digit => digit !== '')}
+            >
               <ThemedText style={styles.verifyButtonText}>Proceed</ThemedText>
             </TouchableOpacity>
           </View>
@@ -421,13 +553,26 @@ const RegisterScreen = () => {
             </View>
             <ThemedText style={styles.verifyTitle}>Verify your phone number</ThemedText>
             <ThemedText style={styles.verifySubtitle}>
-              A 5 digit code has been sent to your registered phone number{' '}
-              <ThemedText style={styles.resendText}>Resend</ThemedText>
+              {phoneResendClicked
+                ? 'A 5 digit code has been sent again to your registered phone number'
+                : 'A 5 digit code has been sent to your registered phone number'}{' '}
+              {phoneResendTimer > 0 ? (
+                <ThemedText style={styles.resendTextDisabled}>
+                  Resend ({phoneResendTimer}s)
+                </ThemedText>
+              ) : (
+                <TouchableOpacity onPress={handlePhoneResend} activeOpacity={0.7}>
+                  <ThemedText style={styles.resendText}>Resend</ThemedText>
+                </TouchableOpacity>
+              )}
             </ThemedText>
             <View style={styles.codeContainer}>
               {[0, 1, 2, 3, 4].map((index) => (
                 <View key={index} style={styles.codeInput}>
                   <TextInput
+                    ref={(ref) => {
+                      phoneCodeRefs.current[index] = ref;
+                    }}
                     style={styles.codeText}
                     maxLength={1}
                     keyboardType="number-pad"
@@ -436,12 +581,30 @@ const RegisterScreen = () => {
                       const newCode = [...phoneCode];
                       newCode[index] = text;
                       setPhoneCode(newCode);
+                      
+                      // Auto-focus to next input if digit entered
+                      if (text && index < 4) {
+                        phoneCodeRefs.current[index + 1]?.focus();
+                      }
+                    }}
+                    onKeyPress={({ nativeEvent }) => {
+                      // Handle backspace to go to previous input
+                      if (nativeEvent.key === 'Backspace' && !phoneCode[index] && index > 0) {
+                        phoneCodeRefs.current[index - 1]?.focus();
+                      }
                     }}
                   />
                 </View>
               ))}
             </View>
-            <TouchableOpacity style={styles.verifyButton} onPress={handleVerifyPhone}>
+            <TouchableOpacity 
+              style={[
+                styles.verifyButton,
+                phoneCode.every(digit => digit !== '') ? {} : styles.verifyButtonDisabled
+              ]} 
+              onPress={handleVerifyPhone}
+              disabled={!phoneCode.every(digit => digit !== '')}
+            >
               <ThemedText style={styles.verifyButtonText}>Login</ThemedText>
             </TouchableOpacity>
           </View>
@@ -780,15 +943,19 @@ const styles = StyleSheet.create({
   resendText: {
     color: '#A9EF45',
   },
+  resendTextDisabled: {
+    color: 'rgba(169, 239, 69, 0.5)',
+  },
   codeContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 10,
-    marginHorizontal: 20,
+    marginHorizontal: 30,
     marginBottom: 30,
+    paddingHorizontal: 10,
   },
   codeInput: {
-    width: 70,
+    width: 60,
     height: 74,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     borderWidth: 0.3,
@@ -810,6 +977,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 20,
+  },
+  verifyButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    opacity: 0.5,
   },
   verifyButtonText: {
     fontSize: 14,
