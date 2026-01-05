@@ -12,6 +12,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -22,7 +24,9 @@ import { useGetBillPaymentProviders, useGetBillPaymentPlans, useGetBillPaymentBe
 import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
-import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
+import TransactionSuccessModal from '../../components/TransactionSuccessModal';
+import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -30,6 +34,7 @@ const SCALE = 0.9;
 
 interface RecentTransaction {
   id: string;
+  transactionId?: number; // Add transactionId for detail fetching
   phoneNumber: string;
   network: string;
   amount: string;
@@ -109,6 +114,21 @@ const InternetSubscription = ({ route }: any) => {
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+  const [transactionDetails, setTransactionDetails] = useState({
+    amount: '',
+    fee: '',
+    billerType: '',
+    accountNumber: '',
+    accountName: '',
+    plan: '',
+    country: '',
+    reference: '',
+    dateTime: '',
+    status: '',
+  });
 
   // Fetch wallet balances
   const {
@@ -259,19 +279,72 @@ const InternetSubscription = ({ route }: any) => {
   const {
     data: transactionsData,
     isLoading: isLoadingTransactions,
+    isError: isTransactionsError,
+    error: transactionsError,
     refetch: refetchTransactions,
   } = useGetBillPayments({
     categoryCode: 'internet',
     limit: 10,
+    status: mapBillPaymentStatusToAPI('Completed') || 'completed', // Show completed transactions by default
   });
 
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+      enabled: !!selectedTransactionId,
+    }
+  );
+
+  // Update transaction details when details are fetched
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransactionId) {
+      const tx = transactionDetailsData.data;
+      const metadata = tx.metadata || {};
+      setTransactionDetails({
+        amount: tx.amount || '0',
+        fee: tx.fee || '0',
+        billerType: metadata.providerName || metadata.providerCode || tx.description || '',
+        accountNumber: metadata.accountNumber || tx.accountNumber || '',
+        accountName: metadata.accountName || tx.accountName || '',
+        plan: metadata.planName || tx.plan?.name || '',
+        country: selectedCountryName,
+        reference: tx.reference || String(tx.id),
+        dateTime: tx.completedAt || tx.createdAt
+          ? new Date(tx.completedAt || tx.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '',
+        status: tx.status || 'completed',
+      });
+    }
+  }, [transactionDetailsData, selectedTransactionId, selectedCountryName]);
+
   // Transform transactions to UI format
+  // API response structure: { success: true, data: { summary: {...}, transactions: [...] } }
   const recentTransactions: RecentTransaction[] = useMemo(() => {
-    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+    if (!transactionsData?.data) {
       return [];
     }
 
-    return transactionsData.data.map((tx: any) => {
+    // Handle both old format (array) and new format (object with transactions array)
+    const transactions = Array.isArray(transactionsData.data) 
+      ? transactionsData.data 
+      : transactionsData.data.transactions || [];
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      return [];
+    }
+
+    return transactions.map((tx: any) => {
       const provider = tx.provider || {};
       const logoUrl = provider.logoUrl 
         ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
@@ -288,8 +361,8 @@ const InternetSubscription = ({ route }: any) => {
       }
 
       const amount = parseFloat(tx.amount || '0');
-      const date = tx.createdAt
-        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+      const date = tx.createdAt || tx.completedAt
+        ? new Date(tx.createdAt || tx.completedAt).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric'
@@ -298,6 +371,7 @@ const InternetSubscription = ({ route }: any) => {
 
       return {
         id: String(tx.id),
+        transactionId: tx.id, // Store numeric ID for detail fetching
         phoneNumber: tx.accountNumber || '',
         network: provider.name || provider.code || '',
         amount: `N${formatBalance(amount)}`,
@@ -376,6 +450,37 @@ const InternetSubscription = ({ route }: any) => {
       setPin('');
       setPendingTransactionId(null);
       setPendingTransactionData(null);
+      
+      // Set transaction details for success modal
+      const transactionData = data?.data || {};
+      const numericAmount = parseFloat(selectedPlan?.amount || '0');
+      setTransactionDetails({
+        amount: String(numericAmount),
+        fee: transactionData.fee || pendingTransactionData?.fee || '0',
+        billerType: networks.find((p) => p.id === String(selectedProvider))?.name || '',
+        accountNumber: mobileNumber,
+        accountName: transactionData.accountName || accountName || '',
+        plan: selectedPlan?.name || transactionData.plan?.name || '',
+        country: selectedCountryName,
+        reference: transactionData.reference || String(transactionData.id || ''),
+        dateTime: transactionData.completedAt || transactionData.createdAt
+          ? new Date(transactionData.completedAt || transactionData.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : new Date().toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+        status: transactionData.status || 'completed',
+      });
+      
       // Reset form
       setSelectedPlan(null);
       setMobileNumber('');
@@ -387,19 +492,8 @@ const InternetSubscription = ({ route }: any) => {
       refetchBalances();
       refetchBeneficiaries();
       
-      Alert.alert(
-        'Success',
-        'Internet subscription payment successful!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
-            },
-          },
-        ]
-      );
+      // Show success modal
+      setShowSuccessModal(true);
     },
     onError: (error: any) => {
       console.error('[InternetSubscription] Error confirming payment:', error);
@@ -468,8 +562,8 @@ const InternetSubscription = ({ route }: any) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 4) {
-      Alert.alert('Error', 'Please enter your PIN');
+    if (!pin || pin.length < 5) {
+      Alert.alert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -803,7 +897,15 @@ const InternetSubscription = ({ route }: any) => {
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
             <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                // Navigate to BillPaymentsScreen with internet filter
+                // @ts-ignore - allow parent route name
+                navigation.navigate('BillPayments' as never, {
+                  initialCategory: 'Internet',
+                });
+              }}
+            >
               <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
@@ -812,10 +914,33 @@ const InternetSubscription = ({ route }: any) => {
             <View style={{ alignItems: 'center', paddingVertical: 40 }}>
               <ActivityIndicator size="small" color="#A9EF45" />
             </View>
+          ) : isTransactionsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                {transactionsError?.message || 'Failed to load transactions. Please try again.'}
+              </ThemedText>
+              <TouchableOpacity
+                style={[styles.confirmButton, { marginTop: 20, paddingHorizontal: 20 * SCALE }]}
+                onPress={() => refetchTransactions()}
+              >
+                <ThemedText style={styles.confirmButtonText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
           ) : recentTransactions.length > 0 ? (
             <View style={styles.transactionsList}>
               {recentTransactions.map((transaction) => (
-                <View key={transaction.id} style={styles.transactionItem}>
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={styles.transactionItem}
+                  onPress={() => {
+                    // Fetch transaction details and show receipt modal
+                    if (transaction.transactionId) {
+                      setSelectedTransactionId(transaction.transactionId);
+                      setShowReceiptModal(true);
+                    }
+                  }}
+                >
                   <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
                   <View style={styles.transactionDetails}>
                     <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
@@ -833,7 +958,7 @@ const InternetSubscription = ({ route }: any) => {
                     <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
                     <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (
@@ -1118,63 +1243,138 @@ const InternetSubscription = ({ route }: any) => {
           setPin('');
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.pinModalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowPinModal(false);
-                  setPin('');
-                }}
-              >
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.pinInputContainer}>
-              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
-              {pendingTransactionData && (
-                <View style={styles.paymentSummaryContainer}>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
-                  </View>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
-                  </View>
-                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
-                  </View>
-                </View>
-              )}
-              <TextInput
-                style={styles.pinInput}
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="numeric"
-                secureTextEntry
-                maxLength={6}
-                placeholder="Enter PIN"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                autoFocus
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
-              onPress={handleConfirmPayment}
-              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pinModalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              {confirmMutation.isPending ? (
-                <ActivityIndicator size="small" color="#000000" />
-              ) : (
-                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
-              )}
-            </TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowPinModal(false);
+                    setPin('');
+                  }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.pinInputContainer}>
+                <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+                {pendingTransactionData && (
+                  <View style={styles.paymentSummaryContainer}>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                    </View>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                    </View>
+                    <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                    </View>
+                  </View>
+                )}
+                <TextInput
+                  style={styles.pinInput}
+                  value={pin}
+                  onChangeText={setPin}
+                  keyboardType="numeric"
+                  secureTextEntry
+                  maxLength={5}
+                  placeholder="Enter PIN"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  autoFocus
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.confirmButton, (!pin || pin.length < 5 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+                onPress={handleConfirmPayment}
+                disabled={!pin || pin.length < 5 || confirmMutation.isPending}
+              >
+                {confirmMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
+      {/* Transaction Success Modal */}
+      <TransactionSuccessModal
+        visible={showSuccessModal}
+        transaction={{
+          amount: `N${formatBalance(transactionDetails.amount)}`,
+          fee: transactionDetails.fee ? `N${formatBalance(transactionDetails.fee)}` : 'N0',
+          mobileNumber: transactionDetails.accountNumber,
+          networkProvider: networks.find((p) => p.id === String(selectedProvider))?.name || transactionDetails.billerType,
+          country: transactionDetails.country,
+          transactionType: 'billPayment',
+        }}
+        onViewTransaction={() => {
+          setShowSuccessModal(false);
+          setShowReceiptModal(true);
+        }}
+        onCancel={() => {
+          setShowSuccessModal(false);
+        }}
+      />
+
+      {/* Transaction Receipt Modal */}
+      <TransactionReceiptModal
+        visible={showReceiptModal && !isLoadingDetails}
+        transaction={{
+          transactionType: 'billPayment',
+          transferAmount: `N${formatBalance(transactionDetails.amount)}`,
+          amountNGN: `N${formatBalance(transactionDetails.amount)}`,
+          fee: transactionDetails.fee ? `N${formatBalance(transactionDetails.fee)}` : 'N0',
+          mobileNumber: transactionDetails.accountNumber,
+          billerType: transactionDetails.billerType,
+          plan: transactionDetails.plan || '',
+          recipientName: transactionDetails.accountName || 'Internet Subscription',
+          country: transactionDetails.country,
+          transactionId: transactionDetails.reference || String(selectedTransactionId || ''),
+          dateTime: transactionDetails.dateTime || new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          paymentMethod: 'Wallet',
+        }}
+        onClose={() => {
+          setShowReceiptModal(false);
+          setSelectedTransactionId(null);
+        }}
+      />
+
+      {/* Loading overlay when fetching transaction details */}
+      {isLoadingDetails && selectedTransactionId && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={{ color: '#FFFFFF', marginTop: 10, fontSize: 14 * SCALE }}>
+              Loading transaction details...
+            </ThemedText>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -1704,8 +1904,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    maxHeight: '50%',
+    maxHeight: '90%',
+  },
+  pinModalScrollContent: {
+    paddingBottom: 30 * SCALE,
+    paddingHorizontal: 0,
   },
   pinInputContainer: {
     paddingHorizontal: 20 * SCALE,

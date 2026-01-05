@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -18,7 +18,7 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
-import { useGetBillPayments } from '../../queries/transactionHistory.queries';
+import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI, mapBillPaymentCategoryToAPI } from '../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -58,6 +58,7 @@ const BillPaymentsScreen = () => {
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<BillPaymentTransaction | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
@@ -73,31 +74,13 @@ const BillPaymentsScreen = () => {
     }
     
     if (selectedStatus !== 'All') {
-      // Map UI status to API status
-      const statusMap: { [key: string]: string } = {
-        'Completed': 'completed',
-        'Pending': 'pending',
-        'Failed': 'failed',
-      };
-      params.status = statusMap[selectedStatus] || selectedStatus.toLowerCase();
+      params.status = mapBillPaymentStatusToAPI(selectedStatus);
     }
     
     if (selectedType !== 'All') {
-      // Map biller type to category code if needed
-      // For now, we'll use categoryCode if it matches known categories
-      const categoryMap: { [key: string]: string } = {
-        'MTN': 'data',
-        'Airtel': 'airtime',
-        'GLO': 'data',
-        '9mobile': 'airtime',
-        'DSTV': 'cable_tv',
-        'GOTV': 'cable_tv',
-        'EKEDC': 'electricity',
-        'PHED': 'electricity',
-        'Spectranet': 'internet',
-      };
-      if (categoryMap[selectedType]) {
-        params.categoryCode = categoryMap[selectedType];
+      const categoryCode = mapBillPaymentCategoryToAPI(selectedType);
+      if (categoryCode) {
+        params.categoryCode = categoryCode;
       }
     }
     
@@ -108,8 +91,22 @@ const BillPaymentsScreen = () => {
   const {
     data: billPaymentsData,
     isLoading: isLoadingTransactions,
+    isError: isBillPaymentsError,
+    error: billPaymentsError,
     refetch: refetchBillPayments,
   } = useGetBillPayments(apiParams);
+
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+      enabled: !!selectedTransactionId,
+    }
+  );
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
@@ -136,11 +133,11 @@ const BillPaymentsScreen = () => {
 
   // Transform API transactions to UI format
   const billPaymentTransactions: BillPaymentTransaction[] = useMemo(() => {
-    if (!billPaymentsData?.data || !Array.isArray(billPaymentsData.data)) {
+    if (!billPaymentsData?.data?.transactions || !Array.isArray(billPaymentsData.data.transactions)) {
       return [];
     }
 
-    return billPaymentsData.data.map((tx: any) => {
+    return billPaymentsData.data.transactions.map((tx: any) => {
       const amount = parseFloat(tx.amount || '0');
       const currency = tx.currency || 'NGN';
       const formattedAmount = currency === 'NGN' 
@@ -199,33 +196,34 @@ const BillPaymentsScreen = () => {
     });
   }, [billPaymentsData?.data]);
 
-  // Calculate summary data from transactions
+  // Calculate summary data from API response
   const summaryData = useMemo(() => {
-    const incoming = billPaymentTransactions
+    // Use API summary.total for outgoing (bill payments are all outgoing)
+    const totalFromAPI = billPaymentsData?.data?.summary?.total 
+      ? parseFloat(billPaymentsData.data.summary.total) 
+      : 0;
+    
+    // Calculate from transactions if API summary not available
+    const calculatedTotal = billPaymentTransactions
       .filter(tx => tx.status === 'Successful')
       .reduce((sum, tx) => {
         const amount = parseFloat(tx.amountNGN.replace(/[^0-9.-]/g, ''));
         return sum + amount;
       }, 0);
 
-    const outgoing = billPaymentTransactions
-      .filter(tx => tx.status === 'Successful')
-      .reduce((sum, tx) => {
-        const amount = parseFloat(tx.amountNGN.replace(/[^0-9.-]/g, ''));
-        return sum + amount;
-      }, 0);
+    const outgoing = totalFromAPI > 0 ? totalFromAPI : calculatedTotal;
 
     return {
       incoming: {
-        ngn: formatBalance(incoming),
-        usd: `$${formatBalance(incoming * 0.001)}`, // Placeholder conversion
+        ngn: '0.00', // Bill payments don't have incoming
+        usd: '$0.00',
       },
       outgoing: {
         ngn: formatBalance(outgoing),
         usd: `$${formatBalance(outgoing * 0.001)}`, // Placeholder conversion
       },
     };
-  }, [billPaymentTransactions]);
+  }, [billPaymentsData?.data?.summary, billPaymentTransactions]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -299,14 +297,69 @@ const BillPaymentsScreen = () => {
   };
 
   const handleTransactionPress = (transaction: BillPaymentTransaction) => {
-    if (transaction.status === 'Failed') {
+    // Set the transaction ID to fetch details
+    const transactionId = parseInt(transaction.id);
+    if (!isNaN(transactionId)) {
+      setSelectedTransactionId(transactionId);
       setSelectedTransaction(transaction);
-      setShowErrorModal(true);
-    } else {
-      setSelectedTransaction(transaction);
-      setShowReceiptModal(true);
     }
   };
+
+  // When transaction details are loaded, show the appropriate modal
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransaction) {
+      const details = transactionDetailsData.data;
+      const status = details.status || selectedTransaction.status;
+      
+      // Update transaction with details from API
+      const updatedTransaction: BillPaymentTransaction = {
+        ...selectedTransaction,
+        transferAmount: details.amount 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.amount))}`
+          : selectedTransaction.transferAmount,
+        fee: details.fee 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.fee))}`
+          : selectedTransaction.fee,
+        paymentAmount: details.totalAmount 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.totalAmount))}`
+          : selectedTransaction.paymentAmount,
+        transactionId: details.reference || selectedTransaction.transactionId,
+        accountNumber: details.accountNumber || selectedTransaction.accountNumber,
+        accountName: details.accountName || selectedTransaction.accountName,
+        billerType: details.provider?.code || details.provider?.name || selectedTransaction.billerType,
+        mobileNumber: details.accountNumber || selectedTransaction.mobileNumber,
+        plan: details.plan?.name || selectedTransaction.plan,
+        dateTime: details.createdAt
+          ? new Date(details.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : selectedTransaction.dateTime,
+        country: details.country || selectedTransaction.country,
+      };
+
+      // Map API status to UI status
+      const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
+        'completed': 'Successful',
+        'pending': 'Pending',
+        'failed': 'Failed',
+      };
+      const uiStatus = statusMap[status?.toLowerCase()] || selectedTransaction.status;
+      updatedTransaction.status = uiStatus;
+
+      if (uiStatus === 'Failed') {
+        setShowErrorModal(true);
+        setShowReceiptModal(false);
+      } else {
+        setShowReceiptModal(true);
+        setShowErrorModal(false);
+      }
+      setSelectedTransaction(updatedTransaction);
+    }
+  }, [transactionDetailsData, selectedTransaction]);
 
   const filteredTransactions = billPaymentTransactions.filter((transaction) => {
     if (selectedStatus !== 'All' && transaction.status !== selectedStatus) {
@@ -410,7 +463,15 @@ const BillPaymentsScreen = () => {
               <ThemedText style={styles.summaryLabel}>Incoming</ThemedText>
             </View>
             {isLoadingTransactions ? (
-              <ActivityIndicator size="small" color="#FFFFFF" style={{ marginVertical: 10 }} />
+              <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 50 }}>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              </View>
+            ) : isBillPaymentsError ? (
+              <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 50 }}>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 10 * SCALE }}>
+                  Error loading data
+                </ThemedText>
+              </View>
             ) : (
               <>
                 <View style={styles.summaryAmountContainer}>
@@ -436,7 +497,15 @@ const BillPaymentsScreen = () => {
               <ThemedText style={styles.summaryLabelWhite}>Outgoing</ThemedText>
             </View>
             {isLoadingTransactions ? (
-              <ActivityIndicator size="small" color="#000000" style={{ marginVertical: 10 }} />
+              <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 50 }}>
+                <ActivityIndicator size="small" color="#000000" />
+              </View>
+            ) : isBillPaymentsError ? (
+              <View style={{ alignItems: 'center', justifyContent: 'center', minHeight: 50 }}>
+                <ThemedText style={{ color: 'rgba(0, 0, 0, 0.5)', fontSize: 10 * SCALE }}>
+                  Error loading data
+                </ThemedText>
+              </View>
             ) : (
               <>
                 <View style={styles.summaryAmountContainer}>
@@ -515,6 +584,15 @@ const BillPaymentsScreen = () => {
           {isLoadingTransactions ? (
             <View style={{ alignItems: 'center', paddingVertical: 40 }}>
               <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading transactions...
+              </ThemedText>
+            </View>
+          ) : isBillPaymentsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                {billPaymentsError?.message || 'Failed to load transactions'}
+              </ThemedText>
             </View>
           ) : filteredTransactions.length > 0 ? (
             <View style={styles.transactionList}>
@@ -579,7 +657,7 @@ const BillPaymentsScreen = () => {
       {/* Transaction Receipt Modal */}
       {selectedTransaction && (
         <TransactionReceiptModal
-          visible={showReceiptModal}
+          visible={showReceiptModal && !isLoadingDetails}
           transaction={{
             ...selectedTransaction,
             transactionType: 'billPayment',
@@ -587,6 +665,7 @@ const BillPaymentsScreen = () => {
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
       )}
@@ -594,18 +673,36 @@ const BillPaymentsScreen = () => {
       {/* Transaction Error Modal */}
       {selectedTransaction && (
         <TransactionErrorModal
-          visible={showErrorModal}
+          visible={showErrorModal && !isLoadingDetails}
           transaction={selectedTransaction}
           onRetry={() => {
             // TODO: Implement retry logic
             setShowErrorModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
           onCancel={() => {
             setShowErrorModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
+      )}
+
+      {/* Loading overlay when fetching transaction details */}
+      {isLoadingDetails && selectedTransactionId && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={{ color: '#FFFFFF', marginTop: 10, fontSize: 14 * SCALE }}>
+              Loading transaction details...
+            </ThemedText>
+          </View>
+        </Modal>
       )}
     </View>
   );

@@ -10,7 +10,6 @@ import {
   Platform,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +18,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword } from '../../mutations/auth.mutations';
 import { getBiometricEnabled, setBiometricEnabled } from '../../utils/apiClient';
+import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../utils/customAlert';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -57,10 +57,9 @@ const LoginScreen = () => {
       navigation.navigate('Main' as never);
     },
     onError: (error: any) => {
-      Alert.alert(
+      showErrorAlert(
         'Login Failed',
-        error.message || 'Invalid email or password. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Invalid email or password. Please try again.'
       );
     },
   });
@@ -72,18 +71,16 @@ const LoginScreen = () => {
       setEmailVerified(true);
       setForgotPasswordStep('otp');
       setCountdown(59); // Start countdown
-      Alert.alert(
+      showSuccessAlert(
         'OTP Sent',
-        'A 5-digit code has been sent to your email address.',
-        [{ text: 'OK' }]
+        'A 5-digit code has been sent to your email address.'
       );
     },
     onError: (error: any) => {
       console.error('[LoginScreen] Forgot password error:', error);
-      Alert.alert(
+      showErrorAlert(
         'Error',
-        error.message || 'Failed to send password reset code. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Failed to send password reset code. Please try again.'
       );
     },
   });
@@ -96,18 +93,16 @@ const LoginScreen = () => {
       setForgotPasswordStep('reset');
       setShowForgotPasswordModal(false);
       setShowChangePasswordModal(true);
-      Alert.alert(
+      showSuccessAlert(
         'OTP Verified',
-        'OTP verified successfully. You can now reset your password.',
-        [{ text: 'OK' }]
+        'OTP verified successfully. You can now reset your password.'
       );
     },
     onError: (error: any) => {
       console.error('[LoginScreen] OTP verification error:', error);
-      Alert.alert(
+      showErrorAlert(
         'Verification Failed',
-        error.message || 'Invalid or expired OTP code. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Invalid or expired OTP code. Please try again.'
       );
     },
   });
@@ -116,35 +111,29 @@ const LoginScreen = () => {
   const resetPasswordMutation = useResetPassword({
     onSuccess: (data) => {
       console.log('[LoginScreen] Password reset successful:', JSON.stringify(data, null, 2));
-      Alert.alert(
+      showSuccessAlert(
         'Password Reset Successful',
         'Your password has been reset successfully. Please login with your new password.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Reset all states
-              setShowForgotPasswordModal(false);
-              setShowChangePasswordModal(false);
-              setForgotEmail('');
-              setVerificationCode('');
-              setEmailVerified(false);
-              setOtpVerified(false);
-              setNewPassword('');
-              setConfirmPassword('');
-              setForgotPasswordStep('email');
-              setCountdown(59);
-            },
-          },
-        ]
+        () => {
+          // Reset all states
+          setShowForgotPasswordModal(false);
+          setShowChangePasswordModal(false);
+          setForgotEmail('');
+          setVerificationCode('');
+          setEmailVerified(false);
+          setOtpVerified(false);
+          setNewPassword('');
+          setConfirmPassword('');
+          setForgotPasswordStep('email');
+          setCountdown(59);
+        }
       );
     },
     onError: (error: any) => {
       console.error('[LoginScreen] Password reset error:', error);
-      Alert.alert(
+      showErrorAlert(
         'Reset Failed',
-        error.message || 'Failed to reset password. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Failed to reset password. Please try again.'
       );
     },
   });
@@ -209,19 +198,17 @@ const LoginScreen = () => {
   const handleBiometricLogin = async () => {
     // Check if biometric login is enabled in settings
     if (!biometricLoginEnabled) {
-      Alert.alert(
+      showWarningAlert(
         'Biometric Login Disabled',
-        'Biometric login is disabled in your settings. Please enable it in Settings > Security > Login with biometrics, or use email and password to login.',
-        [{ text: 'OK' }]
+        'Biometric login is disabled in your settings. Please enable it in Settings > Security > Login with biometrics, or use email and password to login.'
       );
       return;
     }
 
     if (!isBiometricAvailable) {
-      Alert.alert(
+      showWarningAlert(
         'Biometrics Not Available',
-        'Your device does not support biometrics or it is not set up. Please use email and password to login.',
-        [{ text: 'OK' }]
+        'Your device does not support biometrics or it is not set up. Please use email and password to login.'
       );
       return;
     }
@@ -246,37 +233,34 @@ const LoginScreen = () => {
           navigation.navigate('Main' as never);
         } else {
           // If preference was disabled while authenticating, show message
-          Alert.alert(
+          showWarningAlert(
             'Biometric Login Disabled',
-            'Biometric login has been disabled in settings. Please use email and password to login.',
-            [{ text: 'OK' }]
+            'Biometric login has been disabled in settings. Please use email and password to login.'
           );
         }
       } else {
         if (result.error === 'user_cancel') {
           // User cancelled - do nothing
         } else {
-          Alert.alert(
+          showErrorAlert(
             'Authentication Failed',
-            'Biometric authentication failed. Please try again or use email and password.',
-            [{ text: 'OK' }]
+            'Biometric authentication failed. Please try again or use email and password.'
           );
         }
       }
     } catch (error) {
       console.error('Biometric authentication error:', error);
       setIsScanning(false);
-      Alert.alert(
+      showErrorAlert(
         'Error',
-        'An error occurred during biometric authentication. Please try again or use email and password.',
-        [{ text: 'OK' }]
+        'An error occurred during biometric authentication. Please try again or use email and password.'
       );
     }
   };
 
   const handleLogin = () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Validation Error', 'Please enter both email and password.');
+      showWarningAlert('Validation Error', 'Please enter both email and password.');
       return;
     }
 
@@ -309,7 +293,7 @@ const LoginScreen = () => {
 
   const handleSendOtp = () => {
     if (!forgotEmail.trim() || !forgotEmail.includes('@') || !forgotEmail.includes('.')) {
-      Alert.alert('Validation Error', 'Please enter a valid email address.');
+      showWarningAlert('Validation Error', 'Please enter a valid email address.');
       return;
     }
 
@@ -318,7 +302,7 @@ const LoginScreen = () => {
 
   const handleVerifyOtp = () => {
     if (verificationCode.length !== 5) {
-      Alert.alert('Validation Error', 'Please enter the complete 5-digit code.');
+      showWarningAlert('Validation Error', 'Please enter the complete 5-digit code.');
       return;
     }
 
@@ -330,17 +314,17 @@ const LoginScreen = () => {
 
   const handleSavePassword = () => {
     if (newPassword.length === 0 || confirmPassword.length === 0) {
-      Alert.alert('Validation Error', 'Please enter both new password and confirmation.');
+      showWarningAlert('Validation Error', 'Please enter both new password and confirmation.');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Validation Error', 'Passwords do not match. Please try again.');
+      showWarningAlert('Validation Error', 'Passwords do not match. Please try again.');
       return;
     }
 
     if (newPassword.length < 8) {
-      Alert.alert('Validation Error', 'Password must be at least 8 characters long.');
+      showWarningAlert('Validation Error', 'Password must be at least 8 characters long.');
       return;
     }
 

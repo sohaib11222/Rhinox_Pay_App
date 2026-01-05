@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import OnboardingNavigator from "./OnboardingNavigator";
 import AuthNavigator from "./AuthNavigator";
 import MainNavigator from "./MainNavigator";
+import { CustomAlertProvider } from "../components";
 
 const RootStack = createNativeStackNavigator();
 
@@ -13,15 +14,17 @@ export default function RootNavigator() {
   const initialRouteName: keyof any = "Onboarding"; // Shows onboarding screen first on app reload
 
   return (
-    <NavigationContainer>
-      <RootStack.Navigator
-        screenOptions={{ headerShown: false }}
-        initialRouteName={initialRouteName}
-      >
-        <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
-        <RootStack.Screen name="Auth" component={AuthNavigator} />
-        <RootStack.Screen name="Main" component={MainNavigator} />
-      </RootStack.Navigator>
-    </NavigationContainer>
+    <CustomAlertProvider>
+      <NavigationContainer>
+        <RootStack.Navigator
+          screenOptions={{ headerShown: false }}
+          initialRouteName={initialRouteName}
+        >
+          <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
+          <RootStack.Screen name="Auth" component={AuthNavigator} />
+          <RootStack.Screen name="Main" component={MainNavigator} />
+        </RootStack.Navigator>
+      </NavigationContainer>
+    </CustomAlertProvider>
   );
 }

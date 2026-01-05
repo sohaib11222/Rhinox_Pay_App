@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,13 +7,19 @@ import {
   ScrollView,
   Dimensions,
   StatusBar,
-  Alert,
   Image,
+  Share,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { captureRef } from 'react-native-view-shot';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../utils/customAlert';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SCALE = 1;
@@ -73,19 +79,79 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
   onClose,
 }) => {
   const navigation = useNavigation();
+  const receiptRef = useRef<View>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
       await Clipboard.setStringAsync(text);
-      Alert.alert('Copied', `${label} copied to clipboard`);
+      showSuccessAlert('Copied', `${label} copied to clipboard`);
     } catch (error) {
-      Alert.alert('Error', 'Failed to copy to clipboard');
+      showErrorAlert('Error', 'Failed to copy to clipboard');
     }
   };
 
-  const shareReceipt = () => {
-    // TODO: Implement share functionality
-    Alert.alert('Share Receipt', 'Share functionality to be implemented');
+  const shareReceipt = async () => {
+    if (!receiptRef.current) {
+      showErrorAlert('Error', 'Unable to capture receipt. Please try again.');
+      return;
+    }
+
+    try {
+      setIsCapturing(true);
+      
+      // Capture the receipt as an image
+      const uri = await captureRef(receiptRef, {
+        format: 'png',
+        quality: 0.9,
+        result: 'tmpfile', // Save to temporary file
+      });
+
+      // Check if sharing is available
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (isAvailable) {
+        // Use expo-sharing for better cross-platform file sharing
+        await Sharing.shareAsync(uri, {
+          mimeType: 'image/png',
+          dialogTitle: 'Share Transaction Receipt',
+        });
+        console.log('Receipt shared successfully');
+      } else {
+        // Fallback to React Native Share API
+        const result = await Share.share({
+          message: Platform.OS === 'android' ? 'Transaction Receipt' : undefined,
+          url: Platform.OS === 'ios' ? uri : `file://${uri}`,
+          title: 'Transaction Receipt',
+        });
+
+        if (result.action === Share.sharedAction) {
+          console.log('Receipt shared successfully');
+        } else if (result.action === Share.dismissedAction) {
+          console.log('Share dismissed');
+        }
+      }
+
+      // Clean up the temporary file after a delay
+      setTimeout(async () => {
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(uri);
+          if (fileInfo.exists) {
+            await FileSystem.deleteAsync(uri, { idempotent: true });
+          }
+        } catch (error) {
+          console.warn('Error deleting temporary file:', error);
+        }
+      }, 5000);
+    } catch (error: any) {
+      console.error('Error sharing receipt:', error);
+      showErrorAlert(
+        'Error',
+        error?.message || 'Failed to share receipt. Please try again.'
+      );
+    } finally {
+      setIsCapturing(false);
+    }
   };
 
   // Determine if this is a fund transaction
@@ -226,10 +292,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
     >
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#020c19" />
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
+        <View ref={receiptRef} collapsable={false} style={styles.receiptContainer}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity style={styles.backButton} onPress={onClose}>
@@ -645,13 +712,22 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           )}
 
           {/* Share Receipt Button */}
-          <TouchableOpacity style={styles.shareButton} onPress={shareReceipt}>
-            <ThemedText style={styles.shareButtonText}>Share Receipt</ThemedText>
+          <TouchableOpacity 
+            style={[styles.shareButton, isCapturing && styles.shareButtonDisabled]} 
+            onPress={shareReceipt}
+            disabled={isCapturing}
+          >
+            {isCapturing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <ThemedText style={styles.shareButtonText}>Share Receipt</ThemedText>
+            )}
           </TouchableOpacity>
 
           {/* Bottom spacing */}
           <View style={styles.bottomSpacer} />
-        </ScrollView>
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
@@ -659,6 +735,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+    backgroundColor: '#020c19',
+  },
+  receiptContainer: {
     flex: 1,
     backgroundColor: '#020c19',
   },
@@ -775,6 +855,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20 * SCALE,
+  },
+  shareButtonDisabled: {
+    opacity: 0.6,
   },
   shareButtonText: {
     fontSize: 14 * SCALE,

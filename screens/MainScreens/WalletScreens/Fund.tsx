@@ -12,6 +12,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -292,8 +294,8 @@ const Fund = () => {
   };
 
   const handleConfirmDeposit = async () => {
-    if (!pin || pin.length < 4) {
-      Alert.alert('Error', 'Please enter your PIN');
+    if (!pin || pin.length < 5) {
+      Alert.alert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -622,62 +624,72 @@ const Fund = () => {
           setPin('');
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.pinModalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowPinModal(false);
-                  setPin('');
-                }}
-              >
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.pinInputContainer}>
-              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm deposit</ThemedText>
-              {pendingTransactionData && (
-                <View style={styles.paymentSummaryContainer}>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
-                  </View>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.fee || '0'}</ThemedText>
-                  </View>
-                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.totalAmount || pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
-                  </View>
-                </View>
-              )}
-              <TextInput
-                style={styles.pinInput}
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="numeric"
-                secureTextEntry
-                maxLength={6}
-                placeholder="Enter PIN"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                autoFocus
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
-              onPress={handleConfirmDeposit}
-              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pinModalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              {confirmMutation.isPending ? (
-                <ActivityIndicator size="small" color="#000000" />
-              ) : (
-                <ThemedText style={styles.confirmButtonText}>Confirm Deposit</ThemedText>
-              )}
-            </TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowPinModal(false);
+                    setPin('');
+                  }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.pinInputContainer}>
+                <ThemedText style={styles.pinLabel}>Enter your PIN to confirm deposit</ThemedText>
+                {pendingTransactionData && (
+                  <View style={styles.paymentSummaryContainer}>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
+                    </View>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.fee || '0'}</ThemedText>
+                    </View>
+                    <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.totalAmount || pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
+                    </View>
+                  </View>
+                )}
+                <TextInput
+                  style={styles.pinInput}
+                  value={pin}
+                  onChangeText={setPin}
+                  keyboardType="numeric"
+                  secureTextEntry
+                  maxLength={5}
+                  placeholder="Enter PIN"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  autoFocus
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.confirmButton, (!pin || pin.length < 5 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+                onPress={handleConfirmDeposit}
+                disabled={!pin || pin.length < 5 || confirmMutation.isPending}
+              >
+                {confirmMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.confirmButtonText}>Confirm Deposit</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Transaction Success Modal */}
@@ -1164,8 +1176,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    maxHeight: '50%',
+    maxHeight: '90%',
+  },
+  pinModalScrollContent: {
+    paddingBottom: 30 * SCALE,
+    paddingHorizontal: 0,
   },
   pinInputContainer: {
     paddingHorizontal: 20 * SCALE,

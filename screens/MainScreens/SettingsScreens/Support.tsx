@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
     View,
     StyleSheet,
@@ -10,18 +10,23 @@ import {
     Dimensions,
     TextInput,
     RefreshControl,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetSupportChats } from '../../../queries/support.queries';
+import { useCreateSupportChat } from '../../../mutations/support.mutations';
+import { useGetCurrentUser } from '../../../queries/auth.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
 interface Chat {
-    id: string;
+    id: string | number;
     agentName: string;
     agentAvatar: any;
     lastMessage: string;
@@ -35,99 +40,128 @@ const Support = () => {
     const [activeTab, setActiveTab] = useState<'active' | 'resolved' | 'appealed'>('active');
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [showReasonModal, setShowReasonModal] = useState(false);
-    const [chatName, setChatName] = useState('Qamardeen Abdul Malik');
-    const [chatEmail, setChatEmail] = useState('abcdfgett@gmail.com');
+    const [chatName, setChatName] = useState('');
+    const [chatEmail, setChatEmail] = useState('');
     const [selectedReason, setSelectedReason] = useState<string>('');
+
+    // Get current user data
+    const {
+        data: userData,
+        isLoading: isLoadingUser,
+    } = useGetCurrentUser();
+
+    // Set user data when available
+    React.useEffect(() => {
+        if (userData?.data?.user) {
+            const user = userData.data.user;
+            const fullName = user.firstName && user.lastName 
+                ? `${user.firstName} ${user.lastName}`.trim()
+                : user.firstName || user.lastName || user.name || '';
+            const userEmail = user.email || '';
+            
+            if (fullName && !chatName) {
+                setChatName(fullName);
+            }
+            if (userEmail && !chatEmail) {
+                setChatEmail(userEmail);
+            }
+        }
+    }, [userData?.data?.user]);
     const [reasonOptions] = useState([
-        { id: 'payment-issue', label: 'Payment Issue' },
-        { id: 'account-issue', label: 'Account issue' },
-        { id: 'p2p-issue', label: 'P2P Issue' },
+        { id: 'Payment Issue', label: 'Payment Issue' },
+        { id: 'Account issue', label: 'Account issue' },
+        { id: 'P2P Issue', label: 'P2P Issue' },
     ]);
 
-    // Sample chat data - TODO: Replace with API call
-    const [chats] = useState<Chat[]>([
-        {
-            id: '1',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
+    // Fetch support chats from API
+    const {
+        data: chatsData,
+        isLoading: isLoadingChats,
+        isError: isChatsError,
+        error: chatsError,
+        refetch: refetchChats,
+    } = useGetSupportChats({
+        status: activeTab === 'active' ? 'active' : activeTab === 'resolved' ? 'resolved' : activeTab === 'appealed' ? 'appealed' : 'all',
+        limit: 50,
+        offset: 0,
+    });
+
+    // Transform API data to UI format
+    const chats: Chat[] = useMemo(() => {
+        if (!chatsData?.data || !Array.isArray(chatsData.data)) {
+            return [];
+        }
+
+        return chatsData.data.map((chat: any) => {
+            // Format date
+            let formattedDate = 'N/A';
+            if (chat.lastMessage?.createdAt) {
+                try {
+                    const date = new Date(chat.lastMessage.createdAt);
+                    formattedDate = date.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric' 
+                    });
+                } catch {
+                    formattedDate = 'N/A';
+                }
+            } else if (chat.createdAt) {
+                try {
+                    const date = new Date(chat.createdAt);
+                    formattedDate = date.toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric' 
+                    });
+                } catch {
+                    formattedDate = 'N/A';
+                }
+            }
+
+            return {
+                id: chat.id,
+                agentName: chat.name || 'RhinoX Agent', // Use name from API or default
+                agentAvatar: require('../../../assets/Frame 2398.png'),
+                lastMessage: chat.lastMessage?.message || 'No messages yet',
+                date: formattedDate,
+                unreadCount: chat.unreadCount || 0,
+                status: chat.status || 'active',
+            };
+        });
+    }, [chatsData?.data]);
+
+    // Create support chat mutation
+    const createChatMutation = useCreateSupportChat({
+        onSuccess: (data) => {
+            console.log('[Support] Chat created successfully:', data);
+            const chatId = data?.data?.id;
+            const createdChat = data?.data;
+            
+            // Save the values before clearing
+            const savedName = chatName;
+            const savedEmail = chatEmail;
+            const savedReason = reasonOptions.find((r) => r.id === selectedReason)?.label || selectedReason;
+            
+            setShowDetailsModal(false);
+            setSelectedReason('');
+            
+            // Navigate to chat screen with created chat data
+            (navigation as any).navigate('Settings', {
+                screen: 'ChatScreen',
+                params: {
+                    chatId: chatId,
+                    chatName: createdChat?.name || savedName,
+                    chatEmail: createdChat?.email || savedEmail,
+                    reason: createdChat?.reason || savedReason,
+                },
+            });
         },
-        {
-            id: '2',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
+        onError: (error: any) => {
+            console.error('[Support] Error creating chat:', error);
+            Alert.alert('Error', error?.message || 'Failed to create support chat. Please try again.');
         },
-        {
-            id: '3',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-        {
-            id: '4',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-        {
-            id: '5',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-        {
-            id: '6',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-        {
-            id: '7',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-        {
-            id: '8',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-        {
-            id: '9',
-            agentName: 'RhinoX Agent',
-            agentAvatar: require('../../../assets/Frame 2398.png'),
-            lastMessage: 'I need assistance with..',
-            date: '20 Oct, 2025',
-            unreadCount: 1,
-            status: 'active',
-        },
-    ]);
+    });
 
     // Hide bottom tab bar when focused
     useFocusEffect(
@@ -162,16 +196,19 @@ const Support = () => {
         }, [navigation])
     );
 
-    const filteredChats = chats.filter((chat) => chat.status === activeTab);
+    const filteredChats = useMemo(() => {
+        return chats.filter((chat) => chat.status === activeTab);
+    }, [chats, activeTab]);
 
     // Pull-to-refresh functionality
     const handleRefresh = async () => {
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          console.log('Refreshing support chats data...');
-          resolve();
-        }, 1000);
-      });
+        console.log('[Support] Refreshing support chats data...');
+        try {
+            await refetchChats();
+            console.log('[Support] Support chats data refreshed successfully');
+        } catch (error) {
+            console.error('[Support] Error refreshing support chats data:', error);
+        }
     };
 
     const { refreshing, onRefresh } = usePullToRefresh({
@@ -180,31 +217,43 @@ const Support = () => {
     });
 
     const handleNewChat = () => {
-        setChatName('Qamardeen Abdul Malik');
-        setChatEmail('abcdfgett@gmail.com');
+        // Pre-fill with user data if available
+        if (userData?.data?.user) {
+            const user = userData.data.user;
+            const fullName = user.firstName && user.lastName 
+                ? `${user.firstName} ${user.lastName}`.trim()
+                : user.firstName || user.lastName || user.name || '';
+            const userEmail = user.email || '';
+            setChatName(fullName);
+            setChatEmail(userEmail);
+        } else {
+            // Clear if no user data
+            setChatName('');
+            setChatEmail('');
+        }
         setSelectedReason('');
         setShowDetailsModal(true);
     };
 
     const handleSaveDetails = () => {
-        if (chatName && chatEmail && selectedReason) {
-            setShowDetailsModal(false);
-            // Navigate to chat screen with details
-            (navigation as any).navigate('Settings', {
-                screen: 'ChatScreen',
-                params: {
-                    chatName,
-                    chatEmail,
-                    reason: reasonOptions.find((r) => r.id === selectedReason)?.label || 'Payment Support',
-                },
-            });
-            // Reset form
-            setSelectedReason('');
-        } else if (chatName && chatEmail) {
-            // If name and email are filled but no reason, open reason modal
-            setShowDetailsModal(false);
-            setShowReasonModal(true);
+        if (!chatName || !chatEmail || !selectedReason) {
+            Alert.alert('Validation Error', 'Please fill in all required fields (Name, Email, and Reason).');
+            return;
         }
+
+        // Validate email format
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(chatEmail)) {
+            Alert.alert('Validation Error', 'Please enter a valid email address.');
+            return;
+        }
+
+        // Create support chat
+        createChatMutation.mutate({
+            name: chatName.trim(),
+            email: chatEmail.trim(),
+            reason: reasonOptions.find((r) => r.id === selectedReason)?.label || selectedReason,
+        });
     };
 
     const handleSelectReason = () => {
@@ -225,8 +274,8 @@ const Support = () => {
             params: {
                 chatId: chat.id,
                 chatName: chat.agentName,
-                chatEmail: 'abcdefgh@gmail.com',
-                reason: 'Payment Support',
+                chatEmail: chatsData?.data?.find((c: any) => c.id === chat.id)?.email || 'support@rhinox.com',
+                reason: chatsData?.data?.find((c: any) => c.id === chat.id)?.reason || 'Payment Support',
             },
         });
     };
@@ -284,7 +333,25 @@ const Support = () => {
             </View>
 
             {/* Chat List */}
-            {filteredChats.length > 0 ? (
+            {isLoadingChats ? (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                    <ThemedText style={styles.loadingText}>Loading chats...</ThemedText>
+                </View>
+            ) : isChatsError ? (
+                <View style={styles.errorContainer}>
+                    <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                    <ThemedText style={styles.errorText}>
+                        {chatsError?.message || 'Failed to load chats. Please try again.'}
+                    </ThemedText>
+                    <TouchableOpacity
+                        style={styles.retryButton}
+                        onPress={() => refetchChats()}
+                    >
+                        <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+                    </TouchableOpacity>
+                </View>
+            ) : filteredChats.length > 0 ? (
                 <ScrollView
                     style={styles.chatList}
                     showsVerticalScrollIndicator={false}
@@ -298,10 +365,12 @@ const Support = () => {
                       />
                     }
                 >
-                    <ThemedText style={styles.sectionTitle}>Active Chats</ThemedText>
+                    <ThemedText style={styles.sectionTitle}>
+                        {activeTab === 'active' ? 'Active Chats' : activeTab === 'resolved' ? 'Resolved Chats' : 'Appealed Chats'}
+                    </ThemedText>
                     {filteredChats.map((chat) => (
                         <TouchableOpacity
-                            key={chat.id}
+                            key={String(chat.id)}
                             style={styles.chatItem}
                             onPress={() => handleChatPress(chat)}
                         >
@@ -402,11 +471,18 @@ const Support = () => {
 
                         {/* Save Button */}
                         <TouchableOpacity
-                            style={[styles.saveButton, (!chatName || !chatEmail) && styles.saveButtonDisabled]}
+                            style={[
+                                styles.saveButton, 
+                                (!chatName || !chatEmail || !selectedReason || createChatMutation.isPending) && styles.saveButtonDisabled
+                            ]}
                             onPress={handleSaveDetails}
-                            disabled={!chatName || !chatEmail}
+                            disabled={!chatName || !chatEmail || !selectedReason || createChatMutation.isPending}
                         >
-                            <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+                            {createChatMutation.isPending ? (
+                                <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                                <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -750,6 +826,46 @@ const styles = StyleSheet.create({
         height: 12 * SCALE,
         borderRadius: 6 * SCALE,
         backgroundColor: '#A9EF45',
+    },
+    loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40 * SCALE,
+    },
+    loadingText: {
+        fontSize: 12 * SCALE,
+        fontWeight: '400',
+        color: 'rgba(255, 255, 255, 0.5)',
+        marginTop: 10 * SCALE,
+    },
+    errorContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40 * SCALE,
+        paddingHorizontal: 20 * SCALE,
+    },
+    errorText: {
+        fontSize: 12 * SCALE,
+        fontWeight: '400',
+        color: '#ff0000',
+        marginTop: 10 * SCALE,
+        textAlign: 'center',
+    },
+    retryButton: {
+        backgroundColor: '#A9EF45',
+        borderRadius: 100 * SCALE,
+        paddingHorizontal: 20 * SCALE,
+        paddingVertical: 10 * SCALE,
+        marginTop: 20 * SCALE,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    retryButtonText: {
+        fontSize: 12 * SCALE,
+        fontWeight: '400',
+        color: '#000000',
     },
 });
 

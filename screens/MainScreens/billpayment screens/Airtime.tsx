@@ -11,7 +11,8 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -22,8 +23,10 @@ import { useGetBillPaymentProviders, useGetBillPaymentBeneficiaries } from '../.
 import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
-import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
+import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert, showConfirmAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -41,6 +44,7 @@ const COUNTRY_CODE_MAP: { [key: string]: string } = {
 
 interface RecentTransaction {
   id: string;
+  transactionId?: number; // Add transactionId for detail fetching
   phoneNumber: string;
   network: string;
   amount: string;
@@ -116,6 +120,20 @@ const Airtime = ({ route }: any) => {
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+  const [transactionDetails, setTransactionDetails] = useState({
+    amount: '',
+    fee: '',
+    billerType: '',
+    accountNumber: '',
+    accountName: '',
+    plan: '',
+    country: '',
+    reference: '',
+    dateTime: '',
+    status: '',
+  });
 
   // Fetch wallet balances
   const {
@@ -279,29 +297,72 @@ const Airtime = ({ route }: any) => {
   const {
     data: transactionsData,
     isLoading: isLoadingTransactions,
+    isError: isTransactionsError,
+    error: transactionsError,
     refetch: refetchTransactions,
   } = useGetBillPayments({
     categoryCode: 'airtime',
     limit: 10,
+    status: mapBillPaymentStatusToAPI('Completed') || 'completed', // Show completed transactions by default
   });
 
-  // Query for recent transactions to find the transaction ID if not returned
-  // Query without status filter to catch all recent transactions
+  // Fetch transaction details when a transaction is selected
   const {
-    data: pendingTransactionsData,
-    refetch: refetchPendingTransactions,
-  } = useGetBillPayments({
-    categoryCode: 'airtime',
-    limit: 10, // Get more transactions to increase chances of finding the match
-  });
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+      enabled: !!selectedTransactionId,
+    }
+  );
+
+  // Update transaction details when details are fetched
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransactionId) {
+      const tx = transactionDetailsData.data;
+      const metadata = tx.metadata || {};
+      setTransactionDetails({
+        amount: tx.amount || '0',
+        fee: tx.fee || '0',
+        billerType: metadata.providerName || metadata.providerCode || tx.description || '',
+        accountNumber: metadata.accountNumber || tx.accountNumber || '',
+        accountName: metadata.accountName || tx.accountName || '',
+        plan: metadata.planName || tx.plan?.name || '',
+        country: selectedCountryName,
+        reference: tx.reference || String(tx.id),
+        dateTime: tx.completedAt || tx.createdAt
+          ? new Date(tx.completedAt || tx.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : '',
+        status: tx.status || 'completed',
+      });
+    }
+  }, [transactionDetailsData, selectedTransactionId, selectedCountryName]);
 
   // Transform transactions to UI format
+  // API response structure: { success: true, data: { summary: {...}, transactions: [...] } }
   const recentTransactions: RecentTransaction[] = useMemo(() => {
-    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+    if (!transactionsData?.data) {
       return [];
     }
 
-    return transactionsData.data.map((tx: any) => {
+    // Handle both old format (array) and new format (object with transactions array)
+    const transactions = Array.isArray(transactionsData.data) 
+      ? transactionsData.data 
+      : transactionsData.data.transactions || [];
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      return [];
+    }
+
+    return transactions.map((tx: any) => {
       const provider = tx.provider || {};
       const logoUrl = provider.logoUrl 
         ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
@@ -318,8 +379,8 @@ const Airtime = ({ route }: any) => {
       }
 
       const amount = parseFloat(tx.amount || '0');
-      const date = tx.createdAt
-        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+      const date = tx.createdAt || tx.completedAt
+        ? new Date(tx.createdAt || tx.completedAt).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric'
@@ -328,11 +389,12 @@ const Airtime = ({ route }: any) => {
 
       return {
         id: String(tx.id),
+        transactionId: tx.id, // Store numeric ID for detail fetching
         phoneNumber: tx.accountNumber || '',
         network: provider.name || provider.code || '',
         amount: `N${formatBalance(amount)}`,
         date: date,
-        plan: tx.plan?.name || '',
+        plan: tx.plan?.name || tx.rechargeToken || '',
         icon: logoUrl ? { uri: logoUrl } : icon,
       };
     });
@@ -343,14 +405,9 @@ const Airtime = ({ route }: any) => {
     onSuccess: (data: any) => {
       console.log('[Airtime] Payment initiated successfully:', JSON.stringify(data, null, 2));
       
-      // Try to extract transaction ID from various possible locations
-      const transactionId = 
-        data?.data?.transactionId || 
-        data?.data?.id || 
-        data?.data?.transaction?.id ||
-        (data?.data as any)?.transactionId ||
-        (data as any)?.transactionId ||
-        (data as any)?.id;
+      // According to API docs, response structure is:
+      // { success: true, data: { transactionId: 123, amount: "1000", ... } }
+      const transactionId = data?.data?.transactionId;
       
       console.log('[Airtime] Extracted transaction ID:', transactionId);
       console.log('[Airtime] Full data structure:', JSON.stringify(data, null, 2));
@@ -362,110 +419,23 @@ const Airtime = ({ route }: any) => {
         setPendingTransactionId(transactionId);
         setShowPinModal(true);
       } else {
-        // If no transaction ID, try to find it from recent transactions
-        // The transaction might be created server-side but not immediately available
-        console.warn('[Airtime] No transaction ID found in response, querying for recent transactions');
-        console.log('[Airtime] Response keys:', Object.keys(data || {}));
-        console.log('[Airtime] Data keys:', Object.keys(data?.data || {}));
-        
-        // Store payment data and show PIN modal
-        setShowPinModal(true);
-        
-        // Try to find transaction ID with multiple attempts and delays
-        // The transaction might be created server-side but not immediately available
-        const findTransactionId = async (attempt: number = 1, maxAttempts: number = 5) => {
-          if (attempt > maxAttempts) {
-            console.warn('[Airtime] Could not find transaction ID after multiple attempts');
-            // Don't block the user - they can still try to confirm
-            return;
-          }
-          
-          try {
-            // Wait progressively longer for each attempt (0.5s, 1s, 1.5s, 2s, 2.5s)
-            await new Promise(resolve => setTimeout(resolve, attempt * 500));
-            
-            // Query for recent transactions (without status filter to catch all)
-            const recentResult = await refetchPendingTransactions();
-            // Handle different response structures
-            const responseData = recentResult.data?.data;
-            const transactions = responseData?.transactions || 
-                               (Array.isArray(responseData) ? responseData : []);
-            
-            console.log(`[Airtime] Attempt ${attempt}/${maxAttempts}: Found ${transactions.length} transactions`);
-            console.log('[Airtime] Response structure:', {
-              hasData: !!recentResult.data,
-              hasDataData: !!recentResult.data?.data,
-              isArray: Array.isArray(responseData),
-              hasTransactions: !!responseData?.transactions,
-              transactionsLength: transactions.length,
-            });
-            
-            if (transactions && Array.isArray(transactions) && transactions.length > 0) {
-              // Find the most recent transaction that matches our payment details
-              const numericAmount = parseFloat(amount.replace(/,/g, ''));
-              const matchingTx = transactions.find((tx: any) => {
-                const txAmount = parseFloat(tx.amount || '0');
-                const matchesAccount = tx.accountNumber === mobileNumber;
-                const matchesAmount = Math.abs(txAmount - numericAmount) < 0.01; // Allow small floating point differences
-                const matchesProvider = tx.provider?.id === selectedProvider || 
-                                       tx.providerId === selectedProvider;
-                
-                console.log('[Airtime] Checking transaction:', {
-                  id: tx.id,
-                  accountNumber: tx.accountNumber,
-                  amount: tx.amount,
-                  providerId: tx.provider?.id || tx.providerId,
-                  matchesAccount,
-                  matchesAmount,
-                  matchesProvider,
-                });
-                
-                return matchesAccount && matchesAmount && matchesProvider;
-              });
-              
-              if (matchingTx?.id) {
-                console.log('[Airtime] ✅ Found matching transaction ID:', matchingTx.id);
-                setPendingTransactionId(matchingTx.id);
-                return; // Success, stop retrying
-              }
-              
-              // If no exact match on last attempt, try the most recent transaction as fallback
-              if (attempt === maxAttempts && transactions.length > 0) {
-                const mostRecent = transactions[0];
-                console.log('[Airtime] ⚠️ Using most recent transaction as fallback:', mostRecent.id);
-                setPendingTransactionId(mostRecent.id);
-                return;
-              }
-            }
-            
-            // Retry if not found and haven't reached max attempts
-            if (attempt < maxAttempts) {
-              console.log(`[Airtime] Transaction not found, retrying (attempt ${attempt + 1}/${maxAttempts})...`);
-              findTransactionId(attempt + 1, maxAttempts);
-            }
-          } catch (error) {
-            console.error(`[Airtime] Error fetching transactions (attempt ${attempt}):`, error);
-            // Retry on error if haven't reached max attempts
-            if (attempt < maxAttempts) {
-              findTransactionId(attempt + 1, maxAttempts);
-            }
-          }
-        };
-        
-        // Start finding transaction ID (runs in background)
-        findTransactionId();
+        console.error('[Airtime] No transactionId found in response:', data);
+        showErrorAlert(
+          'Transaction Error',
+          'Transaction ID not found in response. Please try again.'
+        );
       }
     },
     onError: (error: any) => {
       console.error('[Airtime] Error initiating payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+      showErrorAlert('Error', error?.message || 'Failed to initiate payment');
     },
   });
 
   // Confirm bill payment mutation
   const confirmMutation = useConfirmBillPayment({
     onSuccess: (data) => {
-      console.log('[Airtime] Payment confirmed successfully:', data);
+      console.log('[Airtime] Payment confirmed successfully:', JSON.stringify(data, null, 2));
       setShowPinModal(false);
       setPin('');
       setPendingTransactionId(null);
@@ -482,24 +452,19 @@ const Airtime = ({ route }: any) => {
       refetchBeneficiaries();
       
       // Show success and navigate back
-      Alert.alert(
+      showSuccessAlert(
         'Success',
         'Airtime purchase successful!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Navigate back to bill payment main screen
-              // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
-            },
-          },
-        ]
+        () => {
+          // Navigate back to bill payment main screen
+          // @ts-ignore - allow parent route name
+          navigation.navigate('Call' as never);
+        }
       );
     },
     onError: (error: any) => {
       console.error('[Airtime] Error confirming payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -574,24 +539,25 @@ const Airtime = ({ route }: any) => {
 
   const handleProceed = () => {
     if (!selectedProvider || !mobileNumber || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate amount
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
     // Validate mobile number (basic validation)
     if (mobileNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid mobile number');
+      showErrorAlert('Error', 'Please enter a valid mobile number');
       return;
     }
 
-    // Initiate payment
+    // Initiate payment according to API: POST /api/bill-payment/initiate
+    // Request Body: { categoryCode, providerId, currency, amount, accountNumber }
     initiateMutation.mutate({
       categoryCode: 'airtime',
       providerId: selectedProvider,
@@ -602,83 +568,31 @@ const Airtime = ({ route }: any) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 4) {
-      Alert.alert('Error', 'Please enter your PIN');
+    if (!pin || pin.length < 5) {
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
-    // If we have a transaction ID, use it
-    if (pendingTransactionId) {
-      confirmMutation.mutate({
-        transactionId: pendingTransactionId,
-        pin: pin,
-      });
-      return;
-    }
-
-    // If no transaction ID, try to find it one more time before showing error
-    if (pendingTransactionData) {
-      console.log('[Airtime] No transaction ID, attempting to find it before confirming...');
-      
-      try {
-        // Try to find the transaction one more time
-        const result = await refetchPendingTransactions();
-        const responseData = result.data?.data;
-        const transactions = responseData?.transactions || 
-                           (Array.isArray(responseData) ? responseData : []);
-        
-        console.log('[Airtime] Transactions found before confirmation:', transactions.length);
-        
-        if (transactions && Array.isArray(transactions) && transactions.length > 0) {
-          const numericAmount = parseFloat(amount.replace(/,/g, ''));
-          const matchingTx = transactions.find((tx: any) => {
-            const txAmount = parseFloat(tx.amount || '0');
-            return tx.accountNumber === mobileNumber &&
-                   Math.abs(txAmount - numericAmount) < 0.01 &&
-                   (tx.provider?.id === selectedProvider || tx.providerId === selectedProvider);
-          });
-          
-          if (matchingTx?.id) {
-            console.log('[Airtime] Found transaction ID before confirmation:', matchingTx.id);
-            setPendingTransactionId(matchingTx.id);
-            confirmMutation.mutate({
-              transactionId: matchingTx.id,
-              pin: pin,
-            });
-            return;
-          }
-        }
-      } catch (error) {
-        console.error('[Airtime] Error finding transaction before confirmation:', error);
-      }
-      
-      // If still no transaction ID found, show error
-      Alert.alert(
+    // According to API: POST /api/bill-payment/confirm
+    // Request Body: { transactionId: 123, pin: "12345" }
+    // We should have transactionId from the initiate response
+    if (!pendingTransactionId) {
+      showErrorAlert(
         'Transaction ID Not Found',
         'Unable to find the transaction ID. Please try initiating the payment again.',
-        [
-          {
-            text: 'Cancel',
-            onPress: () => {
-              setShowPinModal(false);
-              setPin('');
-            },
-          },
-          {
-            text: 'Retry',
-            onPress: () => {
-              setShowPinModal(false);
-              setPin('');
-              // Retry the initiate call
-              handleProceed();
-            },
-          },
-        ]
+        () => {
+          setShowPinModal(false);
+          setPin('');
+        }
       );
       return;
     }
 
-    Alert.alert('Error', 'Transaction data not found. Please try again.');
+    // Confirm payment with transactionId and PIN
+    confirmMutation.mutate({
+      transactionId: pendingTransactionId,
+      pin: pin,
+    });
   };
 
   const filteredNetworks = networks.filter((network) =>
@@ -884,7 +798,7 @@ const Airtime = ({ route }: any) => {
                 onPress={() => {
                   // Only navigate if a provider is selected
                   if (!selectedProvider) {
-                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    showWarningAlert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
                     return;
                   }
                   
@@ -999,7 +913,15 @@ const Airtime = ({ route }: any) => {
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
             <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                // Navigate to BillPaymentsScreen with airtime filter
+                // @ts-ignore - allow parent route name
+                navigation.navigate('BillPayments' as never, {
+                  initialCategory: 'Airtime',
+                });
+              }}
+            >
               <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
@@ -1008,10 +930,33 @@ const Airtime = ({ route }: any) => {
             <View style={{ alignItems: 'center', paddingVertical: 40 }}>
               <ActivityIndicator size="small" color="#A9EF45" />
             </View>
+          ) : isTransactionsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                {transactionsError?.message || 'Failed to load transactions. Please try again.'}
+              </ThemedText>
+              <TouchableOpacity
+                style={[styles.proceedButton, { marginTop: 20, backgroundColor: '#A9EF45', paddingHorizontal: 20 * SCALE }]}
+                onPress={() => refetchTransactions()}
+              >
+                <ThemedText style={styles.proceedButtonText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
           ) : recentTransactions.length > 0 ? (
             <View style={styles.transactionsList}>
               {recentTransactions.map((transaction) => (
-                <View key={transaction.id} style={styles.transactionItem}>
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={styles.transactionItem}
+                  onPress={() => {
+                    // Fetch transaction details and show receipt modal
+                    if (transaction.transactionId) {
+                      setSelectedTransactionId(transaction.transactionId);
+                      setShowReceiptModal(true);
+                    }
+                  }}
+                >
                   <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
                   <View style={styles.transactionDetails}>
                     <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
@@ -1029,7 +974,7 @@ const Airtime = ({ route }: any) => {
                     <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
                     <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (
@@ -1206,63 +1151,118 @@ const Airtime = ({ route }: any) => {
           setPin('');
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.pinModalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowPinModal(false);
-                  setPin('');
-                }}
-              >
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.pinInputContainer}>
-              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
-              {pendingTransactionData && (
-                <View style={styles.paymentSummaryContainer}>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || amount}</ThemedText>
-                  </View>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
-                  </View>
-                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || amount}</ThemedText>
-                  </View>
-                </View>
-              )}
-              <TextInput
-                style={styles.pinInput}
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="numeric"
-                secureTextEntry
-                maxLength={6}
-                placeholder="Enter PIN"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                autoFocus
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
-              onPress={handleConfirmPayment}
-              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pinModalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              {confirmMutation.isPending ? (
-                <ActivityIndicator size="small" color="#000000" />
-              ) : (
-                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
-              )}
-            </TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowPinModal(false);
+                    setPin('');
+                  }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.pinInputContainer}>
+                <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+                {pendingTransactionData && (
+                  <View style={styles.paymentSummaryContainer}>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || amount}</ThemedText>
+                    </View>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                    </View>
+                    <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || amount}</ThemedText>
+                    </View>
+                  </View>
+                )}
+                <TextInput
+                  style={styles.pinInput}
+                  value={pin}
+                  onChangeText={setPin}
+                  keyboardType="numeric"
+                  secureTextEntry
+                  maxLength={5}
+                  placeholder="Enter PIN"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  autoFocus
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.confirmButton, (!pin || pin.length < 5 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+                onPress={handleConfirmPayment}
+                disabled={!pin || pin.length < 5 || confirmMutation.isPending}
+              >
+                {confirmMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
+      {/* Transaction Receipt Modal */}
+      <TransactionReceiptModal
+        visible={showReceiptModal && !isLoadingDetails}
+        transaction={{
+          transactionType: 'billPayment',
+          transferAmount: `N${formatBalance(transactionDetails.amount)}`,
+          amountNGN: `N${formatBalance(transactionDetails.amount)}`,
+          fee: transactionDetails.fee ? `N${formatBalance(transactionDetails.fee)}` : 'N0',
+          mobileNumber: transactionDetails.accountNumber,
+          billerType: transactionDetails.billerType,
+          plan: transactionDetails.plan || '',
+          recipientName: transactionDetails.accountName || 'Airtime Recharge',
+          country: transactionDetails.country,
+          transactionId: transactionDetails.reference || String(selectedTransactionId || ''),
+          dateTime: transactionDetails.dateTime || new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          paymentMethod: 'Wallet',
+        }}
+        onClose={() => {
+          setShowReceiptModal(false);
+          setSelectedTransactionId(null);
+        }}
+      />
+
+      {/* Loading overlay when fetching transaction details */}
+      {isLoadingDetails && selectedTransactionId && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={{ color: '#FFFFFF', marginTop: 10, fontSize: 14 * SCALE }}>
+              Loading transaction details...
+            </ThemedText>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -1755,8 +1755,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    maxHeight: '50%',
+    maxHeight: '90%',
+  },
+  pinModalScrollContent: {
+    paddingBottom: 30 * SCALE,
+    paddingHorizontal: 0,
   },
   pinInputContainer: {
     paddingHorizontal: 20 * SCALE,

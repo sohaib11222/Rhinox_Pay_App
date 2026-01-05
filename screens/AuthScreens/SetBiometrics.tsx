@@ -6,7 +6,6 @@ import {
   StatusBar,
   Modal,
   Image,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,6 +14,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
 import { useSetupPin, useMarkFaceVerified } from '../../mutations/auth.mutations';
 import { getAccessToken } from '../../utils/apiClient';
+import { showSuccessAlert, showErrorAlert, showWarningAlert, showAlert } from '../../utils/customAlert';
 
 const SetBiometrics = () => {
   const navigation = useNavigation();
@@ -30,30 +30,24 @@ const SetBiometrics = () => {
   // Setup PIN mutation
   const setupPinMutation = useSetupPin({
     onSuccess: (data) => {
-      Alert.alert(
+      showSuccessAlert(
         'PIN Setup Successful',
         'Your transaction PIN has been set up successfully.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setShowPinModal(false);
-              // Reset PIN states
-              setPin('');
-              setConfirmPin('');
-              setPinStep('setup');
-              // Navigate to Verification screen
-              navigation.navigate('Verification' as never);
-            },
-          },
-        ]
+        () => {
+          setShowPinModal(false);
+          // Reset PIN states
+          setPin('');
+          setConfirmPin('');
+          setPinStep('setup');
+          // Navigate to Verification screen
+          navigation.navigate('Verification' as never);
+        }
       );
     },
     onError: (error: any) => {
-      Alert.alert(
+      showErrorAlert(
         'PIN Setup Failed',
-        error.message || 'Failed to setup PIN. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Failed to setup PIN. Please try again.'
       );
     },
   });
@@ -149,17 +143,12 @@ const SetBiometrics = () => {
           // Continue anyway - not critical for user flow
         }
         
-        Alert.alert(
+        showSuccessAlert(
           'Biometrics Setup Successful',
           `You can now use ${biometricType} to login.`,
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                navigation.navigate('Verification' as never);
-              },
-            },
-          ]
+          () => {
+            navigation.navigate('Verification' as never);
+          }
         );
       } else {
         // User cancelled or authentication failed
@@ -169,10 +158,11 @@ const SetBiometrics = () => {
           // User chose to use PIN instead
           setShowPinModal(true);
         } else {
-          Alert.alert(
-            'Authentication Failed',
-            'Biometric authentication failed. Please try again or set up a PIN.',
-            [
+          showAlert({
+            title: 'Authentication Failed',
+            message: 'Biometric authentication failed. Please try again or set up a PIN.',
+            type: 'error',
+            buttons: [
               {
                 text: 'Try Again',
                 onPress: handleSetupBiometrics,
@@ -181,27 +171,28 @@ const SetBiometrics = () => {
                 text: 'Setup PIN',
                 onPress: () => setShowPinModal(true),
               },
-            ]
-          );
+            ],
+          });
         }
       }
     } catch (error) {
       console.error('Biometric authentication error:', error);
-      Alert.alert(
-        'Error',
-        'An error occurred during biometric authentication. Please try again or set up a PIN.',
-        [
+      showAlert({
+        title: 'Error',
+        message: 'An error occurred during biometric authentication. Please try again or set up a PIN.',
+        type: 'error',
+        buttons: [
           {
             text: 'Setup PIN',
             onPress: () => setShowPinModal(true),
           },
           {
             text: 'Skip',
-            onPress: handleSkip,
             style: 'cancel',
+            onPress: handleSkip,
           },
-        ]
-      );
+        ],
+      });
     } finally {
       setIsScanning(false);
     }
@@ -532,34 +523,27 @@ const SetBiometrics = () => {
                         // Call setup PIN API
                         setupPinMutation.mutate({ pin: pin });
                       } else {
-                        Alert.alert(
+                        showWarningAlert(
                           'Authentication Required',
-                          'Please verify your email first to set up your PIN.',
-                          [{ text: 'OK' }]
+                          'Please verify your email first to set up your PIN.'
                         );
                       }
                     } catch (error) {
                       console.error('Error checking token:', error);
-                      Alert.alert(
+                      showErrorAlert(
                         'Error',
-                        'Unable to verify authentication. Please try again.',
-                        [{ text: 'OK' }]
+                        'Unable to verify authentication. Please try again.'
                       );
                     }
                   } else {
-                    Alert.alert(
+                    showWarningAlert(
                       'PIN Mismatch',
                       'The PINs do not match. Please try again.',
-                      [
-                        {
-                          text: 'OK',
-                          onPress: () => {
-                            setPinStep('setup');
-                            setPin('');
-                            setConfirmPin('');
-                          },
-                        },
-                      ]
+                      () => {
+                        setPinStep('setup');
+                        setPin('');
+                        setConfirmPin('');
+                      }
                     );
                   }
                 }

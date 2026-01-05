@@ -10,14 +10,22 @@ import {
   Switch,
   Modal,
   TextInput,
-  Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useSetPin, useVerifyPasswordForPin } from '../../../mutations/auth.mutations';
+import { 
+  getSecurityConfirmationSettings, 
+  setVerifyWithPin, 
+  setVerifyWithEmail, 
+  setVerifyWith2FA 
+} from '../../../utils/apiClient';
+import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -48,7 +56,9 @@ const AccountSecurity = () => {
   const [forgotEmail, setForgotEmail] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
   const [countdown, setCountdown] = useState(59);
+  const [forgotPasswordStep, setForgotPasswordStep] = useState<'email' | 'otp' | 'reset'>('email');
   
   // Change Password Modal States
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -57,6 +67,82 @@ const AccountSecurity = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordChanged, setPasswordChanged] = useState(false);
+
+  // Password reset mutations
+  const forgotPasswordMutation = useForgotPassword({
+    onSuccess: (data) => {
+      console.log('[AccountSecurity] Password reset OTP sent:', JSON.stringify(data, null, 2));
+      setEmailVerified(true);
+      setForgotPasswordStep('otp');
+      setCountdown(59);
+      showInfoAlert(
+        'Code Sent',
+        'If an account with this email exists, a password reset code has been sent.'
+      );
+    },
+    onError: (error: any) => {
+      console.error('[AccountSecurity] Forgot password error:', error);
+      showErrorAlert(
+        'Error',
+        error.message || 'Failed to send password reset code. Please try again.'
+      );
+    },
+  });
+
+  const verifyOtpMutation = useVerifyPasswordResetOtp({
+    onSuccess: (data) => {
+      console.log('[AccountSecurity] OTP verified:', JSON.stringify(data, null, 2));
+      setOtpVerified(true);
+      setForgotPasswordStep('reset');
+      setShowForgotPasswordModal(false);
+      setShowChangePasswordModal(true);
+      showSuccessAlert(
+        'OTP Verified',
+        'OTP verified successfully. You can now reset your password.'
+      );
+    },
+    onError: (error: any) => {
+      console.error('[AccountSecurity] OTP verification error:', error);
+      showErrorAlert(
+        'Verification Failed',
+        error.message || 'Invalid or expired OTP code. Please try again.'
+      );
+    },
+  });
+
+  const resetPasswordMutation = useResetPassword({
+    onSuccess: (data) => {
+      console.log('[AccountSecurity] Password reset successful:', JSON.stringify(data, null, 2));
+      setPasswordChanged(true);
+      showSuccessAlert(
+        'Password Reset Successful',
+        'Your password has been reset successfully. Please login with your new password.',
+        () => {
+          // Reset all states
+          setTimeout(() => {
+            setShowChangePasswordModal(false);
+            setShowForgotPasswordModal(false);
+            setForgotEmail('');
+            setVerificationCode('');
+            setEmailVerified(false);
+            setOtpVerified(false);
+            setNewPassword('');
+            setConfirmPassword('');
+            setForgotPasswordStep('email');
+            setCountdown(59);
+            setPasswordChanged(false);
+          }, 2000);
+        }
+      );
+    },
+    onError: (error: any) => {
+      console.error('[AccountSecurity] Password reset error:', error);
+      showErrorAlert(
+        'Reset Failed',
+        error.message || 'Failed to reset password. Please try again.'
+      );
+    },
+  });
 
   // 2FA Authenticator Modal States
   const [show2FAModal, setShow2FAModal] = useState(false);
@@ -72,11 +158,71 @@ const AccountSecurity = () => {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
+  const [passwordVerified, setPasswordVerified] = useState(false);
+
+  // Verify password for PIN mutation
+  const verifyPasswordForPinMutation = useVerifyPasswordForPin({
+    onSuccess: (data) => {
+      console.log('[AccountSecurity] Password verified successfully:', JSON.stringify(data, null, 2));
+      setPasswordVerified(true);
+      setShowPasswordModal(false);
+      setShowPinModal(true);
+      setPinStep('setup');
+      setPin('');
+      setConfirmPin('');
+      showSuccessAlert(
+        'Password Verified',
+        data?.data?.message || 'Password verified successfully. You can now set your PIN.'
+      );
+    },
+    onError: (error: any) => {
+      console.error('[AccountSecurity] Password verification error:', error);
+      showErrorAlert(
+        'Verification Failed',
+        error?.message || 'Invalid password. Please try again.',
+        () => {
+          setAccountPassword('');
+        }
+      );
+    },
+  });
+
+  // Set PIN mutation
+  const setPinMutation = useSetPin({
+    onSuccess: (data) => {
+      console.log('[AccountSecurity] PIN set successfully:', JSON.stringify(data, null, 2));
+      showSuccessAlert(
+        'Success',
+        data?.data?.message || 'PIN setup completed successfully',
+        () => {
+          setShowPinModal(false);
+          setPinStep('setup');
+          setPin('');
+          setConfirmPin('');
+          setPasswordVerified(false);
+          setAccountPassword('');
+        }
+      );
+    },
+    onError: (error: any) => {
+      console.error('[AccountSecurity] Error setting PIN:', error);
+      showErrorAlert(
+        'Error',
+        error?.message || 'Failed to set PIN. Please try again.',
+        () => {
+          // Reset PIN entry on error
+          setPinStep('setup');
+          setPin('');
+          setConfirmPin('');
+        }
+      );
+    },
+  });
 
   // Countdown timer for resend code
   useEffect(() => {
     let timer: NodeJS.Timeout;
-    if (showForgotPasswordModal && emailVerified && countdown > 0) {
+    if (showForgotPasswordModal && emailVerified && forgotPasswordStep === 'otp' && countdown > 0) {
       timer = setInterval(() => {
         setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
       }, 1000);
@@ -84,17 +230,62 @@ const AccountSecurity = () => {
     return () => {
       if (timer) clearInterval(timer);
     };
-  }, [showForgotPasswordModal, emailVerified, countdown]);
+  }, [showForgotPasswordModal, emailVerified, forgotPasswordStep, countdown]);
 
   // Reset countdown when modal opens
   useEffect(() => {
-    if (showForgotPasswordModal) {
+    if (showForgotPasswordModal && forgotPasswordStep === 'email') {
       setCountdown(59);
       setEmailVerified(false);
+      setOtpVerified(false);
       setForgotEmail('');
       setVerificationCode('');
     }
-  }, [showForgotPasswordModal]);
+  }, [showForgotPasswordModal, forgotPasswordStep]);
+
+  // Load security confirmation settings on mount
+  useEffect(() => {
+    loadSecuritySettings();
+  }, []);
+
+  const loadSecuritySettings = async () => {
+    try {
+      const settings = await getSecurityConfirmationSettings();
+      setVerifyWithPin(settings.verifyWithPin);
+      setVerifyWithEmail(settings.verifyWithEmail);
+      setVerifyWith2FA(settings.verifyWith2FA);
+      console.log('[AccountSecurity] Loaded security settings:', settings);
+    } catch (error) {
+      console.error('[AccountSecurity] Error loading security settings:', error);
+    }
+  };
+
+  const handleSecurityToggle = async (type: 'pin' | 'email' | '2fa', value: boolean) => {
+    try {
+      if (type === 'pin') {
+        setVerifyWithPin(value);
+        await setVerifyWithPin(value);
+      } else if (type === 'email') {
+        setVerifyWithEmail(value);
+        await setVerifyWithEmail(value);
+      } else if (type === '2fa') {
+        setVerifyWith2FA(value);
+        await setVerifyWith2FA(value);
+      }
+      console.log(`[AccountSecurity] ${type} verification preference updated:`, value);
+    } catch (error) {
+      console.error(`[AccountSecurity] Error saving ${type} preference:`, error);
+      // Revert state on error
+      if (type === 'pin') {
+        setVerifyWithPin(!value);
+      } else if (type === 'email') {
+        setVerifyWithEmail(!value);
+      } else if (type === '2fa') {
+        setVerifyWith2FA(!value);
+      }
+      showErrorAlert('Error', `Failed to save ${type} preference. Please try again.`);
+    }
+  };
 
   // Hide bottom tab bar when screen is focused
   useFocusEffect(
@@ -201,29 +392,51 @@ const AccountSecurity = () => {
   };
 
   const handleSendCode = () => {
-    // TODO: Implement API call to send verification code
-    console.log('Send code to:', forgotEmail);
-    setEmailVerified(true);
+    if (!forgotEmail || !forgotEmail.includes('@')) {
+      showErrorAlert('Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+    forgotPasswordMutation.mutate({ email: forgotEmail });
+  };
+
+  const handleResendCode = () => {
+    if (countdown > 0) {
+      showWarningAlert('Please Wait', `Please wait ${formatCountdown(countdown)} before resending code.`);
+      return;
+    }
+    if (!forgotEmail || !forgotEmail.includes('@')) {
+      showErrorAlert('Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+    forgotPasswordMutation.mutate({ email: forgotEmail });
     setCountdown(59);
   };
 
   const handleVerifyCode = () => {
-    // TODO: Implement API call to verify code
-    console.log('Verify code:', verificationCode);
-    setShowForgotPasswordModal(false);
-    setShowChangePasswordModal(true);
+    if (verificationCode.length !== 5) {
+      showErrorAlert('Invalid Code', 'Please enter the 5-digit code');
+      return;
+    }
+    verifyOtpMutation.mutate({
+      email: forgotEmail,
+      otp: verificationCode,
+    });
   };
 
   const handleSavePassword = () => {
-    // TODO: Implement API call to save password
-    console.log('Save password');
-    setPasswordChanged(true);
-    setTimeout(() => {
-      setShowChangePasswordModal(false);
-      setPasswordChanged(false);
-      setNewPassword('');
-      setConfirmPassword('');
-    }, 2000);
+    if (newPassword.length < 8) {
+      showErrorAlert('Invalid Password', 'Password must be at least 8 characters long');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showErrorAlert('Password Mismatch', 'New password and confirm password do not match');
+      return;
+    }
+    resetPasswordMutation.mutate({
+      email: forgotEmail,
+      otp: verificationCode,
+      newPassword: newPassword,
+    });
   };
 
   const formatCountdown = (seconds: number) => {
@@ -235,9 +448,9 @@ const AccountSecurity = () => {
   const handleCopyCode = async () => {
     try {
       await Clipboard.setStringAsync(authenticatorSetupCode);
-      Alert.alert('Copied', 'Authenticator code copied to clipboard');
+      showSuccessAlert('Copied', 'Authenticator code copied to clipboard');
     } catch (error) {
-      Alert.alert('Error', 'Failed to copy code');
+      showErrorAlert('Error', 'Failed to copy code');
     }
   };
 
@@ -245,23 +458,21 @@ const AccountSecurity = () => {
     // TODO: Implement API call to verify and save 2FA
     console.log('Proceed with 2FA setup:', authenticatorCode);
     if (authenticatorCode.length > 0) {
-      Alert.alert('Success', '2FA Authenticator setup completed');
+      showSuccessAlert('Success', '2FA Authenticator setup completed');
       setShow2FAModal(false);
       setAuthenticatorCode('');
     }
   };
 
   const handleVerifyPassword = () => {
-    // TODO: Implement API call to verify password
-    console.log('Verify password:', accountPassword);
-    if (accountPassword.length > 0) {
-      setShowPasswordModal(false);
-      setShowPinModal(true);
-      setPinStep('setup');
-      setPin('');
-      setConfirmPin('');
-      setAccountPassword('');
+    if (!accountPassword || accountPassword.length === 0) {
+      showErrorAlert('Error', 'Please enter your password');
+      return;
     }
+
+    // Call API to verify password
+    console.log('[AccountSecurity] Verifying password for PIN setup...');
+    verifyPasswordForPinMutation.mutate({ password: accountPassword });
   };
 
   const handlePinPress = (num: string) => {
@@ -291,15 +502,12 @@ const AccountSecurity = () => {
         if (newConfirmPin.length === 5) {
           // Auto-verify when 5 digits are entered
           setTimeout(() => {
-            // TODO: Verify PINs match and implement API call
+            // Verify PINs match
             if (newConfirmPin === pin) {
-              Alert.alert('Success', 'PIN setup completed');
-              setShowPinModal(false);
-              setPinStep('setup');
-              setPin('');
-              setConfirmPin('');
+              // Call API to set PIN
+              setPinMutation.mutate({ pin: pin });
             } else {
-              Alert.alert('Error', 'PINs do not match. Please try again.');
+              showErrorAlert('Error', 'PINs do not match. Please try again.');
               setPinStep('setup');
               setPin('');
               setConfirmPin('');
@@ -324,12 +532,14 @@ const AccountSecurity = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing security settings data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[AccountSecurity] Refreshing security settings data...');
+    try {
+      // Reload security confirmation settings
+      await loadSecuritySettings();
+      console.log('[AccountSecurity] Security settings refreshed successfully');
+    } catch (error) {
+      console.error('[AccountSecurity] Error refreshing security settings:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -403,11 +613,11 @@ const AccountSecurity = () => {
                         }
                         onValueChange={(value) => {
                           if (item.id === 'verify-pin') {
-                            setVerifyWithPin(value);
+                            handleSecurityToggle('pin', value);
                           } else if (item.id === 'verify-email') {
-                            setVerifyWithEmail(value);
+                            handleSecurityToggle('email', value);
                           } else if (item.id === 'verify-2fa') {
-                            setVerifyWith2FA(value);
+                            handleSecurityToggle('2fa', value);
                           }
                         }}
                         trackColor={{ false: 'rgba(255, 255, 255, 0.1)', true: '#A9EF45' }}
@@ -431,20 +641,44 @@ const AccountSecurity = () => {
         visible={showForgotPasswordModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowForgotPasswordModal(false)}
+        onRequestClose={() => {
+          setShowForgotPasswordModal(false);
+          // Reset state when modal closes
+          setForgotEmail('');
+          setVerificationCode('');
+          setEmailVerified(false);
+          setOtpVerified(false);
+          setForgotPasswordStep('email');
+          setCountdown(59);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Forgot Password</ThemedText>
-              <TouchableOpacity onPress={() => setShowForgotPasswordModal(false)}>
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowForgotPasswordModal(false);
+                  // Reset state when modal closes
+                  setForgotEmail('');
+                  setVerificationCode('');
+                  setEmailVerified(false);
+                  setOtpVerified(false);
+                  setForgotPasswordStep('email');
+                  setCountdown(59);
+                }}
+              >
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
               </TouchableOpacity>
             </View>
 
-            {/* Email Input */}
-            <View style={styles.modalSection}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {/* Email Input */}
+              <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>Enter Email Addresss</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
@@ -466,7 +700,7 @@ const AccountSecurity = () => {
             </View>
 
             {/* Verification Code Section */}
-            {emailVerified && (
+            {emailVerified && forgotPasswordStep === 'otp' && (
               <>
                 <View style={styles.verifiedSection}>
                   <MaterialCommunityIcons
@@ -477,7 +711,9 @@ const AccountSecurity = () => {
                   <ThemedText style={styles.verifiedText}>Email Address Verified</ThemedText>
                 </View>
                 <ThemedText style={styles.resendText}>
-                  A 5 digit code has been sent to your registered email. Resend in {formatCountdown(countdown)} Sec
+                  {countdown > 0 
+                    ? `A 5 digit code has been sent to your registered email. Resend in ${formatCountdown(countdown)} Sec`
+                    : 'A 5 digit code has been sent to your registered email.'}
                 </ThemedText>
 
                 <View style={styles.modalSection}>
@@ -491,6 +727,7 @@ const AccountSecurity = () => {
                       onChangeText={setVerificationCode}
                       keyboardType="number-pad"
                       maxLength={5}
+                      autoFocus={emailVerified}
                     />
                     <MaterialCommunityIcons
                       name="eye"
@@ -502,25 +739,45 @@ const AccountSecurity = () => {
               </>
             )}
 
-            {/* Action Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalActionButton,
-                (!emailVerified && forgotEmail.length === 0) ||
-                (emailVerified && verificationCode.length !== 5)
-                  ? styles.modalButtonDisabled
-                  : null,
-              ]}
-              onPress={emailVerified ? handleVerifyCode : handleSendCode}
-              disabled={
-                (!emailVerified && forgotEmail.length === 0) ||
-                (emailVerified && verificationCode.length !== 5)
-              }
-            >
-              <ThemedText style={styles.modalActionButtonText}>
-                {emailVerified ? 'Proceed' : 'Send Code'}
-              </ThemedText>
-            </TouchableOpacity>
+            {/* Resend Code Button */}
+            {emailVerified && forgotPasswordStep === 'otp' && countdown === 0 && (
+              <TouchableOpacity
+                style={styles.resendButton}
+                onPress={handleResendCode}
+                disabled={forgotPasswordMutation.isPending}
+              >
+                <ThemedText style={styles.resendButtonText}>Resend Code</ThemedText>
+              </TouchableOpacity>
+            )}
+
+              {/* Action Button */}
+              <TouchableOpacity
+                style={[
+                  styles.modalActionButton,
+                  (!emailVerified && (!forgotEmail || !forgotEmail.includes('@'))) ||
+                  (emailVerified && verificationCode.length !== 5) ||
+                  forgotPasswordMutation.isPending ||
+                  verifyOtpMutation.isPending
+                    ? styles.modalButtonDisabled
+                    : null,
+                ]}
+                onPress={emailVerified ? handleVerifyCode : handleSendCode}
+                disabled={
+                  (!emailVerified && (!forgotEmail || !forgotEmail.includes('@'))) ||
+                  (emailVerified && verificationCode.length !== 5) ||
+                  forgotPasswordMutation.isPending ||
+                  verifyOtpMutation.isPending
+                }
+              >
+                {forgotPasswordMutation.isPending || verifyOtpMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.modalActionButtonText}>
+                    {emailVerified ? 'Verify Code' : 'Send Code'}
+                  </ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -554,24 +811,28 @@ const AccountSecurity = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Success Message */}
-            {passwordChanged && (
-              <View style={styles.successMessage}>
-                <View style={styles.successIconContainer}>
-                  <MaterialCommunityIcons
-                    name="check-circle"
-                    size={24 * SCALE}
-                    color="#A9EF45"
-                  />
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
+              {/* Success Message */}
+              {passwordChanged && (
+                <View style={styles.successMessage}>
+                  <View style={styles.successIconContainer}>
+                    <MaterialCommunityIcons
+                      name="check-circle"
+                      size={24 * SCALE}
+                      color="#A9EF45"
+                    />
+                  </View>
+                  <ThemedText style={styles.successText}>
+                    Your password has been changed successfully
+                  </ThemedText>
                 </View>
-                <ThemedText style={styles.successText}>
-                  Your password has been changed successfully
-                </ThemedText>
-              </View>
-            )}
+              )}
 
-            {/* New Password */}
-            <View style={styles.modalSection}>
+              {/* New Password */}
+              <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>New Password</ThemedText>
               <View style={styles.modalInputWrapper}>
                 <TextInput
@@ -622,22 +883,40 @@ const AccountSecurity = () => {
                   />
                 </TouchableOpacity>
               </View>
+              {confirmPassword.length > 0 && newPassword !== confirmPassword && (
+                <ThemedText style={styles.passwordErrorText}>
+                  Passwords do not match
+                </ThemedText>
+              )}
             </View>
 
-            {/* Save Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalActionButton,
-                (newPassword.length === 0 || confirmPassword.length === 0) &&
-                  styles.modalButtonDisabled,
-              ]}
-              onPress={handleSavePassword}
-              disabled={
-                newPassword.length === 0 || confirmPassword.length === 0
-              }
-            >
-              <ThemedText style={styles.modalActionButtonText}>Save</ThemedText>
-            </TouchableOpacity>
+              {/* Save Button */}
+              <TouchableOpacity
+                style={[
+                  styles.modalActionButton,
+                  (newPassword.length === 0 || 
+                   confirmPassword.length === 0 || 
+                   newPassword !== confirmPassword ||
+                   newPassword.length < 8 ||
+                   resetPasswordMutation.isPending) &&
+                    styles.modalButtonDisabled,
+                ]}
+                onPress={handleSavePassword}
+                disabled={
+                  newPassword.length === 0 || 
+                  confirmPassword.length === 0 || 
+                  newPassword !== confirmPassword ||
+                  newPassword.length < 8 ||
+                  resetPasswordMutation.isPending
+                }
+              >
+                {resetPasswordMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.modalActionButtonText}>Save</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -651,7 +930,7 @@ const AccountSecurity = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {/* Modal Header */}
+            {/* Modal Header - Fixed at top */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Setup Authenticator</ThemedText>
               <TouchableOpacity onPress={() => setShow2FAModal(false)}>
@@ -659,64 +938,72 @@ const AccountSecurity = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Authenticator Icon */}
-            <View style={styles.authenticatorIconContainer}>
-              <View style={styles.authenticatorIconCircle}>
-              <Image
-                source={require('../../../assets/Group 49.png')}
-                style={[{ marginBottom: -1, width: 120, height: 120 }]}
-                resizeMode="cover"
-              />
-              </View>
-            </View>
-
-            {/* Authenticator Setup Section */}
-            <View style={styles.authenticatorSetupSection}>
-              <ThemedText style={styles.authenticatorSetupTitle}>Authenticator Setup</ThemedText>
-              <ThemedText style={styles.authenticatorSetupSubtitle}>
-                Paste the code below in your authenticator app
-              </ThemedText>
-
-              {/* Code Display Box */}
-              <View style={styles.codeDisplayBox}>
-                <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode}</ThemedText>
-                <TouchableOpacity
-                  style={styles.copyCodeButton}
-                  onPress={handleCopyCode}
-                >
-                  <ThemedText style={styles.copyCodeButtonText}>Copy Code</ThemedText>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Authenticator Code Input */}
-            <View style={styles.modalSection}>
-              <ThemedText style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</ThemedText>
-              <View style={styles.modalInputWrapper}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Input Code from your authenticator app"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={authenticatorCode}
-                  onChangeText={setAuthenticatorCode}
-                  keyboardType="number-pad"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-            </View>
-
-            {/* Proceed Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalActionButton,
-                authenticatorCode.length === 0 && styles.modalButtonDisabled,
-              ]}
-              onPress={handleProceed2FA}
-              disabled={authenticatorCode.length === 0}
+            {/* Scrollable Content */}
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
             >
-              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
+              {/* Authenticator Icon */}
+              <View style={styles.authenticatorIconContainer}>
+                <View style={styles.authenticatorIconCircle}>
+                <Image
+                  source={require('../../../assets/Group 49.png')}
+                  style={[{ marginBottom: -1, width: 120, height: 120 }]}
+                  resizeMode="cover"
+                />
+                </View>
+              </View>
+
+              {/* Authenticator Setup Section */}
+              <View style={styles.authenticatorSetupSection}>
+                <ThemedText style={styles.authenticatorSetupTitle}>Authenticator Setup</ThemedText>
+                <ThemedText style={styles.authenticatorSetupSubtitle}>
+                  Paste the code below in your authenticator app
+                </ThemedText>
+
+                {/* Code Display Box */}
+                <View style={styles.codeDisplayBox}>
+                  <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode}</ThemedText>
+                  <TouchableOpacity
+                    style={styles.copyCodeButton}
+                    onPress={handleCopyCode}
+                  >
+                    <ThemedText style={styles.copyCodeButtonText}>Copy Code</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Authenticator Code Input */}
+              <View style={styles.modalSection}>
+                <ThemedText style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</ThemedText>
+                <View style={styles.modalInputWrapper}>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Input Code from your authenticator app"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={authenticatorCode}
+                    onChangeText={setAuthenticatorCode}
+                    keyboardType="number-pad"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
+
+              {/* Proceed Button */}
+              <TouchableOpacity
+                style={[
+                  styles.modalActionButton,
+                  authenticatorCode.length === 0 && styles.modalButtonDisabled,
+                ]}
+                onPress={handleProceed2FA}
+                disabled={authenticatorCode.length === 0}
+              >
+                <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -730,7 +1017,7 @@ const AccountSecurity = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            {/* Modal Header */}
+            {/* Modal Header - Fixed at top */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Set Pin</ThemedText>
               <TouchableOpacity onPress={() => setShowPasswordModal(false)}>
@@ -738,63 +1025,75 @@ const AccountSecurity = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Shield Icon */}
-            <View style={styles.authenticatorIconContainer}>
-              <View style={styles.authenticatorIconCircle}>
-                <Image
-                  source={require('../../../assets/Group 49.png')}
-                  style={[{ marginBottom: -1, width: 120, height: 120 }]}
-                  resizeMode="cover"
-                />
-              </View>
-            </View>
-
-            {/* Content */}
-            <View style={styles.passwordModalContent}>
-              <ThemedText style={styles.passwordModalTitle}>Enter Password</ThemedText>
-              <ThemedText style={styles.passwordModalSubtitle}>
-                Enter your account Password.
-              </ThemedText>
-            </View>
-
-            {/* Password Input */}
-            <View style={styles.modalSection}>
-              <ThemedText style={styles.modalSectionTitle}>Password</ThemedText>
-              <View style={styles.modalInputWrapper}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Enter password"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={accountPassword}
-                  onChangeText={setAccountPassword}
-                  secureTextEntry={!showAccountPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TouchableOpacity
-                  onPress={() => setShowAccountPassword(!showAccountPassword)}
-                  style={styles.modalEyeButton}
-                >
-                  <MaterialCommunityIcons
-                    name={showAccountPassword ? 'eye-off' : 'eye'}
-                    size={24 * SCALE}
-                    color="rgba(255, 255, 255, 0.5)"
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Proceed Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalActionButton,
-                accountPassword.length === 0 && styles.modalButtonDisabled,
-              ]}
-              onPress={handleVerifyPassword}
-              disabled={accountPassword.length === 0}
+            {/* Scrollable Content */}
+            <ScrollView
+              style={styles.modalScrollView}
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
             >
-              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
+              {/* Shield Icon */}
+              <View style={styles.authenticatorIconContainer}>
+                <View style={styles.authenticatorIconCircle}>
+                  <Image
+                    source={require('../../../assets/Group 49.png')}
+                    style={[{ marginBottom: -1, width: 120, height: 120 }]}
+                    resizeMode="cover"
+                  />
+                </View>
+              </View>
+
+              {/* Content */}
+              <View style={styles.passwordModalContent}>
+                <ThemedText style={styles.passwordModalTitle}>Enter Password</ThemedText>
+                <ThemedText style={styles.passwordModalSubtitle}>
+                  Enter your account Password.
+                </ThemedText>
+              </View>
+
+              {/* Password Input */}
+              <View style={styles.modalSection}>
+                <ThemedText style={styles.modalSectionTitle}>Password</ThemedText>
+                <View style={styles.modalInputWrapper}>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Enter password"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={accountPassword}
+                    onChangeText={setAccountPassword}
+                    secureTextEntry={!showAccountPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    onPress={() => setShowAccountPassword(!showAccountPassword)}
+                    style={styles.modalEyeButton}
+                  >
+                    <MaterialCommunityIcons
+                      name={showAccountPassword ? 'eye-off' : 'eye'}
+                      size={24 * SCALE}
+                      color="rgba(255, 255, 255, 0.5)"
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Proceed Button */}
+              <TouchableOpacity
+                style={[
+                  styles.modalActionButton,
+                  (accountPassword.length === 0 || verifyPasswordForPinMutation.isPending) && styles.modalButtonDisabled,
+                ]}
+                onPress={handleVerifyPassword}
+                disabled={accountPassword.length === 0 || verifyPasswordForPinMutation.isPending}
+              >
+                {verifyPasswordForPinMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -813,64 +1112,68 @@ const AccountSecurity = () => {
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, styles.pinModalContent]}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Verification</ThemedText>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowPinModal(false);
-                  setPinStep('setup');
-                  setPin('');
-                  setConfirmPin('');
-                }}
-              >
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Shield Icon */}
-            <View style={styles.authenticatorIconContainer}>
-              <View style={styles.authenticatorIconCircle}>
-                <Image
-                  source={require('../../../assets/Group 49.png')}
-                  style={[{ marginBottom: -1, width: 120, height: 120 }]}
-                  resizeMode="cover"
-                />
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pinModalScrollContent}
+            >
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Verification</ThemedText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowPinModal(false);
+                    setPinStep('setup');
+                    setPin('');
+                    setConfirmPin('');
+                  }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
+                </TouchableOpacity>
               </View>
-            </View>
 
-            {/* Content */}
-            <View style={styles.passwordModalContent}>
-              <ThemedText style={styles.passwordModalTitle}>
-                {pinStep === 'setup' ? 'Enter Pin' : 'Re- Enter Pin'}
-              </ThemedText>
-              <ThemedText style={styles.passwordModalSubtitle}>
-                Setup your pin to use for your transactions
-              </ThemedText>
-            </View>
-
-            {/* PIN Display */}
-            <View style={styles.pinBar}>
-              <View style={styles.pinBarInner}>
-                {[0, 1, 2, 3, 4].map((index) => {
-                  const currentPin = pinStep === 'setup' ? pin : confirmPin;
-                  const hasValue = index < currentPin.length;
-                  const digit = hasValue ? currentPin[index] : null;
-                  return (
-                    <View key={index} style={styles.pinSlot}>
-                      {hasValue ? (
-                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
-                      ) : (
-                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
-                      )}
-                    </View>
-                  );
-                })}
+              {/* Shield Icon */}
+              <View style={styles.authenticatorIconContainer}>
+                <View style={styles.authenticatorIconCircle}>
+                  <Image
+                    source={require('../../../assets/Group 49.png')}
+                    style={[{ marginBottom: -1, width: 120, height: 120 }]}
+                    resizeMode="cover"
+                  />
+                </View>
               </View>
-            </View>
 
-            {/* Numpad */}
-            <View style={styles.numpad}>
+              {/* Content */}
+              <View style={styles.passwordModalContent}>
+                <ThemedText style={styles.passwordModalTitle}>
+                  {pinStep === 'setup' ? 'Enter Pin' : 'Re- Enter Pin'}
+                </ThemedText>
+                <ThemedText style={styles.passwordModalSubtitle}>
+                  Setup your pin to use for your transactions
+                </ThemedText>
+              </View>
+
+              {/* PIN Display */}
+              <View style={styles.pinBar}>
+                <View style={styles.pinBarInner}>
+                  {[0, 1, 2, 3, 4].map((index) => {
+                    const currentPin = pinStep === 'setup' ? pin : confirmPin;
+                    const hasValue = index < currentPin.length;
+                    const digit = hasValue ? currentPin[index] : null;
+                    return (
+                      <View key={index} style={styles.pinSlot}>
+                        {hasValue ? (
+                          <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
+                        ) : (
+                          <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Numpad */}
+              <View style={styles.numpad}>
               <View style={styles.numpadRow}>
                 {[1, 2, 3].map((num) => (
                   <TouchableOpacity
@@ -981,39 +1284,41 @@ const AccountSecurity = () => {
               </View>
             </View>
 
-            {/* Proceed Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalActionButton,
-                (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5) &&
-                  styles.modalButtonDisabled,
-              ]}
-              onPress={() => {
-                if (pinStep === 'setup' && pin.length === 5) {
-                  setPinStep('confirm');
-                  setConfirmPin('');
-                } else if (pinStep === 'confirm' && confirmPin.length === 5) {
-                  if (confirmPin === pin) {
-                    // TODO: Implement API call to save PIN
-                    Alert.alert('Success', 'PIN setup completed');
-                    setShowPinModal(false);
-                    setPinStep('setup');
-                    setPin('');
+              {/* Proceed Button */}
+              <TouchableOpacity
+                style={[
+                  styles.modalActionButton,
+                  (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5) &&
+                    styles.modalButtonDisabled,
+                ]}
+                onPress={() => {
+                  if (pinStep === 'setup' && pin.length === 5) {
+                    setPinStep('confirm');
                     setConfirmPin('');
-                  } else {
-                    Alert.alert('Error', 'PINs do not match. Please try again.');
-                    setPinStep('setup');
-                    setPin('');
-                    setConfirmPin('');
+                  } else if (pinStep === 'confirm' && confirmPin.length === 5) {
+                    if (confirmPin === pin) {
+                      // Call API to set PIN
+                      setPinMutation.mutate({ pin: pin });
+                    } else {
+                      showErrorAlert('Error', 'PINs do not match. Please try again.');
+                      setPinStep('setup');
+                      setPin('');
+                      setConfirmPin('');
+                    }
                   }
+                }}
+                disabled={
+                  (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5) ||
+                  setPinMutation.isPending
                 }
-              }}
-              disabled={
-                (pinStep === 'setup' ? pin.length !== 5 : confirmPin.length !== 5)
-              }
-            >
-              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
+              >
+                {setPinMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1127,9 +1432,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    padding: 10 * SCALE,
     maxHeight: '90%',
+    flex: 1,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    paddingBottom: 20 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 10 * SCALE,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1153,7 +1465,6 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: '#FFFFFF',
     marginBottom: 8 * SCALE,
-    marginHorizontal:10,
   },
   modalInputWrapper: {
     flexDirection: 'row',
@@ -1164,8 +1475,6 @@ const styles = StyleSheet.create({
     borderRadius: 10 * SCALE,
     paddingHorizontal: 11 * SCALE,
     minHeight: 60 * SCALE,
-    marginHorizontal:10,
-
   },
   modalInput: {
     flex: 1,
@@ -1183,7 +1492,6 @@ const styles = StyleSheet.create({
     gap: 4 * SCALE,
     marginTop: 20 * SCALE,
     marginBottom: 4 * SCALE,
-    marginHorizontal:10,
   },
   verifiedText: {
     fontSize: 10 * SCALE,
@@ -1195,9 +1503,23 @@ const styles = StyleSheet.create({
     fontSize: 10 * SCALE,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
-    // marginBottom: 5 * SCALE,
-    marginHorizontal:10,
-
+    marginTop: 4 * SCALE,
+  },
+  resendButton: {
+    marginTop: 10 * SCALE,
+    alignItems: 'center',
+  },
+  resendButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#A9EF45',
+    textDecorationLine: 'underline',
+  },
+  passwordErrorText: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: '#ff0000',
+    marginTop: 4 * SCALE,
   },
   modalActionButton: {
     backgroundColor: '#A9EF45',
@@ -1207,6 +1529,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 20 * SCALE,
     minHeight: 60 * SCALE,
+    marginBottom: 10 * SCALE,
   },
   modalButtonDisabled: {
     backgroundColor: 'rgba(169, 239, 69, 0.3)',
@@ -1305,6 +1628,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20 * SCALE,
     marginBottom: 20 * SCALE,
+    paddingHorizontal: 10 * SCALE,
   },
   passwordModalTitle: {
     fontSize: 20 * SCALE,
@@ -1320,6 +1644,9 @@ const styles = StyleSheet.create({
   },
   pinModalContent: {
     maxHeight: '95%',
+  },
+  pinModalScrollContent: {
+    paddingBottom: 20 * SCALE,
   },
   pinBar: {
     alignItems: 'center',
@@ -1359,12 +1686,12 @@ const styles = StyleSheet.create({
   numpad: {
     marginTop: 0,
     paddingHorizontal: 20 * SCALE,
-    marginBottom: 20 * SCALE,
+    marginBottom: 15 * SCALE,
   },
   numpadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20 * SCALE,
+    marginBottom: 12 * SCALE,
   },
   numpadButton: {
     width: 117 * SCALE,

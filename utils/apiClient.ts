@@ -16,6 +16,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 const BIOMETRIC_ENABLED_KEY = 'biometricEnabled';
+const VERIFY_WITH_PIN_KEY = 'verifyWithPin';
+const VERIFY_WITH_EMAIL_KEY = 'verifyWithEmail';
+const VERIFY_WITH_2FA_KEY = 'verifyWith2FA';
 
 /**
  * Get stored access token
@@ -112,6 +115,77 @@ export const setBiometricEnabled = async (enabled: boolean): Promise<void> => {
 };
 
 /**
+ * Get security confirmation settings
+ */
+export interface SecurityConfirmationSettings {
+  verifyWithPin: boolean;
+  verifyWithEmail: boolean;
+  verifyWith2FA: boolean;
+}
+
+/**
+ * Get all security confirmation settings
+ */
+export const getSecurityConfirmationSettings = async (): Promise<SecurityConfirmationSettings> => {
+  try {
+    const [pin, email, twoFA] = await Promise.all([
+      AsyncStorage.getItem(VERIFY_WITH_PIN_KEY),
+      AsyncStorage.getItem(VERIFY_WITH_EMAIL_KEY),
+      AsyncStorage.getItem(VERIFY_WITH_2FA_KEY),
+    ]);
+    
+    return {
+      verifyWithPin: pin === 'true',
+      verifyWithEmail: email === 'true',
+      verifyWith2FA: twoFA === 'true',
+    };
+  } catch (error) {
+    console.error('Error getting security confirmation settings:', error);
+    return {
+      verifyWithPin: false,
+      verifyWithEmail: false,
+      verifyWith2FA: false,
+    };
+  }
+};
+
+/**
+ * Set verify with PIN preference
+ */
+export const setVerifyWithPin = async (enabled: boolean): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(VERIFY_WITH_PIN_KEY, enabled.toString());
+    console.log('[setVerifyWithPin] Verify with PIN preference saved:', enabled);
+  } catch (error) {
+    console.error('Error setting verify with PIN preference:', error);
+  }
+};
+
+/**
+ * Set verify with Email preference
+ */
+export const setVerifyWithEmail = async (enabled: boolean): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(VERIFY_WITH_EMAIL_KEY, enabled.toString());
+    console.log('[setVerifyWithEmail] Verify with Email preference saved:', enabled);
+  } catch (error) {
+    console.error('Error setting verify with Email preference:', error);
+  }
+};
+
+/**
+ * Set verify with 2FA preference
+ */
+export const setVerifyWith2FA = async (enabled: boolean): Promise<void> => {
+  try {
+    await AsyncStorage.setItem(VERIFY_WITH_2FA_KEY, enabled.toString());
+    console.log('[setVerifyWith2FA] Verify with 2FA preference saved:', enabled);
+  } catch (error) {
+    console.error('Error setting verify with 2FA preference:', error);
+  }
+};
+
+/**
  * Create axios instance
  */
 const apiClient: AxiosInstance = axios.create({
@@ -150,7 +224,10 @@ apiClient.interceptors.request.use(
         console.log('[API REQUEST] No token available');
       }
       if (config.headers?.Authorization) {
-        console.log('[API REQUEST] Authorization header:', config.headers.Authorization.substring(0, 50) + '...');
+        const authHeader = config.headers.Authorization;
+        if (typeof authHeader === 'string') {
+          console.log('[API REQUEST] Authorization header:', authHeader.substring(0, 50) + '...');
+        }
       }
     } catch (error) {
       console.error('Error in request interceptor:', error);

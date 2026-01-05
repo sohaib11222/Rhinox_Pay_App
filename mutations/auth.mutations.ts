@@ -249,6 +249,66 @@ export const useSetupPin = (
 };
 
 /**
+ * Set or update PIN after password verification
+ * This endpoint should be called after password verification
+ */
+export interface SetPinRequest {
+  pin: string;
+}
+
+export const setPin = async (data: SetPinRequest): Promise<ApiResponse> => {
+  try {
+    // Token is automatically included by apiClient
+    const response = await apiClient.post(API_ROUTES.AUTH.SET_PIN, data);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Mutation hook for set pin (after password verification)
+ */
+export const useSetPin = (
+  options?: UseMutationOptions<ApiResponse, Error, SetPinRequest>
+) => {
+  return useMutation<ApiResponse, Error, SetPinRequest>({
+    mutationFn: setPin,
+    ...options,
+  });
+};
+
+/**
+ * Verify password before setting/changing PIN
+ * This is the first step in the PIN setup/change process
+ */
+export interface VerifyPasswordForPinRequest {
+  password: string;
+}
+
+export const verifyPasswordForPin = async (data: VerifyPasswordForPinRequest): Promise<ApiResponse> => {
+  try {
+    // Token is automatically included by apiClient
+    const response = await apiClient.post(API_ROUTES.AUTH.VERIFY_PASSWORD_FOR_PIN, data);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Mutation hook for verify password for PIN
+ */
+export const useVerifyPasswordForPin = (
+  options?: UseMutationOptions<ApiResponse, Error, VerifyPasswordForPinRequest>
+) => {
+  return useMutation<ApiResponse, Error, VerifyPasswordForPinRequest>({
+    mutationFn: verifyPasswordForPin,
+    ...options,
+  });
+};
+
+/**
  * Logout user
  */
 export const logoutUser = async (): Promise<ApiResponse> => {
@@ -378,6 +438,35 @@ export const resetPassword = async (data: ResetPasswordRequest): Promise<ApiResp
 export const useResetPassword = (options?: UseMutationOptions<ApiResponse, Error, ResetPasswordRequest>) => {
   return useMutation<ApiResponse, Error, ResetPasswordRequest>({
     mutationFn: resetPassword,
+    ...options,
+  });
+};
+
+/**
+ * Update user profile
+ */
+export interface UpdateProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  countryId?: string | number;
+}
+
+export const updateProfile = async (data: UpdateProfileRequest): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.put(API_ROUTES.AUTH.ME, data);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Mutation hook for update profile
+ */
+export const useUpdateProfile = (options?: UseMutationOptions<ApiResponse, Error, UpdateProfileRequest>) => {
+  return useMutation<ApiResponse, Error, UpdateProfileRequest>({
+    mutationFn: updateProfile,
     ...options,
   });
 };

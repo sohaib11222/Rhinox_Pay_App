@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,19 +8,23 @@ import {
   StatusBar,
   Dimensions,
   RefreshControl,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { useGetNotifications } from '../../queries/notification.queries';
+import { useMarkNotificationAsRead } from '../../mutations/notification.mutations';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
 
 interface Notification {
   id: string;
-  type: 'transaction' | 'general';
+  type: 'transaction' | 'general' | 'p2p' | 'conversion' | 'promotional';
   icon: any;
   iconType: 'navigation' | 'user-multiple' | 'arrow-reload' | 'general';
   title: string;
@@ -30,6 +34,10 @@ interface Notification {
   date: string;
   hasViewTransaction?: boolean;
   image?: any;
+  isRead?: boolean;
+  reference?: string;
+  link?: string;
+  originalType?: string;
 }
 
 const NotificationsScreen = () => {
@@ -69,61 +77,156 @@ const NotificationsScreen = () => {
     }, [navigation])
   );
 
-  // Sample notification data - TODO: Replace with API call
-  const [notifications] = useState<Notification[]>([
-    {
-      id: '1',
-      type: 'transaction',
-      icon: require('../../assets/Vector (40).png'),
-      iconType: 'navigation',
-      title: 'Bank Transfer Successful',
-      amount: 'N50,000',
-      status: 'Success',
-      date: '20 Oct, 2025',
-      hasViewTransaction: true,
+  // Format amount for display
+  const formatAmount = (amount: string | number, currency: string) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0.00';
+    const formatted = num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return currency === 'NGN' ? `N${formatted}` : currency === 'USD' ? `$${formatted}` : `${currency} ${formatted}`;
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return dateString;
+    }
+  };
+
+  // Map API notification type to UI type
+  const mapTypeToUI = (type: string): 'transaction' | 'general' | 'p2p' | 'conversion' | 'promotional' => {
+    switch (type?.toLowerCase()) {
+      case 'transaction':
+        return 'transaction';
+      case 'p2p':
+        return 'p2p';
+      case 'conversion':
+        return 'conversion';
+      case 'promotional':
+        return 'promotional';
+      case 'general':
+      default:
+        return 'general';
+    }
+  };
+
+  // Get icon based on notification type
+  const getNotificationIcon = (type: string, channel?: string) => {
+    if (type === 'transaction' || type === 'p2p' || type === 'conversion') {
+      if (channel === 'p2p' || type === 'p2p') {
+        return require('../../assets/user-multiple.png');
+      } else if (channel === 'conversion' || type === 'conversion') {
+        return require('../../assets/arrow-reload-horizontal.png');
+      } else {
+        return require('../../assets/Vector (40).png');
+      }
+    }
+    return require('../../assets/Group 49.png');
+  };
+
+  // Get icon type
+  const getIconType = (type: string, channel?: string): 'navigation' | 'user-multiple' | 'arrow-reload' | 'general' => {
+    if (type === 'transaction' || type === 'p2p' || type === 'conversion') {
+      if (channel === 'p2p' || type === 'p2p') {
+        return 'user-multiple';
+      } else if (channel === 'conversion' || type === 'conversion') {
+        return 'arrow-reload';
+      } else {
+        return 'navigation';
+      }
+    }
+    return 'general';
+  };
+
+  // Map API status to UI status
+  const mapStatusToUI = (status: string): string => {
+    switch (status?.toLowerCase()) {
+      case 'success':
+      case 'completed':
+        return 'Success';
+      case 'pending':
+        return 'Pending';
+      case 'failed':
+        return 'Failed';
+      default:
+        return status || 'Success';
+    }
+  };
+
+  // Determine notification type for filtering
+  const getFilterType = (type: string): 'transaction' | 'general' => {
+    if (type === 'transaction' || type === 'p2p' || type === 'conversion') {
+      return 'transaction';
+    }
+    return 'general';
+  };
+
+  // Fetch notifications from API
+  const {
+    data: notificationsData,
+    isLoading: isLoadingNotifications,
+    isError: isNotificationsError,
+    error: notificationsError,
+    refetch: refetchNotifications,
+  } = useGetNotifications({
+    limit: 50,
+    offset: 0,
+  });
+
+  // Mark notification as read mutation
+  const markAsReadMutation = useMarkNotificationAsRead({
+    onError: (error: any) => {
+      console.error('[NotificationsScreen] Error marking notification as read:', error);
     },
-    {
-      id: '2',
-      type: 'transaction',
-      icon: require('../../assets/user-multiple.png'),
-      iconType: 'user-multiple',
-      title: 'P2P Transaction completed',
-      amount: 'N50,000',
-      status: 'Success',
-      date: '20 Oct, 2025',
-      hasViewTransaction: true,
-    },
-    {
-      id: '3',
-      type: 'transaction',
-      icon: require('../../assets/arrow-reload-horizontal.png'),
-      iconType: 'arrow-reload',
-      title: 'NGN - GHC conversion completed',
-      amount: 'N50,000',
-      status: 'Success',
-      date: '20 Oct, 2025',
-      hasViewTransaction: true,
-    },
-    {
-      id: '4',
-      type: 'general',
-      icon: require('../../assets/Group 49.png'),
-      iconType: 'general',
-      title: 'Get the best service',
-      description: 'Get the best service on rhinoxpay, swap easily between currencies and buy crypto easily via p2p',
-      date: '20 Oct, 2025',
-    },
-    {
-      id: '5',
-      type: 'general',
-      icon: require('../../assets/Group 49.png'),
-      iconType: 'general',
-      title: 'Get the best service',
-      description: 'Get the best service on rhinoxpay, swap easily between currencies and buy crypto easily via p2p',
-      date: '20 Oct, 2025',
-      image: require('../../assets/CoinVertical.png'),
-    },
-  ]);
+  });
+
+  // Transform API data to UI format
+  const notifications: Notification[] = useMemo(() => {
+    if (!notificationsData?.data || !Array.isArray(notificationsData.data)) {
+      return [];
+    }
+
+    return notificationsData.data.map((notif: any) => {
+      const uiType = mapTypeToUI(notif.type);
+      const filterType = getFilterType(uiType);
+      const icon = getNotificationIcon(uiType, notif.metadata?.channel);
+      const iconType = getIconType(uiType, notif.metadata?.channel);
+      
+      // Format amount if available
+      const amount = notif.amount && notif.currency
+        ? formatAmount(notif.amount, notif.currency)
+        : undefined;
+
+      // Format date
+      const date = formatDate(notif.createdAt || new Date().toISOString());
+
+      // Map status
+      const status = mapStatusToUI(notif.status || 'success');
+
+      // Determine if has view transaction button
+      const hasViewTransaction = (uiType === 'transaction' || uiType === 'p2p' || uiType === 'conversion') && notif.link;
+
+      return {
+        id: String(notif.id),
+        type: filterType, // Use filterType for tab filtering
+        icon: icon,
+        iconType: iconType,
+        title: notif.title || notif.message || 'Notification',
+        amount: amount,
+        status: status,
+        description: notif.message || notif.description,
+        date: date,
+        hasViewTransaction: hasViewTransaction,
+        isRead: notif.isRead || false,
+        reference: notif.reference,
+        link: notif.link,
+        // Store original type for reference
+        originalType: uiType,
+      };
+    });
+  }, [notificationsData?.data]);
 
   const filteredNotifications = notifications.filter((notification) => {
     if (activeTab === 'all') return true;
@@ -133,25 +236,37 @@ const NotificationsScreen = () => {
   });
 
   const handleViewTransaction = (notification: Notification) => {
-    // TODO: Navigate to transaction details
-    console.log('View transaction:', notification.id);
+    // Mark as read if not already read
+    if (!notification.isRead) {
+      markAsReadMutation.mutate(parseInt(notification.id));
+    }
+
+    // TODO: Navigate to transaction details using notification.link or reference
+    console.log('View transaction:', notification.id, notification.link);
+    
+    // You can navigate based on the link or reference
+    if (notification.link) {
+      // Parse link and navigate accordingly
+      // Example: /transactions/123 -> navigate to transaction details
+    }
+  };
+
+  const handleNotificationPress = (notification: Notification) => {
+    // Mark as read if not already read
+    if (!notification.isRead) {
+      markAsReadMutation.mutate(parseInt(notification.id));
+    }
   };
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest notifications
-        // - Update notification read status
-        // - Fetch latest transaction notifications
-        // - Fetch latest general notifications
-        // - Update any other data that needs refreshing
-        console.log('Refreshing notifications data...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[NotificationsScreen] Refreshing notifications data...');
+    try {
+      await refetchNotifications();
+      console.log('[NotificationsScreen] Notifications data refreshed successfully');
+    } catch (error) {
+      console.error('[NotificationsScreen] Error refreshing notifications data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -221,8 +336,35 @@ const NotificationsScreen = () => {
       >
         <View style={styles.notificationsCard}>
           <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
-          <View style={styles.notificationsContainer}>
-            {filteredNotifications.map((notification) => {
+          {isLoadingNotifications ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading notifications...
+              </ThemedText>
+            </View>
+          ) : isNotificationsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                {notificationsError?.message || 'Failed to load notifications. Please try again.'}
+              </ThemedText>
+              <TouchableOpacity
+                style={[styles.retryButton, { marginTop: 20 }]}
+                onPress={() => refetchNotifications()}
+              >
+                <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
+          ) : filteredNotifications.length === 0 ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                No notifications found
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.notificationsContainer}>
+              {filteredNotifications.map((notification) => {
               const itemHeight = notification.type === 'transaction' 
                 ? 185 * SCALE 
                 : notification.image 
@@ -230,12 +372,15 @@ const NotificationsScreen = () => {
                   : 135 * SCALE;
               
               return (
-                <View 
-                  key={notification.id} 
+                <TouchableOpacity
+                  key={notification.id}
                   style={[
                     styles.notificationItem,
-                    { height: itemHeight }
+                    { height: itemHeight },
+                    !notification.isRead && styles.notificationItemUnread,
                   ]}
+                  onPress={() => handleNotificationPress(notification)}
+                  activeOpacity={0.7}
                 >
                   {/* Icon */}
                   <View style={styles.notificationIconContainer}>
@@ -298,10 +443,11 @@ const NotificationsScreen = () => {
                       </TouchableOpacity>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
-          </View>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -505,6 +651,23 @@ const styles = StyleSheet.create({
     fontSize: 8 * 1,
     fontWeight: '300',
     color: '#A9EF45',
+  },
+  notificationItemUnread: {
+    borderColor: 'rgba(169, 239, 69, 0.5)',
+    borderWidth: 1,
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 12 * SCALE,
+    paddingHorizontal: 24 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
   },
 });
 

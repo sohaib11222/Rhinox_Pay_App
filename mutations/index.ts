@@ -36,3 +36,9 @@ export * from './transfer.mutations';
 // Wallet
 export * from './wallet.mutations';
 
+// Support
+export * from './support.mutations';
+
+// Notification
+export * from './notification.mutations';
+

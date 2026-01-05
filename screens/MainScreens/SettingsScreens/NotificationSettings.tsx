@@ -6,10 +6,13 @@ import {
   Dimensions,
   StatusBar,
   Switch,
+  ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
+import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -49,6 +52,23 @@ const NotificationSettings = () => {
     // TODO: Implement API call to save notification preferences
   };
 
+  // Pull-to-refresh functionality
+  const handleRefresh = async () => {
+    console.log('[NotificationSettings] Refreshing notification settings...');
+    try {
+      // TODO: Replace with actual API call to fetch notification preferences
+      // For now, just simulate a refresh
+      console.log('[NotificationSettings] Notification settings refreshed successfully');
+    } catch (error) {
+      console.error('[NotificationSettings] Error refreshing notification settings:', error);
+    }
+  };
+
+  const { refreshing, onRefresh } = usePullToRefresh({
+    onRefresh: handleRefresh,
+    refreshDelay: 2000,
+  });
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1A2D50" />
@@ -65,32 +85,48 @@ const NotificationSettings = () => {
         <View style={styles.headerSpacer} />
       </View>
 
-      {/* Notifications Card */}
-      <View style={styles.cardContainer}>
-        <View style={styles.card}>
-          {/* Section Title */}
-          <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
-          
-          {/* Notification Options */}
-          {notifications.map((notification, index) => (
-            <View key={notification.id}>
-              <View style={styles.notificationItem}>
-                <ThemedText style={styles.notificationTitle}>
-                  {notification.title}
-                </ThemedText>
-                <Switch
-                  value={notification.enabled}
-                  onValueChange={() => handleToggle(notification.id)}
-                  trackColor={{ false: '#3E3E3E', true: '#A9EF45' }}
-                  thumbColor={notification.enabled ? '#FFFFFF' : '#F4F3F4'}
-                  ios_backgroundColor="#3E3E3E"
-                />
+      {/* Scrollable Content with Pull-to-Refresh */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#A9EF45"
+            colors={['#A9EF45']}
+            progressBackgroundColor="#020c19"
+          />
+        }
+      >
+        {/* Notifications Card */}
+        <View style={styles.cardContainer}>
+          <View style={styles.card}>
+            {/* Section Title */}
+            <ThemedText style={styles.sectionTitle}>Notifications</ThemedText>
+            
+            {/* Notification Options */}
+            {notifications.map((notification, index) => (
+              <View key={notification.id}>
+                <View style={styles.notificationItem}>
+                  <ThemedText style={styles.notificationTitle}>
+                    {notification.title}
+                  </ThemedText>
+                  <Switch
+                    value={notification.enabled}
+                    onValueChange={() => handleToggle(notification.id)}
+                    trackColor={{ false: '#3E3E3E', true: '#A9EF45' }}
+                    thumbColor={notification.enabled ? '#FFFFFF' : '#F4F3F4'}
+                    ios_backgroundColor="#3E3E3E"
+                  />
+                </View>
+                {index < notifications.length - 1 && <View style={styles.separator} />}
               </View>
-              {index < notifications.length - 1 && <View style={styles.separator} />}
-            </View>
-          ))}
+            ))}
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -125,9 +161,15 @@ const styles = StyleSheet.create({
   headerSpacer: {
     width: 40 * SCALE,
   },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingTop: 20 * SCALE,
+    paddingBottom: 20 * SCALE,
+  },
   cardContainer: {
     paddingHorizontal: SCREEN_WIDTH * 0.047,
-    paddingTop: 20 * SCALE,
   },
   card: {
     backgroundColor: '#FFFFFF08',

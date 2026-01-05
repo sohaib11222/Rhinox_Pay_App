@@ -8,7 +8,6 @@ import {
   ScrollView,
   Modal,
   Image,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ import { ThemedText } from '../../components';
 import { useSubmitKYC } from '../../mutations/kyc.mutations';
 import { useGetCountries } from '../../queries/country.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../utils/customAlert';
 
 const ID_TYPES = [
   { id: 1, name: 'International Passport', apiValue: 'passport' },
@@ -91,25 +91,19 @@ const KYC = () => {
   const submitKYCMutation = useSubmitKYC({
     onSuccess: (data) => {
       console.log('[KYC] Submission successful:', JSON.stringify(data, null, 2));
-      Alert.alert(
+      showSuccessAlert(
         'KYC Submitted',
         'Your KYC information has been submitted successfully.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              navigation.navigate('FacialRegister' as never);
-            },
-          },
-        ]
+        () => {
+          navigation.navigate('FacialRegister' as never);
+        }
       );
     },
     onError: (error: any) => {
       console.error('[KYC] Submission error:', error);
-      Alert.alert(
+      showErrorAlert(
         'Submission Failed',
-        error.message || 'Failed to submit KYC information. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Failed to submit KYC information. Please try again.'
       );
     },
   });
@@ -140,7 +134,7 @@ const KYC = () => {
 
   const handleProceed = () => {
     if (!isFormValid()) {
-      Alert.alert('Validation Error', 'Please fill in all required fields.');
+      showWarningAlert('Validation Error', 'Please fill in all required fields.');
       return;
     }
 

@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StatusBar,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
@@ -13,6 +12,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { useSubmitFaceVerification } from '../../mutations/kyc.mutations';
+import { showErrorAlert, showWarningAlert, showAlert } from '../../utils/customAlert';
 
 // Face detector is not available in Expo Go - using simulation mode
 // To enable real face detection, create a development build:
@@ -51,21 +51,22 @@ const FacialRegister = () => {
       console.error('[FacialRegister] Face verification error:', error);
       // Reset scan status on error
       setScanStatus('failed');
-      Alert.alert(
-        'Verification Failed',
-        error.message || 'Failed to submit face verification. Please try again.',
-        [
+      showAlert({
+        title: 'Verification Failed',
+        message: error.message || 'Failed to submit face verification. Please try again.',
+        type: 'error',
+        buttons: [
           {
             text: 'Retry',
             onPress: handleRetry,
           },
           {
             text: 'Continue Later',
-            onPress: handleHome,
             style: 'cancel',
+            onPress: handleHome,
           },
-        ]
-      );
+        ],
+      });
     },
   });
 
@@ -97,10 +98,9 @@ const FacialRegister = () => {
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
-        Alert.alert(
+        showWarningAlert(
           'Camera Permission Required',
-          'Please grant camera permission to use face recognition.',
-          [{ text: 'OK' }]
+          'Please grant camera permission to use face recognition.'
         );
         return;
       }
@@ -122,10 +122,10 @@ const FacialRegister = () => {
     noFaceTimeoutRef.current = setTimeout(() => {
       if (scanStatusRef.current === 'scanning') {
         setScanStatus('failed');
-        Alert.alert(
+        showWarningAlert(
           'Face Not Detected',
           'Please ensure your face is clearly visible in the frame and try again.',
-          [{ text: 'OK', onPress: handleRetry }]
+          handleRetry
         );
       }
     }, 10000);

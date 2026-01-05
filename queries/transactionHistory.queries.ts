@@ -240,29 +240,60 @@ export const useGetP2PTransactions = (
 
 export interface GetBillPaymentsParams {
   currency?: string;
-  status?: 'All' | 'Completed' | 'Pending' | 'Failed';
-  categoryCode?: 'airtime' | 'data' | 'electricity' | 'cable_tv' | 'betting' | 'internet';
-  period?: 'D' | 'W' | 'M' | 'Custom';
+  status?: string; // API expects lowercase: 'completed', 'pending', 'failed'
+  categoryCode?: string; // API expects: 'airtime', 'data', 'electricity', 'cable_tv', 'betting', 'internet'
+  period?: string; // 'D', 'W', 'M', or 'Custom'
   startDate?: string;
   endDate?: string;
   limit?: number;
   offset?: number;
 }
 
+// Helper to map UI status to API status
+export const mapBillPaymentStatusToAPI = (status: string): string | undefined => {
+  if (!status || status === 'All') return undefined;
+  const statusMap: { [key: string]: string } = {
+    'Completed': 'completed',
+    'Pending': 'pending',
+    'Failed': 'failed',
+  };
+  return statusMap[status] || status.toLowerCase();
+};
+
+// Helper to map UI category/provider to API categoryCode
+export const mapBillPaymentCategoryToAPI = (type: string): string | undefined => {
+  if (!type || type === 'All') return undefined;
+  const categoryMap: { [key: string]: string } = {
+    'MTN': 'airtime', // Could be airtime or data
+    'Airtel': 'airtime',
+    'GLO': 'airtime',
+    '9mobile': 'airtime',
+    'DSTV': 'cable_tv',
+    'GOTV': 'cable_tv',
+    'EKEDC': 'electricity',
+    'PHED': 'electricity',
+    'Spectranet': 'internet',
+  };
+  return categoryMap[type];
+};
+
 export const getBillPayments = async (params?: GetBillPaymentsParams): Promise<ApiResponse> => {
   try {
     console.log('[getBillPayments] Calling bill payments API with params:', JSON.stringify(params, null, 2));
-    // Build query string from params
-    let url = API_ROUTES.TRANSACTION_HISTORY.GET_BILL_PAYMENTS;
+    // Build query string from params, filtering out undefined values
+    const queryParams: any = {};
     if (params) {
-      const queryString = Object.entries(params)
-        .filter(([_, value]) => value !== undefined && value !== null)
-        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-        .join('&');
-      if (queryString) {
-        url += `?${queryString}`;
-      }
+      if (params.currency) queryParams.currency = params.currency;
+      if (params.status) queryParams.status = params.status;
+      if (params.categoryCode) queryParams.categoryCode = params.categoryCode;
+      if (params.period) queryParams.period = params.period;
+      if (params.startDate) queryParams.startDate = params.startDate;
+      if (params.endDate) queryParams.endDate = params.endDate;
+      if (params.limit !== undefined) queryParams.limit = params.limit;
+      if (params.offset !== undefined) queryParams.offset = params.offset;
     }
+    
+    const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_BILL_PAYMENTS, queryParams);
     const response = await apiClient.get(url);
     console.log('[getBillPayments] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;

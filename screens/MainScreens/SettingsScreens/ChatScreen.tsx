@@ -1,4 +1,4 @@
-import React, { useState, useRef, useLayoutEffect } from 'react';
+import React, { useState, useRef, useLayoutEffect, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,21 +11,30 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  ActivityIndicator,
+  ActionSheetIOS,
+  Keyboard,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetSupportChatDetails } from '../../../queries/support.queries';
+import { useSendSupportMessage, useMarkSupportMessagesRead } from '../../../mutations/support.mutations';
+import { showErrorAlert, showWarningAlert, showAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
 interface Message {
-  id: string;
+  id: string | number;
   text: string;
   sender: 'user' | 'agent';
   timestamp: string;
+  imageUri?: string | undefined;
+  localImageUri?: string | undefined; // For images that haven't been uploaded yet
 }
 
 const ChatScreen = () => {
@@ -33,33 +42,157 @@ const ChatScreen = () => {
   const route = useRoute();
   const { chatName, chatEmail, reason, chatId } = route.params as any;
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: 'I have made payment',
-      sender: 'user',
-      timestamp: 'Now',
-    },
-    {
-      id: '2',
-      text: 'Coin will be released soon',
-      sender: 'agent',
-      timestamp: '2 min ago',
-    },
-    {
-      id: '3',
-      text: 'I also want to complain about something else that has been goin on in my account',
-      sender: 'user',
-      timestamp: 'Now',
-    },
-    {
-      id: '4',
-      text: 'I will get back to you with more information',
-      sender: 'agent',
-      timestamp: '2 min ago',
-    },
-  ]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
+  // Store image URIs for sent messages (keyed by message text + timestamp)
+  const [sentImageMap, setSentImageMap] = useState<Map<string, string>>(new Map());
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Fetch chat details with messages
+  const {
+    data: chatDetailsData,
+    isLoading: isLoadingChatDetails,
+    isError: isChatDetailsError,
+    error: chatDetailsError,
+    refetch: refetchChatDetails,
+  } = useGetSupportChatDetails(chatId ? Number(chatId) : 0);
+
+  // Transform API messages to UI format
+  const messages: Message[] = useMemo(() => {
+    const apiMessages = chatDetailsData?.data?.messages || [];
+    if (!Array.isArray(apiMessages)) {
+      return [];
+    }
+    
+    const transformedMessages: Message[] = apiMessages.map((msg: any) => {
+      // Determine if message is from user or agent
+      // API typically returns senderType or we can check if senderId matches the chat owner
+      // For now, we'll check senderType first, then fallback to checking if it's not an admin/agent
+      const isUserMessage = msg.senderType === 'user' || 
+                           (msg.senderType !== 'admin' && msg.senderType !== 'agent' && !msg.isFromSupport);
+      
+      // Format timestamp
+      let formattedTimestamp = 'Now';
+      if (msg.createdAt) {
+        try {
+          const date = new Date(msg.createdAt);
+          const now = new Date();
+          const diffMs = now.getTime() - date.getTime();
+          const diffMins = Math.floor(diffMs / 60000);
+          
+          if (diffMins < 1) {
+            formattedTimestamp = 'Now';
+          } else if (diffMins < 60) {
+            formattedTimestamp = `${diffMins} min ago`;
+          } else if (diffMins < 1440) {
+            const hours = Math.floor(diffMins / 60);
+            formattedTimestamp = `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+          } else {
+            formattedTimestamp = date.toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          }
+        } catch {
+          formattedTimestamp = 'Now';
+        }
+      }
+
+      const messageText = msg.message || msg.text || '';
+      
+      // Check if this message has an associated image in our sent image map
+      // Match by message text (which includes "[Image attached]" for image messages)
+      const storedImageUri = sentImageMap.get(messageText);
+      
+      // Use API image URL if available, otherwise use stored image URI
+      const imageUri = msg.imageUrl || msg.attachment?.url || storedImageUri || undefined;
+
+      return {
+        id: msg.id,
+        text: messageText,
+        sender: (isUserMessage ? 'user' : 'agent') as 'user' | 'agent',
+        timestamp: formattedTimestamp,
+        imageUri: imageUri,
+        // If we have a stored image and no API image, use localImageUri
+        localImageUri: (!msg.imageUrl && !msg.attachment?.url && storedImageUri) ? storedImageUri : undefined,
+      };
+    });
+
+    // Add pending image message if exists
+    if (pendingImageUri) {
+      transformedMessages.push({
+        id: `pending-${Date.now()}`,
+        text: message.trim() || '[Image attached]',
+        sender: 'user' as const,
+        timestamp: 'Now',
+        localImageUri: pendingImageUri,
+      } as Message);
+    }
+
+    return transformedMessages;
+  }, [chatDetailsData?.data?.messages, pendingImageUri, message, sentImageMap]);
+
+  // Mark messages as read when chat is opened
+  const markAsReadMutation = useMarkSupportMessagesRead(chatId ? Number(chatId) : 0, {
+    onSuccess: () => {
+      console.log('[ChatScreen] Messages marked as read');
+      // Refetch chat details to update unread count
+      refetchChatDetails();
+    },
+    onError: (error) => {
+      console.error('[ChatScreen] Error marking messages as read:', error);
+    },
+  });
+
+  // Mark messages as read when component mounts or chatId changes
+  useEffect(() => {
+    if (chatId) {
+      markAsReadMutation.mutate();
+    }
+  }, [chatId]);
+
+  // Send message mutation
+  const sendMessageMutation = useSendSupportMessage(chatId ? Number(chatId) : 0, {
+    onSuccess: (data) => {
+      console.log('[ChatScreen] Message sent successfully:', data);
+      setMessage('');
+      // Keep pendingImageUri until refetch completes to show image in the message
+      // The image is stored in sentImageMap, so it will persist after refetch
+      // Refetch chat details to get new message
+      refetchChatDetails().then(() => {
+        // Clear pending image after refetch completes (image is now in sentImageMap)
+        setPendingImageUri(null);
+        // Scroll to bottom after refetch
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      });
+      // Scroll to bottom immediately
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    },
+    onError: (error: any) => {
+      console.error('[ChatScreen] Error sending message:', error);
+      setPendingImageUri(null);
+      // Remove image from map on error
+      setSentImageMap(prev => {
+        const newMap = new Map(prev);
+        // Find and remove the image entry
+        for (const [key, value] of newMap.entries()) {
+          if (value === pendingImageUri) {
+            newMap.delete(key);
+            break;
+          }
+        }
+        return newMap;
+      });
+      showErrorAlert('Error', error?.message || 'Failed to send message. Please try again.');
+    },
+  });
 
   // Hide bottom tab bar when screen is focused
   useFocusEffect(
@@ -112,32 +245,196 @@ const ChatScreen = () => {
     }
   }, [navigation]);
 
-  const handleSend = () => {
-    if (message.trim()) {
-      const newMessage: Message = {
-        id: Date.now().toString(),
-        text: message.trim(),
-        sender: 'user',
-        timestamp: 'Now',
-      };
-      setMessages((prevMessages) => [...prevMessages, newMessage]);
+  // Request image picker permissions
+  useEffect(() => {
+    (async () => {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        console.log('[ChatScreen] Media library permission not granted');
+      }
+    })();
+  }, []);
+
+  // Handle keyboard show/hide
+  useEffect(() => {
+    const keyboardWillShow = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+        // Scroll to bottom when keyboard appears
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    const keyboardWillHide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+
+    return () => {
+      keyboardWillShow.remove();
+      keyboardWillHide.remove();
+    };
+  }, []);
+
+  // Handle image picker
+  const handleImagePicker = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            handleTakePhoto();
+          } else if (buttonIndex === 2) {
+            handlePickImage();
+          }
+        }
+      );
+    } else {
+      showAlert({
+        title: 'Select Image',
+        message: 'Choose an option',
+        type: 'info',
+        buttons: [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Take Photo', onPress: handleTakePhoto },
+          { text: 'Choose from Library', onPress: handlePickImage },
+        ],
+      });
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showWarningAlert('Permission Required', 'Camera permission is required to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedImage(result.assets[0].uri);
+        // Show preview - don't auto-send
+      }
+    } catch (error: any) {
+      console.error('[ChatScreen] Error taking photo:', error);
+      showErrorAlert('Error', 'Failed to take photo. Please try again.');
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedImage(result.assets[0].uri);
+        // Show preview - don't auto-send
+      }
+    } catch (error: any) {
+      console.error('[ChatScreen] Error picking image:', error);
+      showErrorAlert('Error', 'Failed to pick image. Please try again.');
+    }
+  };
+
+  const handleSendImage = async (imageUri: string) => {
+    if (!chatId) {
+      showErrorAlert('Error', 'Chat ID not found. Please try again.');
+      return;
+    }
+
+    // Check if chat is resolved or appealed (can't send messages)
+    if (chatDetailsData?.data?.status === 'resolved' || chatDetailsData?.data?.status === 'appealed') {
+      showWarningAlert('Chat Closed', 'This chat has been closed. You cannot send messages to resolved or appealed chats.');
+      setSelectedImage(null);
+      return;
+    }
+
+    try {
+      // Store image URI for display while sending
+      setPendingImageUri(imageUri);
+      
+      // Create message text - if there's text, include it, otherwise just indicate image
+      const imageMessage = message.trim() 
+        ? `${message.trim()}\n[Image attached]`
+        : '[Image attached]';
+      
+      // Store the image URI with the message text as the key
+      // This allows us to match it to the message after it's sent
+      setSentImageMap(prev => {
+        const newMap = new Map(prev);
+        newMap.set(imageMessage, imageUri);
+        return newMap;
+      });
+      
+      sendMessageMutation.mutate({
+        message: imageMessage,
+      });
+
+      // Clear selected image after sending
+      setSelectedImage(null);
       setMessage('');
-      // Scroll to bottom after sending
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-      // TODO: Implement API call to send message
+    } catch (error: any) {
+      console.error('[ChatScreen] Error sending image:', error);
+      setPendingImageUri(null);
+      showErrorAlert('Error', 'Failed to send image. Please try again.');
+    }
+  };
+
+  const handleSend = () => {
+    if (!message.trim() && !selectedImage) {
+      return;
+    }
+
+    if (!chatId) {
+      showErrorAlert('Error', 'Chat ID not found. Please try again.');
+      return;
+    }
+
+    // Check if chat is resolved or appealed (can't send messages)
+    if (chatDetailsData?.data?.status === 'resolved' || chatDetailsData?.data?.status === 'appealed') {
+      showWarningAlert('Chat Closed', 'This chat has been closed. You cannot send messages to resolved or appealed chats.');
+      return;
+    }
+
+    // If there's a selected image, send it with optional text
+    if (selectedImage) {
+      handleSendImage(selectedImage);
+    } else if (message.trim()) {
+      // Send text message via API
+      sendMessageMutation.mutate({
+        message: message.trim(),
+      });
     }
   };
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing chat messages...');
-        resolve();
-      }, 1000);
-    });
+    console.log('[ChatScreen] Refreshing chat messages...');
+    try {
+      await refetchChatDetails();
+      console.log('[ChatScreen] Chat messages refreshed successfully');
+    } catch (error) {
+      console.error('[ChatScreen] Error refreshing chat messages:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -146,11 +443,7 @@ const ChatScreen = () => {
   });
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
 
       {/* Header */}
@@ -173,103 +466,201 @@ const ChatScreen = () => {
         </View>
       </View>
 
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.chatContainer}
-        contentContainerStyle={styles.chatContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#A9EF45"
-            colors={['#A9EF45']}
-            progressBackgroundColor="#020c19"
-          />
-        }
-      >
-        {/* Chat Start Indicator */}
-        <View style={styles.chatStartIndicator}>
-          <ThemedText style={styles.chatStartText}>You started a chat</ThemedText>
+      {isLoadingChatDetails ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#A9EF45" />
+          <ThemedText style={styles.loadingText}>Loading chat...</ThemedText>
         </View>
-
-        {/* User Details Card */}
-        <View style={styles.detailsCard}>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Name</ThemedText>
-            <ThemedText style={styles.detailValue}>{chatName || 'Qamardeen AbdulMalik'}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Email</ThemedText>
-            <ThemedText style={styles.detailValue}>{chatEmail || 'abcdefgh@gmail.com'}</ThemedText>
-          </View>
-          <View style={styles.detailRow}>
-            <ThemedText style={styles.detailLabel}>Reason</ThemedText>
-            <ThemedText style={styles.detailValue}>{reason || 'Payment Support'}</ThemedText>
-          </View>
-        </View>
-
-        {/* Messages */}
-        {messages.map((msg) => (
-          <View
-            key={msg.id}
-            style={[
-              styles.messageContainer,
-              msg.sender === 'user' ? styles.userMessage : styles.agentMessage,
-            ]}
+      ) : isChatDetailsError ? (
+        <View style={styles.errorContainer}>
+          <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+          <ThemedText style={styles.errorText}>
+            {chatDetailsError?.message || 'Failed to load chat. Please try again.'}
+          </ThemedText>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => refetchChatDetails()}
           >
-            <View
-              style={[
-                styles.messageBubble,
-                msg.sender === 'user' ? styles.userBubble : styles.agentBubble,
-              ]}
-            >
-              <ThemedText
-                style={[
-                  styles.messageText,
-                  msg.sender === 'user' ? styles.userMessageText : styles.agentMessageText,
-                ]}
-              >
-                {msg.text}
+            <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.chatWrapper}>
+          <ScrollView
+            ref={scrollViewRef}
+            style={styles.chatContainer}
+            contentContainerStyle={styles.chatContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#A9EF45"
+                colors={['#A9EF45']}
+                progressBackgroundColor="#020c19"
+              />
+            }
+          >
+          {/* Chat Start Indicator */}
+          <View style={styles.chatStartIndicator}>
+            <ThemedText style={styles.chatStartText}>You started a chat</ThemedText>
+          </View>
+
+          {/* User Details Card */}
+          <View style={styles.detailsCard}>
+            <View style={styles.detailRow}>
+              <ThemedText style={styles.detailLabel}>Name</ThemedText>
+              <ThemedText style={styles.detailValue}>
+                {chatDetailsData?.data?.name || chatName || 'N/A'}
               </ThemedText>
             </View>
-            <ThemedText style={styles.messageTimestamp}>{msg.timestamp}</ThemedText>
+            <View style={styles.detailRow}>
+              <ThemedText style={styles.detailLabel}>Email</ThemedText>
+              <ThemedText style={styles.detailValue}>
+                {chatDetailsData?.data?.email || chatEmail || 'N/A'}
+              </ThemedText>
+            </View>
+            <View style={styles.detailRow}>
+              <ThemedText style={styles.detailLabel}>Reason</ThemedText>
+              <ThemedText style={styles.detailValue}>
+                {chatDetailsData?.data?.reason || reason || 'N/A'}
+              </ThemedText>
+            </View>
           </View>
-        ))}
 
-        {/* Resolution Indicator */}
-        <View style={styles.resolutionIndicator}>
-          <MaterialCommunityIcons name="check-circle" size={12 * SCALE} color="#fff" />
-          <ThemedText style={styles.resolutionText}>This issue was marked as resolved</ThemedText>
+          {/* Messages */}
+          {messages.length > 0 ? (
+            messages.map((msg) => (
+              <View
+                key={String(msg.id)}
+                style={[
+                  styles.messageContainer,
+                  msg.sender === 'user' ? styles.userMessage : styles.agentMessage,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.messageBubble,
+                    msg.sender === 'user' ? styles.userBubble : styles.agentBubble,
+                  ]}
+                >
+                  {(msg.imageUri || msg.localImageUri) ? (
+                    <Image
+                      source={{ uri: msg.localImageUri || msg.imageUri }}
+                      style={styles.messageImage}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                  {(() => {
+                    // Clean up text - remove "[Image attached]" indicator if image is shown
+                    let displayText = msg.text || '';
+                    if (msg.imageUri || msg.localImageUri) {
+                      // If image is shown, remove the "[Image attached]" text
+                      displayText = displayText.replace(/\n\[Image attached\]/g, '').replace(/\[Image attached\]/g, '').trim();
+                    }
+                    // Only show text if there's actual content (not just empty after cleanup)
+                    return displayText ? (
+                      <ThemedText
+                        style={[
+                          styles.messageText,
+                          msg.sender === 'user' ? styles.userMessageText : styles.agentMessageText,
+                        ]}
+                      >
+                        {displayText}
+                      </ThemedText>
+                    ) : null;
+                  })()}
+                </View>
+                <ThemedText style={styles.messageTimestamp}>{msg.timestamp}</ThemedText>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyMessagesContainer}>
+              <ThemedText style={styles.emptyMessagesText}>No messages yet. Start the conversation!</ThemedText>
+            </View>
+          )}
+
+          {/* Resolution Indicator - Only show if chat is resolved */}
+          {chatDetailsData?.data?.status === 'resolved' && (
+            <View style={styles.resolutionIndicator}>
+              <MaterialCommunityIcons name="check-circle" size={12 * SCALE} color="#fff" />
+              <ThemedText style={styles.resolutionText}>This issue was marked as resolved</ThemedText>
+            </View>
+          )}
+          </ScrollView>
+
+          {/* Selected Image Preview */}
+          {selectedImage && (
+            <View style={styles.imagePreviewContainer}>
+              <Image
+                source={{ uri: selectedImage }}
+                style={styles.imagePreview}
+                resizeMode="cover"
+              />
+              <TouchableOpacity
+                style={styles.removeImageButton}
+                onPress={() => setSelectedImage(null)}
+              >
+                <MaterialCommunityIcons name="close-circle" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Message Input */}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            style={styles.keyboardAvoidingView}
+          >
+            <View style={styles.inputContainer}>
+              <TouchableOpacity 
+                style={styles.attachmentButton}
+                onPress={handleImagePicker}
+              >
+                <Image
+                  source={require('../../../assets/Vector (38).png')}
+                  style={styles.attachmentIcon}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+              <TextInput
+                style={styles.messageInput}
+                placeholder="Type message"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={message}
+                onChangeText={setMessage}
+                multiline
+                onFocus={() => {
+                  // Scroll to bottom when input is focused
+                  setTimeout(() => {
+                    scrollViewRef.current?.scrollToEnd({ animated: true });
+                  }, 100);
+                }}
+              />
+              <TouchableOpacity 
+                style={[
+                  styles.sendButton, 
+                  ((!message.trim() && !selectedImage) || sendMessageMutation.isPending || isLoadingChatDetails) && styles.sendButtonDisabled
+                ]} 
+                onPress={handleSend}
+                disabled={(!message.trim() && !selectedImage) || sendMessageMutation.isPending || isLoadingChatDetails}
+              >
+                {sendMessageMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Image
+                    source={require('../../../assets/Vector (39).png')}
+                    style={styles.sendIcon}
+                    resizeMode="cover"
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
         </View>
-      </ScrollView>
-
-      {/* Message Input */}
-      <View style={styles.inputContainer}>
-        <TouchableOpacity style={styles.attachmentButton}>
-          <Image
-            source={require('../../../assets/Vector (38).png')}
-            style={[{ marginBottom: -1, width: 17, height: 19 }]}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
-        <TextInput
-          style={styles.messageInput}
-          placeholder="Type message"
-          placeholderTextColor="rgba(255, 255, 255, 0.5)"
-          value={message}
-          onChangeText={setMessage}
-          multiline
-        />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-          <Image
-            source={require('../../../assets/Vector (39).png')}
-            style={[{ marginBottom: -1, width: 24, height: 24 }]}
-            resizeMode="cover"
-          />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+      )}
+    </View>
   );
 };
 
@@ -320,13 +711,19 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: '#A9EF45',
   },
+  chatWrapper: {
+    flex: 1,
+  },
   chatContainer: {
     flex: 1,
   },
   chatContent: {
     paddingHorizontal: 20 * SCALE,
     paddingTop: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
+    paddingBottom: 100 * SCALE,
+  },
+  keyboardAvoidingView: {
+    backgroundColor: 'transparent',
   },
   chatStartIndicator: {
     backgroundColor: '#A9EF451A',
@@ -433,18 +830,26 @@ const styles = StyleSheet.create({
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderRadius: 10 * 1,
     paddingHorizontal: 15 * SCALE,
     paddingVertical: 13 * SCALE,
     marginHorizontal: 20 * SCALE,
-    marginBottom: 20 * SCALE,
+    marginBottom: Platform.OS === 'ios' ? 20 * SCALE : 10 * SCALE,
     borderWidth: 0.3,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+    minHeight: 50 * SCALE,
   },
   attachmentButton: {
     marginRight: 12 * SCALE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 4 * SCALE,
+  },
+  attachmentIcon: {
+    width: 17,
+    height: 19,
   },
   messageInput: {
     flex: 1,
@@ -452,9 +857,100 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
     maxHeight: 100 * SCALE,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    textAlignVertical: 'center',
   },
   sendButton: {
     marginLeft: 5 * SCALE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 4 * SCALE,
+    minWidth: 32 * SCALE,
+    minHeight: 32 * SCALE,
+  },
+  sendIcon: {
+    width: 24,
+    height: 24,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  loadingText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 10 * SCALE,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+  },
+  errorText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#ff0000',
+    marginTop: 10 * SCALE,
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 10 * SCALE,
+    marginTop: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  emptyMessagesContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40 * SCALE,
+  },
+  emptyMessagesText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.5)',
+    textAlign: 'center',
+  },
+  imagePreviewContainer: {
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 10 * SCALE,
+    position: 'relative',
+  },
+  imagePreview: {
+    width: 150 * SCALE,
+    height: 150 * SCALE,
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -10 * SCALE,
+    right: -10 * SCALE,
+    backgroundColor: '#020c19',
+    borderRadius: 12 * SCALE,
+  },
+  messageImage: {
+    width: 200 * SCALE,
+    height: 200 * SCALE,
+    borderRadius: 10 * SCALE,
+    marginBottom: 8 * SCALE,
   },
 });
 

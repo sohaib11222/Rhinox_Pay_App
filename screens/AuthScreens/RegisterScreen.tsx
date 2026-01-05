@@ -10,7 +10,6 @@ import {
   Platform,
   ScrollView,
   Modal,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +18,7 @@ import { ThemedText } from '../../components';
 import { useRegister, useVerifyEmail, useResendVerification } from '../../mutations/auth.mutations';
 import { useGetCountries } from '../../queries/country.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../utils/customAlert';
 
 interface Country {
   id: number;
@@ -113,18 +113,16 @@ const RegisterScreen = () => {
         // Open email verification modal
         setShowEmailVerifyModal(true);
       } else {
-        Alert.alert(
+        showSuccessAlert(
           'Registration Successful',
-          'A 5-digit OTP code has been sent to your email address. Please verify your email to continue.',
-          [{ text: 'OK' }]
+          'A 5-digit OTP code has been sent to your email address. Please verify your email to continue.'
         );
       }
     },
     onError: (error: any) => {
-      Alert.alert(
+      showErrorAlert(
         'Registration Failed',
-        error.message || 'Failed to register. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Failed to register. Please try again.'
       );
     },
   });
@@ -147,26 +145,20 @@ const RegisterScreen = () => {
         console.error('[RegisterScreen] ERROR: Token not found after storage!');
       }
       
-      Alert.alert(
+      showSuccessAlert(
         'Email Verified',
         'Your email has been verified successfully. Crypto wallets have been initialized.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setShowEmailVerifyModal(false);
-              // Navigate to SetBiometrics screen
-              navigation.navigate('SetBiometrics' as never);
-            },
-          },
-        ]
+        () => {
+          setShowEmailVerifyModal(false);
+          // Navigate to SetBiometrics screen
+          navigation.navigate('SetBiometrics' as never);
+        }
       );
     },
     onError: (error: any) => {
-      Alert.alert(
+      showErrorAlert(
         'Verification Failed',
-        error.message || 'Invalid or expired OTP code. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Invalid or expired OTP code. Please try again.'
       );
     },
   });
@@ -178,10 +170,9 @@ const RegisterScreen = () => {
       setEmailResendClicked(true);
     },
     onError: (error: any) => {
-      Alert.alert(
+      showErrorAlert(
         'Resend Failed',
-        error.message || 'Failed to resend OTP. Please try again.',
-        [{ text: 'OK' }]
+        error.message || 'Failed to resend OTP. Please try again.'
       );
     },
   });
@@ -204,7 +195,7 @@ const RegisterScreen = () => {
 
   const handleRegister = () => {
     if (!isFormValid()) {
-      Alert.alert('Validation Error', 'Please fill in all required fields and accept the terms.');
+      showWarningAlert('Validation Error', 'Please fill in all required fields and accept the terms.');
       return;
     }
 
@@ -244,13 +235,13 @@ const RegisterScreen = () => {
 
   const handleVerifyEmail = () => {
     if (!userId) {
-      Alert.alert('Error', 'User ID not found. Please try registering again.');
+      showErrorAlert('Error', 'User ID not found. Please try registering again.');
       return;
     }
 
     const code = emailCode.join('');
     if (code.length !== 5) {
-      Alert.alert('Validation Error', 'Please enter the complete 5-digit code.');
+      showWarningAlert('Validation Error', 'Please enter the complete 5-digit code.');
       return;
     }
 
@@ -264,7 +255,7 @@ const RegisterScreen = () => {
   // Handle email resend
   const handleEmailResend = () => {
     if (!userId) {
-      Alert.alert('Error', 'User ID not found. Please try registering again.');
+      showErrorAlert('Error', 'User ID not found. Please try registering again.');
       return;
     }
 

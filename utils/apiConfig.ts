@@ -43,6 +43,8 @@ export const API_ROUTES = {
     RESEND_VERIFICATION: '/auth/resend-verification',
     REFRESH_TOKEN: '/auth/refresh',
     SETUP_PIN: '/auth/setup-pin',
+    SET_PIN: '/auth/set-pin',
+    VERIFY_PASSWORD_FOR_PIN: '/auth/verify-password-for-pin',
     MARK_FACE_VERIFIED: '/auth/mark-face-verified',
     FORGOT_PASSWORD: '/auth/forgot-password',
     VERIFY_PASSWORD_RESET_OTP: '/auth/verify-password-reset-otp',
@@ -227,6 +229,25 @@ export const API_ROUTES = {
     GET_P2P: '/transaction-history/p2p',
     GET_BILL_PAYMENTS: '/transaction-history/bill-payments',
     GET_DETAILS: '/transaction-history',
+  },
+
+  // Support Routes
+  SUPPORT: {
+    CREATE_CHAT: '/support/chats',
+    GET_CHATS: '/support/chats',
+    GET_CHAT_DETAILS: '/support/chats',
+    SEND_MESSAGE: '/support/chats',
+    MARK_MESSAGES_READ: '/support/chats',
+    GET_UNREAD_COUNT: '/support/chats/unread-count',
+  },
+
+  // Notification Routes
+  NOTIFICATION: {
+    GET_ALL: '/notifications',
+    GET_UNREAD_COUNT: '/notifications/unread-count',
+    MARK_AS_READ: '/notifications',
+    MARK_ALL_READ: '/notifications/read-all',
+    DELETE: '/notifications',
   },
 } as const;
 

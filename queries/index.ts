@@ -48,3 +48,12 @@ export * from './transfer.queries';
 // Wallet
 export * from './wallet.queries';
 
+// Support
+export * from './support.queries';
+
+// Notification
+export * from './notification.queries';
+
+// Transaction History
+export * from './transactionHistory.queries';
+

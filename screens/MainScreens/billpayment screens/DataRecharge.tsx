@@ -12,6 +12,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -22,8 +24,10 @@ import { useGetBillPaymentProviders, useGetBillPaymentPlans, useGetBillPaymentBe
 import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutations/billPayment.mutations';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
-import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import TransactionErrorModal from '../../components/TransactionErrorModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -107,6 +111,10 @@ const DataRecharge = ({ route }: any) => {
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
 
   // Fetch wallet balances
   const {
@@ -249,19 +257,32 @@ const DataRecharge = ({ route }: any) => {
   const {
     data: transactionsData,
     isLoading: isLoadingTransactions,
+    isError: isTransactionsError,
+    error: transactionsError,
     refetch: refetchTransactions,
   } = useGetBillPayments({
     categoryCode: 'data',
     limit: 10,
+    status: mapBillPaymentStatusToAPI('Completed') || 'completed', // Show completed transactions by default
   });
 
   // Transform transactions to UI format
+  // API response structure: { success: true, data: { summary: {...}, transactions: [...] } }
   const recentTransactions: RecentTransaction[] = useMemo(() => {
-    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) {
+    if (!transactionsData?.data) {
       return [];
     }
 
-    return transactionsData.data.map((tx: any) => {
+    // Handle both old format (array) and new format (object with transactions array)
+    const transactions = Array.isArray(transactionsData.data) 
+      ? transactionsData.data 
+      : transactionsData.data.transactions || [];
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      return [];
+    }
+
+    return transactions.map((tx: any) => {
       const provider = tx.provider || {};
       const logoUrl = provider.logoUrl 
         ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
@@ -278,13 +299,16 @@ const DataRecharge = ({ route }: any) => {
       }
 
       const amount = parseFloat(tx.amount || '0');
-      const date = tx.createdAt
-        ? new Date(tx.createdAt).toLocaleDateString('en-US', {
+      const date = tx.createdAt || tx.completedAt
+        ? new Date(tx.createdAt || tx.completedAt).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric'
           })
         : 'N/A';
+
+      // Format plan name - use plan.name or plan.dataAmount or plan.code
+      const planName = tx.plan?.name || tx.plan?.dataAmount || tx.plan?.code || '';
 
       return {
         id: String(tx.id),
@@ -292,11 +316,104 @@ const DataRecharge = ({ route }: any) => {
         network: provider.name || provider.code || '',
         amount: `N${formatBalance(amount)}`,
         date: date,
-        plan: tx.plan?.name || tx.plan?.dataAmount || '',
+        plan: planName,
         icon: logoUrl ? { uri: logoUrl } : icon,
       };
     });
   }, [transactionsData?.data]);
+
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+      enabled: !!selectedTransactionId,
+    }
+  );
+
+  // Handle transaction press
+  const handleTransactionPress = (transaction: RecentTransaction) => {
+    const transactionId = parseInt(transaction.id);
+    if (!isNaN(transactionId)) {
+      setSelectedTransactionId(transactionId);
+      // Store the transaction data for initial display
+      setSelectedTransaction(transaction);
+    }
+  };
+
+  // When transaction details are loaded, show the appropriate modal
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransaction) {
+      const details = transactionDetailsData.data;
+      const status = details.status || 'completed';
+      
+      // Map API status to UI status
+      const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
+        'completed': 'Successful',
+        'pending': 'Pending',
+        'failed': 'Failed',
+      };
+      const uiStatus = statusMap[status?.toLowerCase()] || 'Pending';
+
+      // Create transaction object for modal
+      const transactionForModal = {
+        id: String(details.id || selectedTransaction.id),
+        recipientName: `${details.category?.name || 'Data'} - ${details.provider?.name || selectedTransaction.network}`,
+        amountNGN: details.amount 
+          ? `N${formatBalance(parseFloat(details.amount))}`
+          : selectedTransaction.amount,
+        amountUSD: details.amount && details.currency === 'USD'
+          ? `$${formatBalance(parseFloat(details.amount))}`
+          : `$${formatBalance(parseFloat(details.amount || '0') * 0.001)}`,
+        date: details.createdAt
+          ? new Date(details.createdAt).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })
+          : selectedTransaction.date,
+        status: uiStatus,
+        paymentMethod: details.paymentMethod || 'Mobile Money',
+        transferAmount: details.amount 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.amount))}`
+          : selectedTransaction.amount,
+        fee: details.fee 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.fee))}`
+          : 'N0',
+        paymentAmount: details.totalAmount 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.totalAmount))}`
+          : selectedTransaction.amount,
+        billerType: details.provider?.code || details.provider?.name || selectedTransaction.network,
+        mobileNumber: details.accountNumber || selectedTransaction.phoneNumber,
+        plan: details.plan?.name || details.plan?.dataAmount || details.plan?.code || selectedTransaction.plan,
+        transactionId: details.reference || String(details.id),
+        dateTime: details.createdAt
+          ? new Date(details.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : selectedTransaction.date,
+        accountNumber: details.accountNumber || selectedTransaction.phoneNumber,
+        accountName: details.accountName || '',
+        country: details.country || 'NG',
+      };
+
+      if (uiStatus === 'Failed') {
+        setShowErrorModal(true);
+        setShowReceiptModal(false);
+      } else {
+        setShowReceiptModal(true);
+        setShowErrorModal(false);
+      }
+      setSelectedTransaction(transactionForModal);
+    }
+  }, [transactionDetailsData, selectedTransaction]);
 
   // Get recent beneficiaries for quick selection
   const recentBeneficiaries = useMemo(() => {
@@ -458,8 +575,8 @@ const DataRecharge = ({ route }: any) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 4) {
-      Alert.alert('Error', 'Please enter your PIN');
+    if (!pin || pin.length < 5) {
+      Alert.alert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -786,7 +903,15 @@ const DataRecharge = ({ route }: any) => {
         <View style={styles.recentTransactionsCard}>
           <View style={styles.recentTransactionsHeader}>
             <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
-            <TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                // Navigate to BillPaymentsScreen with data filter
+                // @ts-ignore - allow parent route name
+                navigation.navigate('BillPayments' as never, {
+                  initialCategory: 'Data',
+                });
+              }}
+            >
               <ThemedText style={styles.viewAllText}>View All</ThemedText>
             </TouchableOpacity>
           </View>
@@ -795,10 +920,28 @@ const DataRecharge = ({ route }: any) => {
             <View style={{ alignItems: 'center', paddingVertical: 40 }}>
               <ActivityIndicator size="small" color="#A9EF45" />
             </View>
+          ) : isTransactionsError ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+              <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                {transactionsError?.message || 'Failed to load transactions. Please try again.'}
+              </ThemedText>
+              <TouchableOpacity
+                style={[styles.proceedButton, { marginTop: 20, backgroundColor: '#A9EF45', paddingHorizontal: 20 * SCALE }]}
+                onPress={() => refetchTransactions()}
+              >
+                <ThemedText style={styles.proceedButtonText}>Retry</ThemedText>
+              </TouchableOpacity>
+            </View>
           ) : recentTransactions.length > 0 ? (
             <View style={styles.transactionsList}>
               {recentTransactions.map((transaction) => (
-                <View key={transaction.id} style={styles.transactionItem}>
+                <TouchableOpacity 
+                  key={transaction.id} 
+                  style={styles.transactionItem}
+                  onPress={() => handleTransactionPress(transaction)}
+                  activeOpacity={0.7}
+                >
                   <Image source={transaction.icon} style={styles.transactionIcon} resizeMode="cover" />
                   <View style={styles.transactionDetails}>
                     <ThemedText style={styles.transactionPhone}>{transaction.phoneNumber}</ThemedText>
@@ -816,7 +959,7 @@ const DataRecharge = ({ route }: any) => {
                     <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
                     <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           ) : (
@@ -1071,63 +1214,124 @@ const DataRecharge = ({ route }: any) => {
           setPin('');
         }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.pinModalContent}>
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowPinModal(false);
-                  setPin('');
-                }}
-              >
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.pinInputContainer}>
-              <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
-              {pendingTransactionData && (
-                <View style={styles.paymentSummaryContainer}>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
-                  </View>
-                  <View style={styles.paymentSummaryRow}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
-                  </View>
-                  <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
-                    <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
-                    <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
-                  </View>
-                </View>
-              )}
-              <TextInput
-                style={styles.pinInput}
-                value={pin}
-                onChangeText={setPin}
-                keyboardType="numeric"
-                secureTextEntry
-                maxLength={6}
-                placeholder="Enter PIN"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                autoFocus
-              />
-            </View>
-            <TouchableOpacity
-              style={[styles.confirmButton, (!pin || pin.length < 4 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
-              onPress={handleConfirmPayment}
-              disabled={!pin || pin.length < 4 || confirmMutation.isPending}
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.pinModalScrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              {confirmMutation.isPending ? (
-                <ActivityIndicator size="small" color="#000000" />
-              ) : (
-                <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
-              )}
-            </TouchableOpacity>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowPinModal(false);
+                    setPin('');
+                  }}
+                >
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.pinInputContainer}>
+                <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
+                {pendingTransactionData && (
+                  <View style={styles.paymentSummaryContainer}>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                    </View>
+                    <View style={styles.paymentSummaryRow}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
+                    </View>
+                    <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
+                      <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
+                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || pendingTransactionData.amount || selectedPlan?.amount || '0'}</ThemedText>
+                    </View>
+                  </View>
+                )}
+                <TextInput
+                  style={styles.pinInput}
+                  value={pin}
+                  onChangeText={setPin}
+                  keyboardType="numeric"
+                  secureTextEntry
+                  maxLength={5}
+                  placeholder="Enter PIN"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  autoFocus
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.confirmButton, (!pin || pin.length < 5 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+                onPress={handleConfirmPayment}
+                disabled={!pin || pin.length < 5 || confirmMutation.isPending}
+              >
+                {confirmMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
+
+      {/* Transaction Receipt Modal */}
+      {selectedTransaction && (
+        <TransactionReceiptModal
+          visible={showReceiptModal && !isLoadingDetails}
+          transaction={{
+            ...selectedTransaction,
+            transactionType: 'billPayment',
+          }}
+          onClose={() => {
+            setShowReceiptModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Transaction Error Modal */}
+      {selectedTransaction && (
+        <TransactionErrorModal
+          visible={showErrorModal && !isLoadingDetails}
+          transaction={selectedTransaction}
+          onRetry={() => {
+            // TODO: Implement retry logic
+            setShowErrorModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+          onCancel={() => {
+            setShowErrorModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Loading overlay when fetching transaction details */}
+      {isLoadingDetails && selectedTransactionId && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={{ color: '#FFFFFF', marginTop: 10, fontSize: 14 * SCALE }}>
+              Loading transaction details...
+            </ThemedText>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -1639,8 +1843,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
-    paddingBottom: 20 * SCALE,
-    maxHeight: '50%',
+    maxHeight: '90%',
+  },
+  pinModalScrollContent: {
+    paddingBottom: 30 * SCALE,
+    paddingHorizontal: 0,
   },
   pinInputContainer: {
     paddingHorizontal: 20 * SCALE,

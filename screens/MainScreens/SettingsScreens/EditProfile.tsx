@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,29 +10,28 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetCurrentUser } from '../../../queries/auth.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useUpdateProfile } from '../../../mutations/auth.mutations';
+import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
 
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬', flagImage: require('../../../assets/login/nigeria-flag.png') },
-  { id: 2, name: 'Botswana', flag: '🇧🇼', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-  { id: 3, name: 'Ghana', flag: '🇬🇭', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-  { id: 4, name: 'Kenya', flag: '🇰🇪', flagImage: require('../../../assets/login/south-africa-flag.png') }, // Using available flag
-  { id: 5, name: 'South Africa', flag: '🇿🇦', flagImage: require('../../../assets/login/south-africa-flag.png') },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-  { id: 7, name: 'Uganda', flag: '🇺🇬', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-];
-
 // Types for API integration
 interface UserProfile {
   country: string;
+  countryCode: string;
+  countryId: string | number | null;
   countryFlag: any;
+  countryFlagUrl: string | null;
   firstName: string;
   lastName: string;
   email: string;
@@ -43,17 +42,107 @@ interface UserProfile {
 const EditProfile = () => {
   const navigation = useNavigation();
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountryId, setSelectedCountryId] = useState<number | null>(1);
+  const [selectedCountryId, setSelectedCountryId] = useState<string | number | null>(null);
 
-  // Mock user profile data - Replace with API call
+  // Fetch current user profile
+  const {
+    data: userData,
+    isLoading: isLoadingUser,
+    refetch: refetchUser,
+  } = useGetCurrentUser();
+
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬', flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼', flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭', flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪', flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦', flagUrl: null },
+        { id: 6, name: 'Tanzania', code: 'TZ', flag: '🇹🇿', flagUrl: null },
+        { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬', flagUrl: null },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => {
+      // Check if flag is a URL path (starts with /) or an emoji
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: flagEmoji,
+        flagUrl: flagUrl,
+      };
+    });
+  }, [countriesData?.data]);
+
+  // Initialize profile data from API
   const [profileData, setProfileData] = useState<UserProfile>({
-    country: 'Nigeria',
+    country: '',
+    countryCode: '',
+    countryId: null,
     countryFlag: require('../../../assets/login/nigeria-flag.png'),
-    firstName: 'Qamardeen',
-    lastName: 'Abdul Malik',
-    email: 'qamardeenoladimeji@gmail.com',
-    phoneNumber: '07033484845',
+    countryFlagUrl: null,
+    firstName: '',
+    lastName: '',
+    email: '',
+    phoneNumber: '',
     avatar: require('../../../assets/login/memoji.png'),
+  });
+
+  // Update profile data when user data is loaded
+  useEffect(() => {
+    if (userData?.data) {
+      const user = userData.data;
+      const userCountry = countries.find((c: any) => c.id === user.countryId || c.code === user.countryCode);
+      
+      setProfileData({
+        country: userCountry?.name || user.country || 'Nigeria',
+        countryCode: userCountry?.code || user.countryCode || 'NG',
+        countryId: user.countryId || userCountry?.id || null,
+        countryFlag: userCountry && userCountry.flagUrl 
+          ? { uri: userCountry.flagUrl }
+          : require('../../../assets/login/nigeria-flag.png'),
+        countryFlagUrl: userCountry?.flagUrl || null,
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        email: user.email || '',
+        phoneNumber: user.phone || '',
+        avatar: require('../../../assets/login/memoji.png'),
+      });
+      
+      // Set selected country ID for modal
+      if (user.countryId || (userCountry && userCountry.id)) {
+        setSelectedCountryId(user.countryId || (userCountry ? userCountry.id : null));
+      }
+    }
+  }, [userData?.data, countries]);
+
+  // Update profile mutation
+  const updateProfileMutation = useUpdateProfile({
+    onSuccess: (data) => {
+      console.log('[EditProfile] Profile updated successfully:', data);
+      showSuccessAlert('Success', 'Profile updated successfully');
+      refetchUser();
+    },
+    onError: (error: any) => {
+      console.error('[EditProfile] Error updating profile:', error);
+      showErrorAlert('Error', error?.message || 'Failed to update profile');
+    },
   });
 
   // Hide bottom tab bar when screen is focused
@@ -90,34 +179,56 @@ const EditProfile = () => {
     }, [navigation])
   );
 
+  // Check if all required fields are filled
+  const isFormValid = useMemo(() => {
+    return (
+      profileData.firstName.trim().length > 0 &&
+      profileData.lastName.trim().length > 0 &&
+      profileData.email.trim().length > 0 &&
+      profileData.phoneNumber.trim().length > 0 &&
+      profileData.countryId !== null
+    );
+  }, [profileData.firstName, profileData.lastName, profileData.email, profileData.phoneNumber, profileData.countryId]);
+
   const handleSave = () => {
-    // TODO: Implement API call to save profile data
-    console.log('Saving profile:', profileData);
-    // After successful save, navigate back
-    // navigation.goBack();
+    if (!isFormValid) {
+      showWarningAlert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    updateProfileMutation.mutate({
+      firstName: profileData.firstName,
+      lastName: profileData.lastName,
+      phone: profileData.phoneNumber,
+      countryId: profileData.countryId || undefined,
+    });
   };
 
   const handleCountrySelect = () => {
     // Initialize selectedCountryId based on current profile country
-    const currentCountry = COUNTRIES.find((c) => c.name === profileData.country);
-    if (currentCountry) {
-      setSelectedCountryId(currentCountry.id);
+    if (profileData.countryId) {
+      setSelectedCountryId(profileData.countryId);
     }
     setShowCountryModal(true);
   };
 
-  const handleCountryChange = (countryId: number) => {
+  const handleCountryChange = (countryId: string | number) => {
     setSelectedCountryId(countryId);
   };
 
   const handleApplyCountry = () => {
     if (selectedCountryId) {
-      const selectedCountry = COUNTRIES.find((c) => c.id === selectedCountryId);
+      const selectedCountry = countries.find((c: any) => c.id === selectedCountryId);
       if (selectedCountry) {
         setProfileData({
           ...profileData,
           country: selectedCountry.name,
-          countryFlag: selectedCountry.flagImage,
+          countryCode: selectedCountry.code,
+          countryId: selectedCountry.id,
+          countryFlag: selectedCountry.flagUrl 
+            ? { uri: selectedCountry.flagUrl }
+            : require('../../../assets/login/nigeria-flag.png'),
+          countryFlagUrl: selectedCountry.flagUrl || null,
         });
       }
     }
@@ -126,12 +237,14 @@ const EditProfile = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing profile data...');
-        resolve();
-      }, 1000);
-    });
+    try {
+      await Promise.all([
+        refetchUser(),
+      ]);
+      console.log('[EditProfile] Profile data refreshed successfully');
+    } catch (error) {
+      console.error('[EditProfile] Error refreshing profile data:', error);
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -176,22 +289,28 @@ const EditProfile = () => {
 
         {/* Profile Picture */}
         <View style={styles.profilePictureContainer}>
-          <View style={styles.avatarContainer}>
-            <Image
-              source={profileData.avatar}
-              style={styles.avatar}
-              resizeMode="cover"
-            />
-            <TouchableOpacity style={styles.editIconContainer}>
-              <View style={styles.editIconCircle}>
-                <Image
-                  source={require('../../../assets/PencilSimpleLine (1).png')}
-                  style={styles.editIcon}
-                  resizeMode="contain"
-                />
-              </View>
-            </TouchableOpacity>
-          </View>
+          {isLoadingUser ? (
+            <View style={styles.avatarContainer}>
+              <ActivityIndicator size="large" color="#A9EF45" />
+            </View>
+          ) : (
+            <View style={styles.avatarContainer}>
+              <Image
+                source={profileData.avatar}
+                style={styles.avatar}
+                resizeMode="cover"
+              />
+              <TouchableOpacity style={styles.editIconContainer}>
+                <View style={styles.editIconCircle}>
+                  <Image
+                    source={require('../../../assets/PencilSimpleLine (1).png')}
+                    style={styles.editIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Form Card */}
@@ -199,96 +318,156 @@ const EditProfile = () => {
           {/* Country Field */}
           <View style={styles.fieldContainer}>
             <ThemedText style={styles.fieldLabel}>Country</ThemedText>
-            <TouchableOpacity
-              style={styles.inputField}
-              onPress={handleCountrySelect}
-            >
-              <Image
-                source={profileData.countryFlag}
-                style={styles.countryFlag}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.inputText}>{profileData.country}</ThemedText>
-              <MaterialCommunityIcons
-                name="chevron-down"
-                size={24 * SCALE}
-                color="#FFFFFF"
-              />
-            </TouchableOpacity>
+            {isLoadingCountries ? (
+              <View style={styles.inputField}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={[styles.inputText, { marginLeft: 12 }]}>Loading countries...</ThemedText>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.inputField}
+                onPress={handleCountrySelect}
+              >
+                {profileData.countryFlagUrl ? (
+                  <Image
+                    source={{ uri: profileData.countryFlagUrl }}
+                    style={styles.countryFlag}
+                    resizeMode="cover"
+                  />
+                ) : typeof profileData.countryFlag === 'object' && 'uri' in profileData.countryFlag ? (
+                  <Image
+                    source={profileData.countryFlag}
+                    style={styles.countryFlag}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Image
+                    source={require('../../../assets/login/nigeria-flag.png')}
+                    style={styles.countryFlag}
+                    resizeMode="cover"
+                  />
+                )}
+                <ThemedText style={styles.inputText}>{profileData.country || 'Select Country'}</ThemedText>
+                <MaterialCommunityIcons
+                  name="chevron-down"
+                  size={24 * SCALE}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* First Name Field */}
           <View style={styles.fieldContainer}>
             <ThemedText style={styles.fieldLabel}>First name</ThemedText>
-            <View style={styles.inputField}>
-              <TextInput
-                style={styles.textInput}
-                value={profileData.firstName}
-                onChangeText={(text) =>
-                  setProfileData({ ...profileData, firstName: text })
-                }
-                placeholder=""
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-              />
-            </View>
+            {isLoadingUser ? (
+              <View style={styles.inputField}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={[styles.inputText, { marginLeft: 12 }]}>Loading...</ThemedText>
+              </View>
+            ) : (
+              <View style={styles.inputField}>
+                <TextInput
+                  style={styles.textInput}
+                  value={profileData.firstName}
+                  onChangeText={(text) =>
+                    setProfileData({ ...profileData, firstName: text })
+                  }
+                  placeholder=""
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                />
+              </View>
+            )}
           </View>
 
           {/* Last Name Field */}
           <View style={styles.fieldContainer}>
             <ThemedText style={styles.fieldLabel}>Last name</ThemedText>
-            <View style={styles.inputField}>
-              <TextInput
-                style={styles.textInput}
-                value={profileData.lastName}
-                onChangeText={(text) =>
-                  setProfileData({ ...profileData, lastName: text })
-                }
-                placeholder=""
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-              />
-            </View>
+            {isLoadingUser ? (
+              <View style={styles.inputField}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={[styles.inputText, { marginLeft: 12 }]}>Loading...</ThemedText>
+              </View>
+            ) : (
+              <View style={styles.inputField}>
+                <TextInput
+                  style={styles.textInput}
+                  value={profileData.lastName}
+                  onChangeText={(text) =>
+                    setProfileData({ ...profileData, lastName: text })
+                  }
+                  placeholder=""
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                />
+              </View>
+            )}
           </View>
 
           {/* Email Field */}
           <View style={styles.fieldContainer}>
             <ThemedText style={styles.fieldLabel}>Email</ThemedText>
-            <View style={styles.inputField}>
-              <TextInput
-                style={styles.textInput}
-                value={profileData.email}
-                onChangeText={(text) =>
-                  setProfileData({ ...profileData, email: text })
-                }
-                placeholder=""
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
+            {isLoadingUser ? (
+              <View style={styles.inputField}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={[styles.inputText, { marginLeft: 12 }]}>Loading...</ThemedText>
+              </View>
+            ) : (
+              <View style={styles.inputField}>
+                <TextInput
+                  style={styles.textInput}
+                  value={profileData.email}
+                  onChangeText={(text) =>
+                    setProfileData({ ...profileData, email: text })
+                  }
+                  placeholder=""
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  editable={false}
+                />
+              </View>
+            )}
           </View>
 
           {/* Phone Number Field */}
           <View style={styles.fieldContainer}>
             <ThemedText style={styles.fieldLabel}>Phone number</ThemedText>
-            <View style={styles.inputField}>
-              <TextInput
-                style={styles.textInput}
-                value={profileData.phoneNumber}
-                onChangeText={(text) =>
-                  setProfileData({ ...profileData, phoneNumber: text })
-                }
-                placeholder=""
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                keyboardType="phone-pad"
-              />
-            </View>
+            {isLoadingUser ? (
+              <View style={styles.inputField}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={[styles.inputText, { marginLeft: 12 }]}>Loading...</ThemedText>
+              </View>
+            ) : (
+              <View style={styles.inputField}>
+                <TextInput
+                  style={styles.textInput}
+                  value={profileData.phoneNumber}
+                  onChangeText={(text) =>
+                    setProfileData({ ...profileData, phoneNumber: text })
+                  }
+                  placeholder=""
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  keyboardType="phone-pad"
+                />
+              </View>
+            )}
           </View>
         </View>
 
         {/* Warning Message */}
         <View style={styles.warningContainer}>
           <ThemedText style={styles.warningText}>
-            To edit your account...<ThemedText style={styles.warningLink}>Contact Support</ThemedText>
+            To edit your account...{' '}
+            <ThemedText
+              style={styles.warningLink}
+              onPress={() => {
+                (navigation as any).navigate('Settings', {
+                  screen: 'Support',
+                });
+              }}
+            >
+              Contact Support
+            </ThemedText>
           </ThemedText>
         </View>
 
@@ -299,10 +478,15 @@ const EditProfile = () => {
       {/* Save Button - Fixed at bottom */}
       <View style={styles.saveButtonContainer}>
         <TouchableOpacity
-          style={styles.saveButton}
+          style={[styles.saveButton, (!isFormValid || updateProfileMutation.isPending) && styles.saveButtonDisabled]}
           onPress={handleSave}
+          disabled={!isFormValid || updateProfileMutation.isPending}
         >
-          <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+          {updateProfileMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -321,27 +505,43 @@ const EditProfile = () => {
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.countryItem}
-                  onPress={() => handleCountryChange(c.id)}
-                >
-                  <Image
-                    source={c.flagImage}
-                    style={styles.countryFlagModal}
-                    resizeMode="cover"
-                  />
-                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountryId === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={selectedCountryId === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((c: any) => (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={styles.countryItem}
+                    onPress={() => handleCountryChange(c.id)}
+                  >
+                    {c.flagUrl ? (
+                      <Image
+                        source={{ uri: c.flagUrl }}
+                        style={styles.countryFlagModal}
+                        resizeMode="cover"
+                      />
+                    ) : c.flag ? (
+                      <ThemedText style={styles.countryFlagEmojiModal}>{c.flag}</ThemedText>
+                    ) : (
+                      <Image
+                        source={require('../../../assets/login/nigeria-flag.png')}
+                        style={styles.countryFlagModal}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                    <MaterialCommunityIcons
+                      name={selectedCountryId === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      size={24}
+                      color={selectedCountryId === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <TouchableOpacity 
               style={styles.applyButton} 
               onPress={handleApplyCountry}
@@ -521,6 +721,9 @@ const styles = StyleSheet.create({
     paddingVertical: 18 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveButtonDisabled: {
+    backgroundColor: 'rgba(169, 239, 69, 0.3)',
     opacity: 0.5,
   },
   saveButtonText: {
@@ -570,9 +773,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   countryFlagModal: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginRight: 15,
+  },
+  countryFlagEmojiModal: {
+    fontSize: 24,
     marginRight: 15,
   },
   countryName: {
