@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,11 +10,20 @@ import {
   Modal,
   TextInput,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
+import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useCreateBuyAd } from '../../../mutations/p2p.mutations';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -23,58 +32,259 @@ const SCALE = 1;
 interface PaymentMethod {
   id: string;
   name: string;
+  type?: string;
+}
+
+interface Crypto {
+  id: string;
+  name: string;
+  symbol: string;
+  icon: any;
+}
+
+interface Country {
+  id: number;
+  name: string;
+  code: string;
+  flag: any;
+  flagUrl?: string | null;
 }
 
 const CreateBuyAd = () => {
   const navigation = useNavigation();
-  const [selectedCrypto, setSelectedCrypto] = useState('Bitcoin');
+  const queryClient = useQueryClient();
+  const [selectedCrypto, setSelectedCrypto] = useState('USDT');
+  const [selectedCryptoSymbol, setSelectedCryptoSymbol] = useState('USDT');
   const [selectedCurrency, setSelectedCurrency] = useState('Nigeria');
+  const [selectedCountryCode, setSelectedCountryCode] = useState('NG');
+  const [selectedFiatCurrency, setSelectedFiatCurrency] = useState('NGN');
   const [buyPrice, setBuyPrice] = useState('');
   const [volume, setVolume] = useState('');
   const [minOrder, setMinOrder] = useState('');
   const [maxOrder, setMaxOrder] = useState('');
-  const [autoAccept, setAutoAccept] = useState(true);
+  const [autoAccept, setAutoAccept] = useState(false);
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<PaymentMethod[]>([]);
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
   const [showCryptoModal, setShowCryptoModal] = useState(false);
   const [showCurrencyModal, setShowCurrencyModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [searchPaymentQuery, setSearchPaymentQuery] = useState('');
 
-  // Mock data - Replace with API calls
-  const cryptos = [
-    { id: '1', name: 'Bitcoin', symbol: 'BTC', icon: require('../../../assets/login/bitcoin-coin.png') },
-    { id: '2', name: 'USDT', symbol: 'USDT', icon: require('../../../assets/login/usdt-coin.png') },
-  ];
+  // Fetch payment methods from API
+  const {
+    data: paymentMethodsData,
+    isLoading: isLoadingPaymentMethods,
+  } = useGetPaymentMethods();
 
-  const currencies = [
-    { id: 1, name: 'Nigeria', flag: require('../../../assets/login/nigeria-flag.png') },
-    { id: 2, name: 'Botswana', flag: require('../../../assets/login/south-africa-flag.png') },
-    { id: 3, name: 'Ghana', flag: require('../../../assets/login/nigeria-flag.png') },
-    { id: 4, name: 'Kenya', flag: require('../../../assets/login/south-africa-flag.png') },
-    { id: 5, name: 'South Africa', flag: require('../../../assets/login/south-africa-flag.png') },
-  ];
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
 
-  const availablePaymentMethods: PaymentMethod[] = [
-    { id: '1', name: 'RhinoxPay ID' },
-    { id: '2', name: 'Bank Transfer' },
-    { id: '3', name: 'Opay' },
-    { id: '4', name: 'Palmpay' },
-    { id: '5', name: 'Moniepoint' },
-  ];
+  // Fetch virtual accounts to get available crypto currencies
+  const {
+    data: virtualAccountsData,
+    isLoading: isLoadingCrypto,
+  } = useGetVirtualAccounts();
+
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalances,
+  } = useGetWalletBalances();
+
+  // Transform payment methods data
+  const availablePaymentMethods: PaymentMethod[] = useMemo(() => {
+    if (!paymentMethodsData?.data || !Array.isArray(paymentMethodsData.data)) {
+      return [];
+    }
+    return paymentMethodsData.data.map((method: any) => ({
+      id: String(method.id),
+      name: method.bankName || method.provider?.name || method.type || 'Unknown',
+      type: method.type,
+    }));
+  }, [paymentMethodsData?.data]);
+
+  // Filter payment methods by search query
+  const filteredPaymentMethods = useMemo(() => {
+    if (!searchPaymentQuery.trim()) {
+      return availablePaymentMethods;
+    }
+    const query = searchPaymentQuery.toLowerCase();
+    return availablePaymentMethods.filter((method) =>
+      method.name.toLowerCase().includes(query)
+    );
+  }, [availablePaymentMethods, searchPaymentQuery]);
+
+  // Transform countries data
+  const currencies: Country[] = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: require('../../../assets/login/south-africa-flag.png'), flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: require('../../../assets/login/south-africa-flag.png'), flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: require('../../../assets/login/south-africa-flag.png'), flagUrl: null },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => {
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const defaultFlag = require('../../../assets/login/nigeria-flag.png');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: defaultFlag,
+        flagUrl: flagUrl,
+      };
+    });
+  }, [countriesData?.data]);
+
+  // Transform crypto currencies from virtual accounts
+  const cryptos: Crypto[] = useMemo(() => {
+    // Common crypto currencies list
+    const commonCryptos: Crypto[] = [
+      { id: '1', name: 'Bitcoin', symbol: 'BTC', icon: require('../../../assets/login/bitcoin-coin.png') },
+      { id: '2', name: 'USDT', symbol: 'USDT', icon: require('../../../assets/login/usdt-coin.png') },
+      { id: '3', name: 'Ethereum', symbol: 'ETH', icon: require('../../../assets/login/usdt-coin.png') },
+      { id: '4', name: 'BNB', symbol: 'BNB', icon: require('../../../assets/login/bitcoin-coin.png') },
+      { id: '5', name: 'USDC', symbol: 'USDC', icon: require('../../../assets/login/usdt-coin.png') },
+    ];
+
+    // If virtual accounts are available, add unique currencies from there
+    if (virtualAccountsData?.data && Array.isArray(virtualAccountsData.data)) {
+      const uniqueCurrencies = new Set<string>();
+      virtualAccountsData.data.forEach((account: any) => {
+        if (account.currency && !uniqueCurrencies.has(account.currency)) {
+          uniqueCurrencies.add(account.currency);
+        }
+      });
+
+      // Add currencies from virtual accounts that aren't already in common list
+      uniqueCurrencies.forEach((currency) => {
+        const symbol = currency.toUpperCase();
+        if (!commonCryptos.find(c => c.symbol === symbol)) {
+          commonCryptos.push({
+            id: String(commonCryptos.length + 1),
+            name: symbol,
+            symbol: symbol,
+            icon: require('../../../assets/login/usdt-coin.png'),
+          });
+        }
+      });
+    }
+
+    return commonCryptos;
+  }, [virtualAccountsData?.data]);
+
+  // Get crypto balance for selected crypto
+  const cryptoBalance = useMemo(() => {
+    if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data)) {
+      return '0';
+    }
+    const account = virtualAccountsData.data.find(
+      (acc: any) => acc.currency?.toUpperCase() === selectedCryptoSymbol.toUpperCase()
+    );
+    return account?.balance || '0';
+  }, [virtualAccountsData?.data, selectedCryptoSymbol]);
+
+  // Get fiat balance for selected currency
+  const fiatBalance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) {
+      return '0';
+    }
+    const wallet = balancesData.data.fiat.find(
+      (w: any) => w.currency === selectedFiatCurrency
+    );
+    return wallet?.balance || '0';
+  }, [balancesData?.data?.fiat, selectedFiatCurrency]);
+
+  // Create buy ad mutation
+  const createBuyAdMutation = useCreateBuyAd({
+    onSuccess: (data) => {
+      showSuccessAlert('Success', 'Buy ad created successfully', () => {
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'vendor', 'ads'] });
+        setShowSuccessModal(true);
+      });
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to create buy ad');
+    },
+  });
 
   const handleSelectPaymentMethod = (method: PaymentMethod) => {
     if (!selectedPaymentMethods.find(m => m.id === method.id)) {
       setSelectedPaymentMethods([...selectedPaymentMethods, method]);
     }
-    setShowPaymentMethodModal(false);
   };
 
   const handleRemovePaymentMethod = (methodId: string) => {
     setSelectedPaymentMethods(selectedPaymentMethods.filter(m => m.id !== methodId));
   };
 
-  const selectedCryptoData = cryptos.find(c => c.name === selectedCrypto) || cryptos[0];
+  const handleCreateOrder = () => {
+    // Validation
+    if (!selectedCryptoSymbol || !selectedFiatCurrency) {
+      showErrorAlert('Validation Error', 'Please select crypto and currency');
+      return;
+    }
+    if (!buyPrice || !volume || !minOrder || !maxOrder) {
+      showErrorAlert('Validation Error', 'Please fill in all required fields');
+      return;
+    }
+    if (selectedPaymentMethods.length === 0) {
+      showErrorAlert('Validation Error', 'Please select at least one payment method');
+      return;
+    }
+    if (parseFloat(buyPrice) <= 0 || parseFloat(volume) <= 0 || parseFloat(minOrder) <= 0 || parseFloat(maxOrder) <= 0) {
+      showErrorAlert('Validation Error', 'Price, volume, and order limits must be greater than 0');
+      return;
+    }
+    if (parseFloat(minOrder) >= parseFloat(maxOrder)) {
+      showErrorAlert('Validation Error', 'Min order must be less than max order');
+      return;
+    }
+
+    // Create buy ad
+    createBuyAdMutation.mutate({
+      cryptoCurrency: selectedCryptoSymbol,
+      fiatCurrency: selectedFiatCurrency,
+      price: buyPrice,
+      volume: volume,
+      minOrder: minOrder,
+      maxOrder: maxOrder,
+      autoAccept: autoAccept,
+      paymentMethodIds: selectedPaymentMethods.map(m => m.id),
+      countryCode: selectedCountryCode,
+      description: `Buy ${selectedCryptoSymbol} at best rates`,
+    });
+  };
+
+  const selectedCryptoData = cryptos.find(c => c.symbol === selectedCryptoSymbol) || cryptos[0];
   const selectedCurrencyData = currencies.find(c => c.name === selectedCurrency) || currencies[0];
+
+  // Check if form is valid
+  const isFormValid = useMemo(() => {
+    return selectedCryptoSymbol &&
+           selectedFiatCurrency &&
+           buyPrice.trim() !== '' &&
+           volume.trim() !== '' &&
+           minOrder.trim() !== '' &&
+           maxOrder.trim() !== '' &&
+           selectedPaymentMethods.length > 0 &&
+           parseFloat(buyPrice) > 0 &&
+           parseFloat(volume) > 0 &&
+           parseFloat(minOrder) > 0 &&
+           parseFloat(maxOrder) > 0 &&
+           parseFloat(minOrder) < parseFloat(maxOrder);
+  }, [selectedCryptoSymbol, selectedFiatCurrency, buyPrice, volume, minOrder, maxOrder, selectedPaymentMethods]);
 
   return (
     <View style={styles.container}>
@@ -91,7 +301,14 @@ const CreateBuyAd = () => {
           </View>
         </TouchableOpacity>
         <ThemedText style={styles.headerTitle}>Create Buy Ad</ThemedText>
-        <TouchableOpacity style={styles.supportButton}>
+        <TouchableOpacity 
+          style={styles.supportButton}
+          onPress={() => {
+            (navigation as any).navigate('Settings', {
+              screen: 'Support',
+            });
+          }}
+        >
           <MaterialCommunityIcons name="headphones" size={24 * SCALE} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
@@ -120,7 +337,9 @@ const CreateBuyAd = () => {
                     style={[{ marginBottom: -1, width: 18, height: 16 }]}
                     resizeMode="cover"
                   />
-                  <ThemedText style={styles.balanceAmount}>0.23 {selectedCryptoData.symbol}</ThemedText>
+                  <ThemedText style={styles.balanceAmount}>
+                    {isLoadingCrypto ? '...' : parseFloat(cryptoBalance).toFixed(8)} {selectedCryptoData.symbol}
+                  </ThemedText>
                 </View>
               </View>
               <View style={styles.selectorCardRight}>
@@ -129,7 +348,7 @@ const CreateBuyAd = () => {
                   style={styles.cryptoIcon}
                   resizeMode="contain"
                 />
-                <ThemedText style={styles.selectorText}>{selectedCrypto}</ThemedText>
+                <ThemedText style={styles.selectorText}>{selectedCryptoData.name}</ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="#FFFFFF" />
               </View>
             </LinearGradient>
@@ -156,7 +375,9 @@ const CreateBuyAd = () => {
                     style={[{ marginBottom: -1, width: 18, height: 16 }]}
                     resizeMode="cover"
                   />
-                  <ThemedText style={styles.balanceAmount}>N200,000</ThemedText>
+                  <ThemedText style={styles.balanceAmount}>
+                    {isLoadingBalances ? '...' : `N${parseFloat(fiatBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </ThemedText>
                 </View>
               </View>
               <View style={styles.selectorCardRight}>
@@ -265,14 +486,18 @@ const CreateBuyAd = () => {
       {/* Create Order Button */}
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={styles.createOrderButton}
-          onPress={() => {
-            // TODO: Validate form and call API
-            // For now, just show success modal
-            setShowSuccessModal(true);
-          }}
+          style={[
+            styles.createOrderButton,
+            (!isFormValid || createBuyAdMutation.isPending) && styles.createOrderButtonDisabled
+          ]}
+          onPress={handleCreateOrder}
+          disabled={!isFormValid || createBuyAdMutation.isPending}
         >
-          <ThemedText style={styles.createOrderButtonText}>Create Order</ThemedText>
+          {createBuyAdMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.createOrderButtonText}>Create Order</ThemedText>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -329,7 +554,7 @@ const CreateBuyAd = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.paymentModalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
+              <ThemedText style={styles.modalTitle}>Select Payment Method</ThemedText>
               <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -339,13 +564,23 @@ const CreateBuyAd = () => {
               <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search Bank"
+                placeholder="Search Payment Method"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={searchPaymentQuery}
+                onChangeText={setSearchPaymentQuery}
               />
             </View>
 
-            <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
-              {availablePaymentMethods.map((method) => (
+            {isLoadingPaymentMethods ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading payment methods...
+                </ThemedText>
+              </View>
+            ) : filteredPaymentMethods.length > 0 ? (
+              <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
+                {filteredPaymentMethods.map((method) => (
                 <TouchableOpacity
                   key={method.id}
                   style={styles.paymentMethodItem}
@@ -358,13 +593,21 @@ const CreateBuyAd = () => {
                     <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
                   )}
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+                ))}
+              </ScrollView>
+            ) : (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', paddingHorizontal: 20 }}>
+                  {searchPaymentQuery ? 'No payment methods found' : 'No payment methods available. Please add one in Payment Settings.'}
+                </ThemedText>
+              </View>
+            )}
 
             <View style={styles.applyButtonContainer}>
               <TouchableOpacity
-                style={styles.applyButton}
+                style={[styles.applyButton, selectedPaymentMethods.length === 0 && styles.applyButtonDisabled]}
                 onPress={() => setShowPaymentMethodModal(false)}
+                disabled={selectedPaymentMethods.length === 0}
               >
                 <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
               </TouchableOpacity>
@@ -388,13 +631,22 @@ const CreateBuyAd = () => {
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
-              {cryptos.map((crypto) => (
+            {isLoadingCrypto ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading cryptocurrencies...
+                </ThemedText>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList} showsVerticalScrollIndicator={false}>
+                {cryptos.map((crypto) => (
                 <TouchableOpacity
                   key={crypto.id}
                   style={styles.modalItem}
                   onPress={() => {
                     setSelectedCrypto(crypto.name);
+                    setSelectedCryptoSymbol(crypto.symbol);
                     setShowCryptoModal(false);
                   }}
                 >
@@ -402,12 +654,13 @@ const CreateBuyAd = () => {
                     <Image source={crypto.icon} style={styles.modalCryptoIcon} resizeMode="contain" />
                     <ThemedText style={styles.modalItemText}>{crypto.name}</ThemedText>
                   </View>
-                  {selectedCrypto === crypto.name && (
+                  {selectedCryptoSymbol === crypto.symbol && (
                     <MaterialCommunityIcons name="check" size={20 * SCALE} color="#A9EF45" />
                   )}
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -427,26 +680,51 @@ const CreateBuyAd = () => {
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {currencies.map((currency) => (
-                <TouchableOpacity
-                  key={currency.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCurrency(currency.name);
-                    setShowCurrencyModal(false);
-                  }}
-                >
-                  <Image source={currency.flag} style={styles.countryFlagImage} resizeMode="cover" />
-                  <ThemedText style={styles.countryName}>{currency.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCurrency === currency.name ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={selectedCurrency === currency.name ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading countries...
+                </ThemedText>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {currencies.map((currency) => {
+                  const flagSource = currency.flagUrl 
+                    ? { uri: currency.flagUrl }
+                    : currency.flag;
+                  
+                  return (
+                    <TouchableOpacity
+                      key={currency.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedCurrency(currency.name);
+                        setSelectedCountryCode(currency.code);
+                        // Map country code to currency code (simplified mapping)
+                        const currencyMap: { [key: string]: string } = {
+                          'NG': 'NGN',
+                          'KE': 'KES',
+                          'GH': 'GHS',
+                          'ZA': 'ZAR',
+                          'BW': 'BWP',
+                        };
+                        setSelectedFiatCurrency(currencyMap[currency.code] || 'NGN');
+                        setShowCurrencyModal(false);
+                      }}
+                    >
+                      <Image source={flagSource} style={styles.countryFlagImage} resizeMode="cover" />
+                      <ThemedText style={styles.countryName}>{currency.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={selectedCurrency === currency.name ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={selectedCurrency === currency.name ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.countryApplyButton}
               onPress={() => setShowCurrencyModal(false)}
@@ -711,10 +989,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  createOrderButtonDisabled: {
+    opacity: 0.5,
+  },
   createOrderButtonText: {
     fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#000000',
+  },
+  applyButtonDisabled: {
+    opacity: 0.5,
   },
   modalOverlay: {
     flex: 1,

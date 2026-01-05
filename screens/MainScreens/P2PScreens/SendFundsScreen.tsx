@@ -432,8 +432,9 @@ const SendFundsScreen = () => {
 
 
   const handleSecurityComplete = () => {
-    if (!emailCode || !pin || pin.length < 4) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    // Only require PIN, email code can be dummy value
+    if (!pin || pin.length < 4) {
+      Alert.alert('Error', 'Please enter your PIN');
       return;
     }
 
@@ -442,10 +443,13 @@ const SendFundsScreen = () => {
       return;
     }
 
+    // Use dummy email code if not provided (for testing/development)
+    const emailCodeToUse = emailCode || '000000';
+
     // Verify transfer with email code and PIN
     verifyMutation.mutate({
-      transactionId: String(pendingTransactionId),
-      emailCode: emailCode,
+      transactionId: Number(pendingTransactionId),
+      emailCode: emailCodeToUse,
       pin: pin,
     });
   };
@@ -1151,7 +1155,11 @@ const SendFundsScreen = () => {
         transparent={true}
         onRequestClose={() => setShowSecurityModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.securityModalContentBottom}>
             <View style={styles.securityModalHeader}>
               <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
@@ -1160,60 +1168,67 @@ const SendFundsScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.securityIconContainer}>
-              <View style={styles.securityIconCircle}>
-                <Image
-                  source={require('../../../assets/Group 49.png')}
-                  style={styles.securityIcon}
-                  resizeMode="contain"
-                />
-              </View>
-            </View>
-
-            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
-            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
-
-            <View style={styles.securityInputWrapper}>
-              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
-              <View style={styles.securityInputField}>
-                <TextInput
-                  style={styles.securityInput}
-                  placeholder="Input Code sent to your email"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={emailCode}
-                  onChangeText={setEmailCode}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <View style={styles.securityInputWrapper}>
-              <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
-              <View style={styles.securityInputField}>
-                <TextInput
-                  style={styles.securityInput}
-                  placeholder="Input Code from your authenticator app"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={authenticatorCode}
-                  onChangeText={setAuthenticatorCode}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.proceedButton, (!emailCode || !pin || pin.length < 4 || verifyMutation.isPending) && styles.proceedButtonDisabled]}
-              onPress={handleSecurityComplete}
-              disabled={!emailCode || !pin || pin.length < 4 || verifyMutation.isPending}
+            <ScrollView
+              style={styles.securityModalScrollView}
+              contentContainerStyle={styles.securityModalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              {verifyMutation.isPending ? (
-                <ActivityIndicator size="small" color="#000000" />
-              ) : (
-                <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
-              )}
-            </TouchableOpacity>
+              <View style={styles.securityIconContainer}>
+                <View style={styles.securityIconCircle}>
+                  <Image
+                    source={require('../../../assets/Group 49.png')}
+                    style={styles.securityIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
+              <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+              <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
+
+              <View style={styles.securityInputWrapper}>
+                <ThemedText style={styles.securityInputLabel}>Email Code (Optional)</ThemedText>
+                <View style={styles.securityInputField}>
+                  <TextInput
+                    style={styles.securityInput}
+                    placeholder="Input Code sent to your email (or leave empty)"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={emailCode}
+                    onChangeText={setEmailCode}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.securityInputWrapper}>
+                <ThemedText style={styles.securityInputLabel}>Authenticator App Code (Optional)</ThemedText>
+                <View style={styles.securityInputField}>
+                  <TextInput
+                    style={styles.securityInput}
+                    placeholder="Input Code from your authenticator app (optional)"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={authenticatorCode}
+                    onChangeText={setAuthenticatorCode}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.proceedButton, (!pin || pin.length < 4 || verifyMutation.isPending) && styles.proceedButtonDisabled]}
+                onPress={handleSecurityComplete}
+                disabled={!pin || pin.length < 4 || verifyMutation.isPending}
+              >
+                {verifyMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Transaction Success Modal */}
@@ -2066,11 +2081,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#020c19',
     borderTopLeftRadius: 30 * SCALE,
     borderTopRightRadius: 30 * SCALE,
+    maxHeight: '90%',
+    flex: 1,
+  },
+  securityModalScrollView: {
+    flex: 1,
+  },
+  securityModalScrollContent: {
     paddingHorizontal: 20 * SCALE,
     paddingTop: 20 * SCALE,
     paddingBottom: 30 * SCALE,
     alignItems: 'center',
-    maxHeight: '90%',
   },
   securityModalHeader: {
     flexDirection: 'row',

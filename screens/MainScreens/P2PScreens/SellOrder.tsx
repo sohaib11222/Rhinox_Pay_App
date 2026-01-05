@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,14 +9,19 @@ import {
   StatusBar,
   Modal,
   TextInput,
-  Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
+import { useCreateP2POrder } from '../../../mutations/p2p.mutations';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -30,48 +35,259 @@ interface PaymentMethod {
 
 const SellOrder = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const queryClient = useQueryClient();
+  const routeParams = route.params as {
+    adId?: string;
+    amount?: string;
+    cryptoAmount?: string;
+    paymentMethodId?: string;
+  } | undefined;
+
   const [currencyType, setCurrencyType] = useState<'Fiat' | 'Crypto'>('Fiat');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(routeParams?.cryptoAmount || '');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [tempSelectedPaymentMethod, setTempSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [searchPaymentQuery, setSearchPaymentQuery] = useState('');
 
-  // Mock payment methods - TODO: Replace with API call
-  const paymentMethods: PaymentMethod[] = [
-    { id: '1', name: 'All', type: 'all' },
-    { id: '2', name: 'RhinoxPay ID', type: 'rhinoxpay' },
-    { id: '3', name: 'Bank Transfer', type: 'bank' },
-    { id: '4', name: 'Mobile Money', type: 'mobile' },
-    { id: '5', name: 'Opay', type: 'bank' },
-    { id: '6', name: 'Palmpay', type: 'bank' },
-    { id: '7', name: 'Kuda Bank', type: 'bank' },
-    { id: '8', name: 'Access Bank', type: 'bank' },
-    { id: '9', name: 'Ec Bank', type: 'bank' },
-  ];
+  const adId = routeParams?.adId || null;
 
-  // Mock order data - TODO: Replace with API call
-  const orderData = {
-    vendorName: 'Qamar Malik',
-    vendorAvatar: require('../../../assets/login/memoji.png'),
-    vendorStatus: 'Online',
-    vendorRating: '98%',
-    rate: 'N1,520',
-  };
+  // Fetch ad details
+  const {
+    data: adDetailsData,
+    isLoading: isLoadingAdDetails,
+    error: adDetailsError,
+    refetch: refetchAdDetails,
+  } = useGetP2PAdDetails(adId || '');
+
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalances,
+  } = useGetWalletBalances();
+
+  // Extract ad data
+  const adData = useMemo(() => {
+    if (!adDetailsData?.data) return null;
+    return adDetailsData.data;
+  }, [adDetailsData]);
+
+  // Transform payment methods from ad details
+  const paymentMethods: PaymentMethod[] = useMemo(() => {
+    if (!adData?.paymentMethods || !Array.isArray(adData.paymentMethods)) {
+      return [];
+    }
+    return adData.paymentMethods.map((method: any) => {
+      let name = '';
+      if (method.type === 'bank_account') {
+        name = `${method.bankName || 'Bank'} - ${method.accountNumber ? method.accountNumber.replace(/(.{4})$/, '****$1') : ''}`;
+      } else if (method.type === 'mobile_money') {
+        name = `${method.providerName || 'Mobile Money'} - ${method.phoneNumber ? method.phoneNumber.replace(/(.{4})$/, '****$1') : ''}`;
+      } else if (method.type === 'rhinoxpay_id') {
+        name = `RhinoxPay ID - ${method.rhinoxpayId || ''}`;
+      } else {
+        name = method.name || `${method.type} - ${method.accountNumber || method.phoneNumber || ''}`;
+      }
+      return {
+        id: String(method.id),
+        name: name,
+        type: method.type || 'unknown',
+      };
+    });
+  }, [adData]);
+
+  // Filter payment methods by search query
+  const filteredPaymentMethods = useMemo(() => {
+    if (!searchPaymentQuery.trim()) {
+      return paymentMethods;
+    }
+    return paymentMethods.filter(method =>
+      method.name.toLowerCase().includes(searchPaymentQuery.toLowerCase())
+    );
+  }, [paymentMethods, searchPaymentQuery]);
+
+  // Get vendor info
+  const vendorInfo = useMemo(() => {
+    if (!adData?.vendor) {
+      return {
+        name: 'Unknown Vendor',
+        avatar: require('../../../assets/login/memoji.png'),
+        status: 'Offline',
+        rating: '0%',
+      };
+    }
+    const vendor = adData.vendor;
+    return {
+      name: `${vendor.firstName || ''} ${vendor.lastName || ''}`.trim() || 'Unknown Vendor',
+      avatar: require('../../../assets/login/memoji.png'), // Default avatar
+      status: adData.isOnline ? 'Online' : 'Offline',
+      rating: vendor.score ? `${(parseFloat(vendor.score) * 20).toFixed(0)}%` : '0%',
+    };
+  }, [adData]);
+
+  // Get rate and order limits
+  const rate = useMemo(() => {
+    if (!adData?.price) return '0';
+    return parseFloat(adData.price).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, [adData]);
+
+  const minOrder = useMemo(() => {
+    return adData?.minOrder ? parseFloat(adData.minOrder) : 0;
+  }, [adData]);
+
+  const maxOrder = useMemo(() => {
+    return adData?.maxOrder ? parseFloat(adData.maxOrder) : 0;
+  }, [adData]);
+
+  // Get crypto balance
+  const cryptoBalance = useMemo(() => {
+    if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
+      return '0';
+    }
+    const cryptoCurrency = adData?.cryptoCurrency || 'USDT';
+    const wallet = balancesData.data.crypto.find(
+      (w: any) => w.currency === cryptoCurrency
+    );
+    return wallet?.balance || '0';
+  }, [balancesData?.data?.crypto, adData?.cryptoCurrency]);
+
+  // Get fiat balance
+  const fiatBalance = useMemo(() => {
+    if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) {
+      return '0';
+    }
+    const fiatCurrency = adData?.fiatCurrency || 'NGN';
+    const wallet = balancesData.data.fiat.find(
+      (w: any) => w.currency === fiatCurrency
+    );
+    return wallet?.balance || '0';
+  }, [balancesData?.data?.fiat, adData?.fiatCurrency]);
+
+  // Calculate fiat amount from crypto amount
+  const fiatAmount = useMemo(() => {
+    if (!amount || !adData?.price) return '0.00';
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numericAmount)) return '0.00';
+    const calculated = numericAmount * parseFloat(adData.price);
+    return calculated.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }, [amount, adData?.price]);
+
+  // Calculate crypto amount from fiat amount
+  const cryptoAmountFromFiat = useMemo(() => {
+    if (!amount || !adData?.price) return '0.00';
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numericAmount)) return '0.00';
+    const calculated = numericAmount / parseFloat(adData.price);
+    return calculated.toLocaleString('en-US', {
+      minimumFractionDigits: 8,
+      maximumFractionDigits: 8,
+    });
+  }, [amount, adData?.price]);
+
+  // Create order mutation
+  const createOrderMutation = useCreateP2POrder({
+    onSuccess: (data) => {
+      showSuccessAlert('Success', 'Sell order created successfully', () => {
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'orders'] });
+        // Navigate to sell order flow screen
+        (navigation as any).navigate('Settings', {
+          screen: 'SellOrderFlow',
+          params: {
+            orderId: String(data?.data?.id || ''),
+            amount: fiatAmount,
+            assetAmount: `${amount.replace(/,/g, '')} ${adData?.cryptoCurrency || 'USDT'}`,
+            cryptoAmount: amount.replace(/,/g, ''),
+            paymentMethodId: selectedPaymentMethod?.id,
+          },
+        });
+      });
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to create sell order');
+    },
+  });
 
   const handleSell = () => {
-    if (!amount || !selectedPaymentMethod) {
-      Alert.alert('Error', 'Please enter amount and select payment method');
+    if (!amount || !selectedPaymentMethod || !adId) {
+      showErrorAlert('Validation Error', 'Please enter amount and select payment method');
       return;
     }
-    // Navigate to sell order flow screen
-    (navigation as any).navigate('Settings', {
-      screen: 'SellOrderFlow',
-      params: {
-        amount,
-        selectedPaymentMethod,
-      },
+
+    let cryptoAmount: number;
+    let fiatAmount: number;
+
+    if (currencyType === 'Fiat') {
+      // User entered fiat amount, calculate crypto amount
+      fiatAmount = parseFloat(amount.replace(/,/g, ''));
+      if (isNaN(fiatAmount) || fiatAmount <= 0) {
+        showErrorAlert('Validation Error', 'Please enter a valid amount');
+        return;
+      }
+      cryptoAmount = fiatAmount / parseFloat(adData?.price || '1');
+    } else {
+      // User entered crypto amount, calculate fiat amount
+      cryptoAmount = parseFloat(amount.replace(/,/g, ''));
+      if (isNaN(cryptoAmount) || cryptoAmount <= 0) {
+        showErrorAlert('Validation Error', 'Please enter a valid amount');
+        return;
+      }
+      fiatAmount = cryptoAmount * parseFloat(adData?.price || '0');
+    }
+
+    // Validate order limits
+    if (fiatAmount < minOrder) {
+      showErrorAlert('Validation Error', `Order amount must be at least ${minOrder.toLocaleString()} ${adData?.fiatCurrency || 'NGN'}`);
+      return;
+    }
+    if (fiatAmount > maxOrder) {
+      showErrorAlert('Validation Error', `Order amount must not exceed ${maxOrder.toLocaleString()} ${adData?.fiatCurrency || 'NGN'}`);
+      return;
+    }
+
+    // Check crypto balance
+    const availableBalance = parseFloat(cryptoBalance);
+    if (cryptoAmount > availableBalance) {
+      showErrorAlert('Insufficient Balance', `You have ${availableBalance.toFixed(8)} ${adData?.cryptoCurrency || 'USDT'} available`);
+      return;
+    }
+
+    // Create order
+    createOrderMutation.mutate({
+      adId: adId,
+      cryptoAmount: cryptoAmount.toFixed(8),
+      paymentMethodId: selectedPaymentMethod.id,
     });
   };
+
+  // Check if form is valid
+  const isFormValid = useMemo(() => {
+    if (!amount || !selectedPaymentMethod || !adId || !adData) return false;
+    
+    let cryptoAmount: number;
+    let fiatAmount: number;
+
+    if (currencyType === 'Fiat') {
+      fiatAmount = parseFloat(amount.replace(/,/g, ''));
+      if (isNaN(fiatAmount) || fiatAmount <= 0) return false;
+      cryptoAmount = fiatAmount / parseFloat(adData.price || '1');
+    } else {
+      cryptoAmount = parseFloat(amount.replace(/,/g, ''));
+      if (isNaN(cryptoAmount) || cryptoAmount <= 0) return false;
+      fiatAmount = cryptoAmount * parseFloat(adData.price || '0');
+    }
+
+    if (fiatAmount < minOrder || fiatAmount > maxOrder) return false;
+    const availableBalance = parseFloat(cryptoBalance);
+    if (cryptoAmount > availableBalance) return false;
+    return true;
+  }, [amount, selectedPaymentMethod, adId, adData, currencyType, minOrder, maxOrder, cryptoBalance]);
 
   const handlePaymentMethodSelect = (method: PaymentMethod) => {
     setTempSelectedPaymentMethod(method);
@@ -87,18 +303,25 @@ const SellOrder = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing sell order data...');
-        resolve();
-      }, 1000);
-    });
+    if (adId) {
+      await refetchAdDetails();
+    }
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
     onRefresh: handleRefresh,
     refreshDelay: 2000,
   });
+
+  // Set initial payment method from route params
+  useEffect(() => {
+    if (routeParams?.paymentMethodId && paymentMethods.length > 0) {
+      const method = paymentMethods.find(m => m.id === routeParams.paymentMethodId);
+      if (method) {
+        setSelectedPaymentMethod(method);
+      }
+    }
+  }, [routeParams?.paymentMethodId, paymentMethods]);
 
   return (
     <View style={styles.container}>
@@ -117,7 +340,14 @@ const SellOrder = () => {
         <View style={styles.headerTitleContainer}>
           <ThemedText style={styles.headerTitle}>Sell Order</ThemedText>
         </View>
-        <TouchableOpacity style={styles.backButton}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => {
+            (navigation as any).navigate('Settings', {
+              screen: 'Support',
+            });
+          }}
+        >
           <View style={styles.iconCircle}>
             <MaterialCommunityIcons name="headset" size={24 * SCALE} color="#FFFFFF" />
           </View>
@@ -137,46 +367,63 @@ const SellOrder = () => {
             progressBackgroundColor="#020c19"
           />
         }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#A9EF45"
-            colors={['#A9EF45']}
-            progressBackgroundColor="#020c19"
-          />
-        }
       >
         {/* Vendor Info Card */}
-        <View style={styles.vendorCard}>
-          <Image
-            source={orderData.vendorAvatar}
-            style={styles.vendorAvatar}
-            resizeMode="cover"
-          />
-          <View style={styles.vendorInfo}>
-            <ThemedText style={styles.vendorName}>{orderData.vendorName}</ThemedText>
-            <ThemedText style={styles.vendorStatus}>{orderData.vendorStatus}</ThemedText>
+        {isLoadingAdDetails ? (
+          <View style={[styles.vendorCard, { justifyContent: 'center', alignItems: 'center', paddingVertical: 30 }]}>
+            <ActivityIndicator size="small" color="#A9EF45" />
+            <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
+              Loading ad details...
+            </ThemedText>
           </View>
-          <ThemedText style={styles.vendorRating}>{orderData.vendorRating}</ThemedText>
-        </View>
+        ) : adDetailsError ? (
+          <View style={[styles.vendorCard, { justifyContent: 'center', alignItems: 'center', paddingVertical: 30 }]}>
+            <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+            <ThemedText style={{ color: '#ff0000', marginTop: 10, fontSize: 12 * SCALE, textAlign: 'center' }}>
+              {adDetailsError?.message || 'Failed to load ad details'}
+            </ThemedText>
+            <TouchableOpacity
+              style={{ marginTop: 15, backgroundColor: '#A9EF45', paddingHorizontal: 20 * SCALE, paddingVertical: 10 * SCALE, borderRadius: 100 }}
+              onPress={() => refetchAdDetails()}
+            >
+              <ThemedText style={{ color: '#000000', fontSize: 12 * SCALE }}>Retry</ThemedText>
+            </TouchableOpacity>
+          </View>
+        ) : adData ? (
+          <View style={styles.vendorCard}>
+            <Image
+              source={vendorInfo.avatar}
+              style={styles.vendorAvatar}
+              resizeMode="cover"
+            />
+            <View style={styles.vendorInfo}>
+              <ThemedText style={styles.vendorName}>{vendorInfo.name}</ThemedText>
+              <ThemedText style={styles.vendorStatus}>{vendorInfo.status}</ThemedText>
+            </View>
+            <ThemedText style={styles.vendorRating}>{vendorInfo.rating}</ThemedText>
+          </View>
+        ) : null}
 
         {/* Vendor Rate */}
-        <ThemedText style={styles.rateTitle}>Vendor Rate</ThemedText>
-        <LinearGradient
-          colors={['#FFFFFF0D', '#A9EF4533']}    
-        start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.rateCard}
-        >
-          <View style={styles.rateContent}>
-            <View>
-              <ThemedText style={styles.rateLabel}>Rate</ThemedText>
-              <ThemedText style={styles.rateRefresh}>Refreshes in 1 min</ThemedText>
-            </View>
-            <ThemedText style={styles.rateValue}>{orderData.rate}</ThemedText>
-          </View>
-        </LinearGradient>
+        {adData && (
+          <>
+            <ThemedText style={styles.rateTitle}>Vendor Rate</ThemedText>
+            <LinearGradient
+              colors={['#FFFFFF0D', '#A9EF4533']}    
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.rateCard}
+            >
+              <View style={styles.rateContent}>
+                <View>
+                  <ThemedText style={styles.rateLabel}>Rate</ThemedText>
+                  <ThemedText style={styles.rateRefresh}>1 {adData.cryptoCurrency} = {adData.fiatCurrency} {rate}</ThemedText>
+                </View>
+                <ThemedText style={styles.rateValue}>{adData.fiatCurrency} {rate}</ThemedText>
+              </View>
+            </LinearGradient>
+          </>
+        )}
 
         {/* Order Details Card */}
         <View style={styles.orderCard}>
@@ -206,23 +453,29 @@ const SellOrder = () => {
           {currencyType === 'Fiat' ? (
             <>
               <View style={styles.amountSection}>
-                <ThemedText style={styles.amountLabel}>Amount to sell</ThemedText>
+                <ThemedText style={styles.amountLabel}>Amount to sell ({adData?.fiatCurrency || 'NGN'})</ThemedText>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
                   onChangeText={(text) => {
                     const numericValue = text.replace(/,/g, '');
-                    if (numericValue === '' || /^\d+$/.test(numericValue)) {
+                    if (numericValue === '' || /^\d+(\.\d*)?$/.test(numericValue)) {
                       setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
                     }
                   }}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
                   placeholder="Input amount"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                 />
                 <View style={styles.balanceRow}>
                   <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
-                  <ThemedText style={styles.balanceValue}>NGN 0.00</ThemedText>
+                  {isLoadingBalances ? (
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                  ) : (
+                    <ThemedText style={styles.balanceValue}>
+                      {adData?.fiatCurrency || 'NGN'} {parseFloat(fiatBalance || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </ThemedText>
+                  )}
                 </View>
               </View>
 
@@ -230,37 +483,47 @@ const SellOrder = () => {
               <View style={styles.receiveSection}>
                 <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
                 <View style={styles.receiveValueContainer}>
-                  <ThemedText style={styles.receiveValue}>0.00 USDT</ThemedText>
+                  <ThemedText style={styles.receiveValue}>
+                    {amount && adData?.price ? `${cryptoAmountFromFiat} ${adData.cryptoCurrency || 'USDT'}` : `0.00 ${adData?.cryptoCurrency || 'USDT'}`}
+                  </ThemedText>
                 </View>
               </View>
             </>
           ) : (
             <>
               <View style={styles.amountSection}>
-                <ThemedText style={styles.amountLabel}>Enter USDT Amount</ThemedText>
+                <ThemedText style={styles.amountLabel}>Enter {adData?.cryptoCurrency || 'USDT'} Amount</ThemedText>
                 <TextInput
                   style={styles.amountInput}
                   value={amount}
                   onChangeText={(text) => {
                     const numericValue = text.replace(/,/g, '');
-                    if (numericValue === '' || /^\d+$/.test(numericValue)) {
+                    if (numericValue === '' || /^\d+(\.\d*)?$/.test(numericValue)) {
                       setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
                     }
                   }}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
                   placeholder="Input amount"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                 />
                 <View style={styles.balanceRow}>
                   <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
-                  <ThemedText style={styles.balanceValue}>USDT 0.00</ThemedText>
+                  {isLoadingBalances ? (
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                  ) : (
+                    <ThemedText style={styles.balanceValue}>
+                      {adData?.cryptoCurrency || 'USDT'} {parseFloat(cryptoBalance).toFixed(8)}
+                    </ThemedText>
+                  )}
                 </View>
               </View>
 
-              {/* You will Pay */}
+              {/* You will Receive */}
               <View style={styles.receiveSection}>
                 <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
-                <ThemedText style={styles.payValue}>N10,000</ThemedText>
+                <ThemedText style={styles.payValue}>
+                  {adData?.fiatCurrency || 'NGN'} {fiatAmount}
+                </ThemedText>
               </View>
             </>
           )}
@@ -269,22 +532,38 @@ const SellOrder = () => {
           <TouchableOpacity
             style={styles.paymentMethodField}
             onPress={() => setShowPaymentMethodModal(true)}
+            disabled={isLoadingAdDetails || paymentMethods.length === 0}
           >
-            <ThemedText style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
-              {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select payment method'}
-            </ThemedText>
-            <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+            {isLoadingAdDetails ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={styles.placeholder}>Loading payment methods...</ThemedText>
+              </View>
+            ) : paymentMethods.length === 0 ? (
+              <ThemedText style={styles.placeholder}>No payment methods available</ThemedText>
+            ) : (
+              <>
+                <ThemedText style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
+                  {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select payment method'}
+                </ThemedText>
+                <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
 
       {/* Sell Button */}
       <TouchableOpacity
-        style={[styles.sellButton, (!amount || !selectedPaymentMethod) && styles.sellButtonDisabled]}
+        style={[styles.sellButton, (!isFormValid || createOrderMutation.isPending) && styles.sellButtonDisabled]}
         onPress={handleSell}
-        disabled={!amount || !selectedPaymentMethod}
+        disabled={!isFormValid || createOrderMutation.isPending}
       >
-        <ThemedText style={styles.sellButtonText}>Sell</ThemedText>
+        {createOrderMutation.isPending ? (
+          <ActivityIndicator size="small" color="#000000" />
+        ) : (
+          <ThemedText style={styles.sellButtonText}>Sell</ThemedText>
+        )}
       </TouchableOpacity>
 
       {/* Select Payment Method Modal */}
@@ -307,13 +586,29 @@ const SellOrder = () => {
               <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search Bank"
+                placeholder="Search payment method"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={searchPaymentQuery}
+                onChangeText={setSearchPaymentQuery}
               />
             </View>
 
             <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
-              {paymentMethods.map((method) => (
+              {isLoadingAdDetails ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
+                    Loading payment methods...
+                  </ThemedText>
+                </View>
+              ) : filteredPaymentMethods.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                    {searchPaymentQuery ? 'No payment methods found' : 'No payment methods available'}
+                  </ThemedText>
+                </View>
+              ) : (
+                filteredPaymentMethods.map((method) => (
                 <TouchableOpacity
                   key={method.id}
                   style={styles.paymentMethodItem}
@@ -326,7 +621,8 @@ const SellOrder = () => {
                     <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
                   )}
                 </TouchableOpacity>
-              ))}
+                ))
+              )}
             </ScrollView>
 
             <View style={styles.applyButtonContainer}>

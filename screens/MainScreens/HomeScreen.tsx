@@ -27,6 +27,20 @@ import { API_BASE_URL } from '../../utils/apiConfig';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
 
+// Currency mapping based on country code
+const getCurrencyFromCountryCode = (countryCode: string): string => {
+  const currencyMap: { [key: string]: string } = {
+    'NG': 'NGN',
+    'KE': 'KES',
+    'GH': 'GHS',
+    'ZA': 'ZAR',
+    'BW': 'BWP',
+    'TZ': 'TZS',
+    'UG': 'UGX',
+  };
+  return currencyMap[countryCode] || 'NGN';
+};
+
 const COUNTRIES = [
   { id: 1, name: 'Nigeria', flag: '🇳🇬', selected: false },
   { id: 2, name: 'Botswana', flag: '🇧🇼', selected: false },
@@ -50,7 +64,10 @@ const HomeScreen = () => {
   const [showSendFundsModal, setShowSendFundsModal] = useState(false);
   const [sendFundsWalletType, setSendFundsWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showSendFundsCountryModal, setShowSendFundsCountryModal] = useState(false);
+  const [sendFundsSelectedCountry, setSendFundsSelectedCountry] = useState<string>('NG');
+  const [sendFundsSelectedCountryName, setSendFundsSelectedCountryName] = useState('Nigeria');
   const [showAssetModal, setShowAssetModal] = useState(false);
+  const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>({
     id: '1',
     name: 'Bitcoin',
@@ -61,6 +78,9 @@ const HomeScreen = () => {
   const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
   const [showFundWalletAssetModal, setShowFundWalletAssetModal] = useState(false);
+  const [fundWalletAssetSearchTerm, setFundWalletAssetSearchTerm] = useState('');
+  const [fundWalletSelectedCountry, setFundWalletSelectedCountry] = useState<string>('NG');
+  const [fundWalletSelectedCountryName, setFundWalletSelectedCountryName] = useState('Nigeria');
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
@@ -171,7 +191,45 @@ const HomeScreen = () => {
       setSelectedCountry(user.country.id);
       setSelectedCountryName(user.country.name);
     }
+    // Initialize fund wallet country
+    if (user?.country && !fundWalletSelectedCountry) {
+      setFundWalletSelectedCountry(user.country.code || 'NG');
+      setFundWalletSelectedCountryName(user.country.name || 'Nigeria');
+    }
+    // Initialize send funds country
+    if (user?.country && !sendFundsSelectedCountry) {
+      setSendFundsSelectedCountry(user.country.code || 'NG');
+      setSendFundsSelectedCountryName(user.country.name || 'Nigeria');
+    }
   }, [user?.country]);
+
+  // Initialize selectedAsset from first available crypto wallet
+  useEffect(() => {
+    if (cryptoWallets && cryptoWallets.length > 0 && !selectedAsset) {
+      const firstWallet = cryptoWallets[0];
+      if (firstWallet) {
+        setSelectedAsset({
+          id: String(firstWallet.id || firstWallet.currency || '1'),
+          name: firstWallet.currency || firstWallet.symbol || 'BTC',
+          balance: firstWallet.balance || '0',
+          icon: require('../../assets/CurrencyBtc.png'),
+        });
+      }
+    }
+  }, [cryptoWallets]);
+
+  // Reset search terms when modals close
+  useEffect(() => {
+    if (!showAssetModal) {
+      setAssetSearchTerm('');
+    }
+  }, [showAssetModal]);
+
+  useEffect(() => {
+    if (!showFundWalletAssetModal) {
+      setFundWalletAssetSearchTerm('');
+    }
+  }, [showFundWalletAssetModal]);
 
   // Format balance for display
   const formatBalance = (amount: string | number) => {
@@ -185,6 +243,66 @@ const HomeScreen = () => {
     if (isNaN(num)) return '0';
     return num.toLocaleString('en-US', { maximumFractionDigits: 8 });
   };
+
+  // Get balance for selected country currency (for Fund Wallet Fiat)
+  const fundWalletFiatBalance = useMemo(() => {
+    if (isLoadingWallets) return null;
+    const currency = getCurrencyFromCountryCode(fundWalletSelectedCountry);
+    const wallet = fiatWallets.find((w: any) => w.currency === currency);
+    if (wallet) {
+      return {
+        currency: wallet.currency || currency,
+        balance: wallet.balance || '0',
+        formatted: `${wallet.currency || currency}${formatBalance(wallet.balance || '0')}`,
+      };
+    }
+    return {
+      currency: currency,
+      balance: '0',
+      formatted: `${currency}0.00`,
+    };
+  }, [fiatWallets, fundWalletSelectedCountry, isLoadingWallets]);
+
+  // Get balance for selected country currency (for Send Funds Fiat)
+  const sendFundsFiatBalance = useMemo(() => {
+    if (isLoadingWallets) return null;
+    const currency = getCurrencyFromCountryCode(sendFundsSelectedCountry);
+    const wallet = fiatWallets.find((w: any) => w.currency === currency);
+    if (wallet) {
+      return {
+        currency: wallet.currency || currency,
+        balance: wallet.balance || '0',
+        formatted: `${wallet.currency || currency}${formatBalance(wallet.balance || '0')}`,
+      };
+    }
+    return {
+      currency: currency,
+      balance: '0',
+      formatted: `${currency}0.00`,
+    };
+  }, [fiatWallets, sendFundsSelectedCountry, isLoadingWallets]);
+
+  // Get balance for selected crypto asset (for Fund Wallet Crypto)
+  const fundWalletCryptoBalance = useMemo(() => {
+    if (isLoadingWallets || !selectedAsset) return null;
+    const wallet = cryptoWallets.find((w: any) => 
+      w.currency === selectedAsset.name || 
+      w.symbol === selectedAsset.name ||
+      w.currency?.toUpperCase() === selectedAsset.name.toUpperCase()
+    );
+    if (wallet) {
+      return {
+        currency: wallet.currency || selectedAsset.name,
+        balance: wallet.balance || '0',
+        formatted: `${formatBalanceNoDecimals(wallet.balance || '0')} ${wallet.currency || selectedAsset.name}`,
+      };
+    }
+    return {
+      currency: selectedAsset.name,
+      balance: selectedAsset.balance || '0',
+      formatted: `${selectedAsset.balance || '0'} ${selectedAsset.name}`,
+    };
+  }, [cryptoWallets, selectedAsset, isLoadingWallets]);
 
   // Balance data for Fiat and Crypto (from API or fallback)
   const fiatBalance = {
@@ -310,12 +428,61 @@ const HomeScreen = () => {
 
   // Filter transactions based on selected filter
   const transactions = useMemo(() => {
+    if (!allTransactions || !Array.isArray(allTransactions)) {
+      return [];
+    }
     if (selectedFilter === 'Fiat') {
       return allTransactions.filter(tx => tx.type === 'fiat').slice(0, 10);
     } else {
       return allTransactions.filter(tx => tx.type === 'crypto').slice(0, 10);
     }
   }, [allTransactions, selectedFilter]);
+
+  // Get recent send transactions for Send Funds modal
+  const recentSendTransactions = useMemo(() => {
+    // Safety check: ensure allTransactions is an array
+    if (!allTransactions || !Array.isArray(allTransactions)) {
+      return [];
+    }
+    
+    // Filter fiat transactions to show only send/transfer transactions
+    const sendTxs = allTransactions
+      .filter((tx: any) => {
+        const type = tx.type || '';
+        const title = (tx.title || '').toLowerCase();
+        const description = (tx.rawData?.description || '').toLowerCase();
+        return (
+          type === 'fiat' &&
+          (title.includes('send') ||
+            title.includes('transfer') ||
+            description.includes('send') ||
+            description.includes('transfer') ||
+            tx.rawData?.normalizedType === 'Send Transactions')
+        );
+      })
+      .slice(0, 5); // Show only 5 most recent
+
+    return sendTxs.map((tx: any) => {
+      // Extract recipient name from transaction
+      const recipientName = 
+        tx.rawData?.recipientInfo?.name ||
+        tx.rawData?.description?.replace(/Transfer \d+ [A-Z]{3} to /, '') ||
+        tx.title?.replace('Transfer ', '').replace(/ \d+ [A-Z]{3} to /, '') ||
+        'Unknown User';
+      
+      // Get currency from transaction
+      const currency = tx.rawData?.currency || 
+        tx.rawData?.fiatCurrency || 
+        getCurrencyFromCountryCode(sendFundsSelectedCountry);
+
+      return {
+        id: tx.id,
+        name: recipientName,
+        currency: currency,
+        avatar: require('../../assets/Frame 2398.png'),
+      };
+    });
+  }, [allTransactions, sendFundsSelectedCountry]);
 
   // Promotional banner images - using complete banner images
   const promoBanners = [
@@ -983,20 +1150,55 @@ const HomeScreen = () => {
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <ThemedText style={styles.sendFundsBalanceAmount}>N200,000</ThemedText>
+                          {isLoadingWallets ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {sendFundsFiatBalance?.formatted || 'NGN0.00'}
+                            </ThemedText>
+                          )}
                         </View>
                       </View>
                       <TouchableOpacity
                         style={styles.sendFundsCountrySelector}
                         onPress={() => setShowSendFundsCountryModal(true)}
+                        disabled={isLoadingCountries}
                       >
-                        <Image
-                          source={require('../../assets/login/nigeria-flag.png')}
-                          style={styles.sendFundsCountryFlagImage}
-                          resizeMode="cover"
-                        />
-                        <ThemedText style={styles.sendFundsCountryNameText}>{selectedCountryName}</ThemedText>
-                        <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                        {isLoadingCountries ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (() => {
+                          const selectedCountryData = countries.find((c: any) => c.code === sendFundsSelectedCountry);
+                          const flagValue = selectedCountryData?.flag || '';
+                          const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+                          const flagUrl = isFlagUrl 
+                            ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+                            : null;
+                          const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+                          
+                          return (
+                            <>
+                              {flagUrl ? (
+                                <Image
+                                  source={{ uri: flagUrl }}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              ) : flagEmoji ? (
+                                <ThemedText style={styles.sendFundsCountryFlagEmoji}>{flagEmoji}</ThemedText>
+                              ) : (
+                                <Image
+                                  source={require('../../assets/login/nigeria-flag.png')}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              )}
+                              <ThemedText style={styles.sendFundsCountryNameText}>
+                                {sendFundsSelectedCountryName || selectedCountryData?.name || 'Nigeria'}
+                              </ThemedText>
+                              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                            </>
+                          );
+                        })()}
                       </TouchableOpacity>
                     </LinearGradient>
                   </View>
@@ -1113,9 +1315,33 @@ const HomeScreen = () => {
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <ThemedText style={styles.sendFundsBalanceAmount}>
-                            {selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00001 BTC'}
-                          </ThemedText>
+                          {isLoadingWallets ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {(() => {
+                                if (!selectedAsset) {
+                                  // Default to first crypto wallet or BTC
+                                  const firstCrypto = cryptoWallets[0];
+                                  if (firstCrypto) {
+                                    return `${formatBalanceNoDecimals(firstCrypto.balance || '0')} ${firstCrypto.currency || 'BTC'}`;
+                                  }
+                                  return '0.00000 BTC';
+                                }
+                                // Find the actual wallet balance from API
+                                const wallet = cryptoWallets.find((w: any) => 
+                                  w.currency === selectedAsset.name || 
+                                  w.symbol === selectedAsset.name ||
+                                  w.currency?.toUpperCase() === selectedAsset.name.toUpperCase()
+                                );
+                                if (wallet) {
+                                  return `${formatBalanceNoDecimals(wallet.balance || '0')} ${wallet.currency || selectedAsset.name}`;
+                                }
+                                // Fallback to selectedAsset balance if wallet not found
+                                return `${selectedAsset.balance} ${selectedAsset.name}`;
+                              })()}
+                            </ThemedText>
+                          )}
                         </View>
                       </View>
                       <TouchableOpacity
@@ -1219,19 +1445,30 @@ const HomeScreen = () => {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.sendFundsRecentScrollContent}
                   >
-                    {[
-                      { id: '1', name: 'Adewale', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                      { id: '2', name: 'Sasha', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                      { id: '3', name: 'Olayemi', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                      { id: '4', name: 'Adejoke', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                      { id: '5', name: 'Tunde', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                    ].map((contact) => (
-                      <View key={contact.id} style={styles.sendFundsRecentItem}>
-                        <Image source={contact.avatar} style={styles.sendFundsRecentAvatar} resizeMode="cover" />
-                        <ThemedText style={styles.sendFundsRecentName}>{contact.name}</ThemedText>
-                        <ThemedText style={styles.sendFundsRecentCurrency}>{contact.currency}</ThemedText>
-                      </View>
-                    ))}
+                    {recentSendTransactions && recentSendTransactions.length > 0 ? (
+                      recentSendTransactions.map((contact) => (
+                        <View key={contact.id} style={styles.sendFundsRecentItem}>
+                          <Image source={contact.avatar} style={styles.sendFundsRecentAvatar} resizeMode="cover" />
+                          <ThemedText style={styles.sendFundsRecentName}>{contact.name}</ThemedText>
+                          <ThemedText style={styles.sendFundsRecentCurrency}>{contact.currency}</ThemedText>
+                        </View>
+                      ))
+                    ) : (
+                      // Fallback to default contacts if no recent transactions
+                      [
+                        { id: '1', name: 'Adewale', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
+                        { id: '2', name: 'Sasha', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
+                        { id: '3', name: 'Olayemi', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
+                        { id: '4', name: 'Adejoke', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
+                        { id: '5', name: 'Tunde', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
+                      ].map((contact) => (
+                        <View key={contact.id} style={styles.sendFundsRecentItem}>
+                          <Image source={contact.avatar} style={styles.sendFundsRecentAvatar} resizeMode="cover" />
+                          <ThemedText style={styles.sendFundsRecentName}>{contact.name}</ThemedText>
+                          <ThemedText style={styles.sendFundsRecentCurrency}>{contact.currency}</ThemedText>
+                        </View>
+                      ))
+                    )}
                   </ScrollView>
                 </View>
               )}
@@ -1250,7 +1487,10 @@ const HomeScreen = () => {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
-                <TouchableOpacity onPress={() => setShowAssetModal(false)}>
+                <TouchableOpacity onPress={() => {
+                  setShowAssetModal(false);
+                  setAssetSearchTerm(''); // Reset search when closing
+                }}>
                   <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
                 </TouchableOpacity>
               </View>
@@ -1260,46 +1500,95 @@ const HomeScreen = () => {
                   style={styles.searchInput}
                   placeholder="Search"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={assetSearchTerm}
+                  onChangeText={setAssetSearchTerm}
                 />
               </View>
               <ScrollView style={styles.modalList}>
-                {[
-                  { id: '1', name: 'Bitcoin', balance: '0.00001', icon: require('../../assets/CurrencyBtc.png') },
-                  { id: '2', name: 'Ethereum', balance: '10', icon: require('../../assets/CurrencyBtc.png') },
-                  { id: '3', name: 'Solana', balance: '100', icon: require('../../assets/CurrencyBtc.png') },
-                ].map((asset) => {
-                  const isSelected = selectedAsset?.id === asset.id;
-                  return (
-                    <TouchableOpacity
-                      key={asset.id}
-                      style={styles.assetItem}
-                      onPress={() => {
-                        setSelectedAsset(asset);
-                        setShowAssetModal(false);
-                      }}
-                    >
-                      <Image
-                        source={asset.icon}
-                        style={styles.assetItemIcon}
-                        resizeMode="cover"
-                      />
-                      <View style={styles.assetItemInfo}>
-                        <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
-                        <ThemedText style={styles.assetItemBalance}>Bal : {asset.balance}</ThemedText>
+                {isLoadingWallets ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                    <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
+                      Loading crypto wallets...
+                    </ThemedText>
+                  </View>
+                ) : (() => {
+                  const allWallets = cryptoWallets && cryptoWallets.length > 0 ? cryptoWallets : (walletsData?.data?.crypto || []);
+                  const filteredWallets = assetSearchTerm.trim() 
+                    ? allWallets.filter((wallet: any) => {
+                        const currency = (wallet.currency || wallet.symbol || '').toLowerCase();
+                        const searchLower = assetSearchTerm.toLowerCase().trim();
+                        return currency.includes(searchLower);
+                      })
+                    : allWallets;
+                  
+                  if (filteredWallets.length === 0) {
+                    return (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                          {assetSearchTerm.trim() ? 'No assets found' : 'No crypto wallets available'}
+                        </ThemedText>
                       </View>
-                      <MaterialCommunityIcons
-                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-                        size={24 * SCALE}
-                        color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
+                    );
+                  }
+                  
+                  return filteredWallets.map((wallet: any) => {
+                    // Map currency to icon
+                    let icon = require('../../assets/CurrencyBtc.png');
+                    const currency = wallet.currency || wallet.symbol || '';
+                    if (currency === 'BTC' || currency === 'Bitcoin') {
+                      icon = require('../../assets/CurrencyBtc.png');
+                    } else if (currency === 'USDT' || currency === 'Tether') {
+                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
+                    } else if (currency === 'ETH' || currency === 'Ethereum') {
+                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
+                    }
+                    
+                    const asset = {
+                      id: String(wallet.id || wallet.currency || wallet.symbol || ''),
+                      name: currency,
+                      balance: wallet.balance || '0',
+                      icon: icon,
+                    };
+                    const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
+                    return (
+                      <TouchableOpacity
+                        key={asset.id}
+                        style={styles.assetItem}
+                        onPress={() => {
+                          setSelectedAsset(asset);
+                          setShowAssetModal(false);
+                          setAssetSearchTerm(''); // Reset search when selecting
+                        }}
+                      >
+                        <Image
+                          source={asset.icon}
+                          style={styles.assetItemIcon}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.assetItemInfo}>
+                          <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                          <ThemedText style={styles.assetItemBalance}>
+                            Bal : {formatBalanceNoDecimals(wallet.balance || '0')}
+                          </ThemedText>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                          size={24 * SCALE}
+                          color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
               </ScrollView>
               <View style={styles.applyButtonContainer}>
                 <TouchableOpacity
                   style={styles.applyButton}
-                  onPress={() => setShowAssetModal(false)}
+                  onPress={() => {
+                    setShowAssetModal(false);
+                    setAssetSearchTerm(''); // Reset search when closing
+                  }}
                 >
                   <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                 </TouchableOpacity>
@@ -1334,8 +1623,8 @@ const HomeScreen = () => {
                       key={c.id}
                       style={styles.countryItem}
                       onPress={() => {
-                        setSelectedCountry(c.id);
-                        setSelectedCountryName(c.name);
+                        setSendFundsSelectedCountry(c.code || 'NG');
+                        setSendFundsSelectedCountryName(c.name || 'Nigeria');
                       }}
                     >
                       {c.flag ? (
@@ -1349,9 +1638,9 @@ const HomeScreen = () => {
                       )}
                       <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                       <MaterialCommunityIcons
-                        name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                        name={sendFundsSelectedCountry === c.code ? 'radiobox-marked' : 'radiobox-blank'}
                         size={24}
-                        color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                        color={sendFundsSelectedCountry === c.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                       />
                     </TouchableOpacity>
                   ))}
@@ -1442,20 +1731,55 @@ const HomeScreen = () => {
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <ThemedText style={styles.sendFundsBalanceAmount}>N200,000</ThemedText>
+                          {isLoadingWallets ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {fundWalletFiatBalance?.formatted || 'NGN0.00'}
+                            </ThemedText>
+                          )}
                         </View>
                       </View>
                       <TouchableOpacity
                         style={styles.sendFundsCountrySelector}
                         onPress={() => setShowFundWalletCountryModal(true)}
+                        disabled={isLoadingCountries}
                       >
-                        <Image
-                          source={require('../../assets/login/nigeria-flag.png')}
-                          style={styles.sendFundsCountryFlagImage}
-                          resizeMode="cover"
-                        />
-                        <ThemedText style={styles.sendFundsCountryNameText}>{selectedCountryName}</ThemedText>
-                        <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                        {isLoadingCountries ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (() => {
+                          const selectedCountryData = countries.find((c: any) => c.code === fundWalletSelectedCountry);
+                          const flagValue = selectedCountryData?.flag || '';
+                          const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+                          const flagUrl = isFlagUrl 
+                            ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+                            : null;
+                          const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+                          
+                          return (
+                            <>
+                              {flagUrl ? (
+                                <Image
+                                  source={{ uri: flagUrl }}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              ) : flagEmoji ? (
+                                <ThemedText style={styles.sendFundsCountryFlagEmoji}>{flagEmoji}</ThemedText>
+                              ) : (
+                                <Image
+                                  source={require('../../assets/login/nigeria-flag.png')}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              )}
+                              <ThemedText style={styles.sendFundsCountryNameText}>
+                                {fundWalletSelectedCountryName || selectedCountryName || 'Nigeria'}
+                              </ThemedText>
+                              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                            </>
+                          );
+                        })()}
                       </TouchableOpacity>
                     </LinearGradient>
                   </View>
@@ -1570,9 +1894,13 @@ const HomeScreen = () => {
                             style={styles.sendFundsWalletIcon}
                             resizeMode="cover"
                           />
-                          <ThemedText style={styles.sendFundsBalanceAmount}>
-                            {selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00001 BTC'}
-                          </ThemedText>
+                          {isLoadingWallets ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {fundWalletCryptoBalance?.formatted || (selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00000 BTC')}
+                            </ThemedText>
+                          )}
                         </View>
                       </View>
                       <TouchableOpacity
@@ -1612,7 +1940,7 @@ const HomeScreen = () => {
                         onPress={() => {
                           setShowFundWalletModal(false);
                           (navigation as any).navigate('Settings', {
-                            screen: 'Assets',
+                            screen: 'CryptoFundDeposit',
                           });
                         }}
                       >
@@ -1683,7 +2011,10 @@ const HomeScreen = () => {
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
-                <TouchableOpacity onPress={() => setShowFundWalletAssetModal(false)}>
+                <TouchableOpacity onPress={() => {
+                  setShowFundWalletAssetModal(false);
+                  setFundWalletAssetSearchTerm(''); // Reset search when closing
+                }}>
                   <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
                 </TouchableOpacity>
               </View>
@@ -1693,46 +2024,95 @@ const HomeScreen = () => {
                   style={styles.searchInput}
                   placeholder="Search"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={fundWalletAssetSearchTerm}
+                  onChangeText={setFundWalletAssetSearchTerm}
                 />
               </View>
               <ScrollView style={styles.modalList}>
-                {[
-                  { id: '1', name: 'Bitcoin', balance: '0.00001', icon: require('../../assets/CurrencyBtc.png') },
-                  { id: '2', name: 'Ethereum', balance: '10', icon: require('../../assets/CurrencyBtc.png') },
-                  { id: '3', name: 'Solana', balance: '100', icon: require('../../assets/CurrencyBtc.png') },
-                ].map((asset) => {
-                  const isSelected = selectedAsset?.id === asset.id;
-                  return (
-                    <TouchableOpacity
-                      key={asset.id}
-                      style={styles.assetItem}
-                      onPress={() => {
-                        setSelectedAsset(asset);
-                        setShowFundWalletAssetModal(false);
-                      }}
-                    >
-                      <Image
-                        source={asset.icon}
-                        style={styles.assetItemIcon}
-                        resizeMode="cover"
-                      />
-                      <View style={styles.assetItemInfo}>
-                        <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
-                        <ThemedText style={styles.assetItemBalance}>Bal : {asset.balance}</ThemedText>
+                {isLoadingWallets ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                    <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
+                      Loading crypto wallets...
+                    </ThemedText>
+                  </View>
+                ) : (() => {
+                  const allWallets = cryptoWallets && cryptoWallets.length > 0 ? cryptoWallets : (walletsData?.data?.crypto || []);
+                  const filteredWallets = fundWalletAssetSearchTerm.trim() 
+                    ? allWallets.filter((wallet: any) => {
+                        const currency = (wallet.currency || wallet.symbol || '').toLowerCase();
+                        const searchLower = fundWalletAssetSearchTerm.toLowerCase().trim();
+                        return currency.includes(searchLower);
+                      })
+                    : allWallets;
+                  
+                  if (filteredWallets.length === 0) {
+                    return (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                          {fundWalletAssetSearchTerm.trim() ? 'No assets found' : 'No crypto wallets available'}
+                        </ThemedText>
                       </View>
-                      <MaterialCommunityIcons
-                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-                        size={24 * SCALE}
-                        color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                      />
-                    </TouchableOpacity>
-                  );
-                })}
+                    );
+                  }
+                  
+                  return filteredWallets.map((wallet: any) => {
+                    // Map currency to icon
+                    let icon = require('../../assets/CurrencyBtc.png');
+                    const currency = wallet.currency || wallet.symbol || '';
+                    if (currency === 'BTC' || currency === 'Bitcoin') {
+                      icon = require('../../assets/CurrencyBtc.png');
+                    } else if (currency === 'USDT' || currency === 'Tether') {
+                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
+                    } else if (currency === 'ETH' || currency === 'Ethereum') {
+                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
+                    }
+                    
+                    const asset = {
+                      id: String(wallet.id || wallet.currency || wallet.symbol || ''),
+                      name: currency,
+                      balance: wallet.balance || '0',
+                      icon: icon,
+                    };
+                    const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
+                    return (
+                      <TouchableOpacity
+                        key={asset.id}
+                        style={styles.assetItem}
+                        onPress={() => {
+                          setSelectedAsset(asset);
+                          setShowFundWalletAssetModal(false);
+                          setFundWalletAssetSearchTerm(''); // Reset search when selecting
+                        }}
+                      >
+                        <Image
+                          source={asset.icon}
+                          style={styles.assetItemIcon}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.assetItemInfo}>
+                          <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                          <ThemedText style={styles.assetItemBalance}>
+                            Bal : {formatBalanceNoDecimals(wallet.balance || '0')}
+                          </ThemedText>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                          size={24 * SCALE}
+                          color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
               </ScrollView>
               <View style={styles.applyButtonContainer}>
                 <TouchableOpacity
                   style={styles.applyButton}
-                  onPress={() => setShowFundWalletAssetModal(false)}
+                  onPress={() => {
+                    setShowFundWalletAssetModal(false);
+                    setFundWalletAssetSearchTerm(''); // Reset search when closing
+                  }}
                 >
                   <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                 </TouchableOpacity>
@@ -1767,8 +2147,8 @@ const HomeScreen = () => {
                       key={c.id}
                       style={styles.countryItem}
                       onPress={() => {
-                        setSelectedCountry(c.id);
-                        setSelectedCountryName(c.name);
+                        setFundWalletSelectedCountry(c.code || 'NG');
+                        setFundWalletSelectedCountryName(c.name || 'Nigeria');
                       }}
                     >
                       {c.flag ? (
@@ -1782,9 +2162,9 @@ const HomeScreen = () => {
                       )}
                       <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                       <MaterialCommunityIcons
-                        name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                        name={fundWalletSelectedCountry === c.code ? 'radiobox-marked' : 'radiobox-blank'}
                         size={24}
-                        color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                        color={fundWalletSelectedCountry === c.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                       />
                     </TouchableOpacity>
                   ))}
@@ -2512,6 +2892,13 @@ const styles = StyleSheet.create({
     width: 36 * SCALE,
     height: 38 * SCALE,
     borderRadius: 18 * SCALE,
+  },
+  sendFundsCountryFlagEmoji: {
+    fontSize: 28 * SCALE,
+    width: 36 * SCALE,
+    height: 38 * SCALE,
+    textAlign: 'center',
+    lineHeight: 38 * SCALE,
   },
   sendFundsCountryNameText: {
     fontSize: 14 * 1,

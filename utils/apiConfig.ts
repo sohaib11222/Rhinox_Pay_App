@@ -197,10 +197,12 @@ export const API_ROUTES = {
     GET_BY_ID: '/payment-settings',
     ADD_BANK_ACCOUNT: '/payment-settings/bank-account',
     ADD_MOBILE_MONEY: '/payment-settings/mobile-money',
+    ADD_RHINOXPAY_ID: '/payment-settings/rhinoxpay-id',
     UPDATE: '/payment-settings',
     DELETE: '/payment-settings',
     SET_DEFAULT: '/payment-settings',
     MOBILE_MONEY_PROVIDERS: '/payment-settings/mobile-money-providers',
+    BANKS: '/payment-settings/banks',
   },
 
   // Transfer Routes

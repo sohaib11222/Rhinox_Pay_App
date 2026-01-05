@@ -22,10 +22,12 @@ import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
-import { useGetMobileMoneyProviders } from '../../../queries/deposit.queries';
+import { useGetMobileMoneyProviders, useGetBankDetails } from '../../../queries/deposit.queries';
 import { useInitiateDeposit, useConfirmDeposit } from '../../../mutations/deposit.mutations';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
+import * as Clipboard from 'expo-clipboard';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -80,21 +82,32 @@ const Fund = () => {
     }, [navigation])
   );
 
+  // Channel selection (Bank Transfer or Mobile Money)
+  const [selectedChannel, setSelectedChannel] = useState<'bank_transfer' | 'mobile_money'>('mobile_money');
+  
+  // Common state
   const [amount, setAmount] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
-  const [momoNumber, setMomoNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
-  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [selectedCountry, setSelectedCountry] = useState<string>('NG'); // Nigeria by default
+  const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [showCountryModal, setShowCountryModal] = useState(false);
-  const [selectedCountry, setSelectedCountry] = useState<string>('KE'); // Kenya by default
-  const [selectedCountryName, setSelectedCountryName] = useState('Kenya');
-  const [searchQuery, setSearchQuery] = useState('');
   const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
+  
+  // Mobile Money specific state
+  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
+  const [momoNumber, setMomoNumber] = useState('');
+  const [accountName, setAccountName] = useState('');
+  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Bank Transfer specific state
+  const [bankDetails, setBankDetails] = useState<any>(null);
+  const [hasMadeTransfer, setHasMadeTransfer] = useState(false);
 
   // Get currency from country code
   const currency = useMemo(() => getCurrencyFromCountryCode(selectedCountry), [selectedCountry]);
@@ -142,20 +155,52 @@ const Fund = () => {
     if (!countriesData?.data || !Array.isArray(countriesData.data)) {
       // Fallback to default countries
       return [
-        { id: 1, name: 'Nigeria', code: 'NG', flag: require('../../../assets/login/nigeria-flag.png') },
-        { id: 2, name: 'Botswana', code: 'BW', flag: require('../../../assets/login/nigeria-flag.png') },
-        { id: 3, name: 'Ghana', code: 'GH', flag: require('../../../assets/login/nigeria-flag.png') },
-        { id: 4, name: 'Kenya', code: 'KE', flag: require('../../../assets/login/nigeria-flag.png') },
-        { id: 5, name: 'South Africa', code: 'ZA', flag: require('../../../assets/login/south-africa-flag.png') },
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬', flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼', flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭', flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪', flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦', flagUrl: null },
       ];
     }
-    return countriesData.data.map((country: any, index: number) => ({
-      id: country.id || index + 1,
-      name: country.name || '',
-      code: country.code || '',
-      flag: country.flag || require('../../../assets/login/nigeria-flag.png'),
-    }));
+    return countriesData.data.map((country: any, index: number) => {
+      // Check if flag is a URL path (starts with /) or an emoji
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: flagEmoji,
+        flagUrl: flagUrl,
+      };
+    });
   }, [countriesData?.data]);
+
+  // Fetch bank details for bank transfer
+  const {
+    data: bankDetailsData,
+    isLoading: isLoadingBankDetails,
+    isError: isBankDetailsError,
+    error: bankDetailsError,
+    refetch: refetchBankDetails,
+  } = useGetBankDetails({
+    countryCode: selectedCountry,
+    currency: currency,
+  }, {
+    enabled: selectedChannel === 'bank_transfer' && !!selectedCountry && !!currency,
+  });
+
+  // Update bank details when data is fetched
+  useEffect(() => {
+    if (bankDetailsData?.data && selectedChannel === 'bank_transfer') {
+      setBankDetails(bankDetailsData.data);
+    }
+  }, [bankDetailsData, selectedChannel]);
 
   // Fetch mobile money providers based on country and currency
   const {
@@ -167,6 +212,8 @@ const Fund = () => {
   } = useGetMobileMoneyProviders({
     countryCode: selectedCountry,
     currency: currency,
+  }, {
+    enabled: selectedChannel === 'mobile_money' && !!selectedCountry && !!currency,
   });
 
   // Transform providers to UI format
@@ -211,22 +258,61 @@ const Fund = () => {
       
       setPendingTransactionData(data?.data);
       
-      if (transactionId) {
-        // Convert to number if it's a string
-        const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
-        if (!isNaN(id)) {
-          setPendingTransactionId(id);
-          setShowPinModal(true);
-        } else {
-          Alert.alert('Error', 'Invalid transaction ID received');
+      if (selectedChannel === 'bank_transfer') {
+        // For bank transfer, close bank details modal and show instructions
+        setShowBankDetailsModal(false);
+        // Update bank details with reference from response
+        if (data?.data?.reference) {
+          setBankDetails((prev: any) => ({
+            ...prev,
+            reference: data.data.reference,
+          }));
         }
+        // Show success message with instructions
+        Alert.alert(
+          'Deposit Initiated',
+          'Please make the bank transfer using the provided details. Include the reference in the transfer narration.',
+          [
+            {
+              text: 'I\'ve Made the Transfer',
+              onPress: () => {
+                setHasMadeTransfer(true);
+                if (transactionId) {
+                  const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
+                  if (!isNaN(id)) {
+                    setPendingTransactionId(id);
+                    setShowPinModal(true);
+                  }
+                }
+              },
+            },
+            {
+              text: 'View Details',
+              onPress: () => setShowBankDetailsModal(true),
+            },
+          ]
+        );
       } else {
-        Alert.alert('Error', 'Transaction ID not found in response');
+        // For mobile money, show PIN modal directly
+        if (transactionId) {
+          const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
+          if (!isNaN(id)) {
+            setPendingTransactionId(id);
+            setShowPinModal(true);
+          } else {
+            Alert.alert('Error', 'Invalid transaction ID received');
+          }
+        } else {
+          Alert.alert('Error', 'Transaction ID not found in response');
+        }
       }
     },
     onError: (error: any) => {
       console.error('[Fund] Error initiating deposit:', error);
       Alert.alert('Error', error?.message || 'Failed to initiate deposit');
+      if (selectedChannel === 'bank_transfer') {
+        setShowBankDetailsModal(false);
+      }
     },
   });
 
@@ -263,11 +349,6 @@ const Fund = () => {
   };
 
   const handleProceed = () => {
-    if (!selectedProvider || !momoNumber || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
-      return;
-    }
-
     // Validate amount
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
@@ -275,22 +356,56 @@ const Fund = () => {
       return;
     }
 
-    // Validate momo number
-    if (momoNumber.length < 9) {
-      Alert.alert('Error', 'Please enter a valid mobile money number');
-      return;
-    }
+    if (selectedChannel === 'bank_transfer') {
+      // For bank transfer, show bank details modal first
+      if (!bankDetails) {
+        Alert.alert('Error', 'Bank details not available. Please try again.');
+        refetchBankDetails();
+        return;
+      }
+      setShowBankDetailsModal(true);
+    } else if (selectedChannel === 'mobile_money') {
+      // Validate mobile money fields
+      if (!selectedProvider || !momoNumber) {
+        Alert.alert('Error', 'Please fill in all required fields');
+        return;
+      }
 
-    // Initiate deposit
+      // Validate momo number
+      if (momoNumber.length < 9) {
+        Alert.alert('Error', 'Please enter a valid mobile money number');
+        return;
+      }
+
+      // Initiate mobile money deposit
+      const initiateData: any = {
+        amount: amount.replace(/,/g, ''),
+        currency: currency,
+        countryCode: selectedCountry,
+        channel: 'mobile_money',
+        providerId: selectedProvider,
+      };
+
+      initiateMutation.mutate(initiateData);
+    }
+  };
+
+  const handleBankTransferInitiate = () => {
+    // Initiate bank transfer deposit
     const initiateData: any = {
       amount: amount.replace(/,/g, ''),
       currency: currency,
       countryCode: selectedCountry,
-      channel: 'mobile_money',
-      providerId: String(selectedProvider),
+      channel: 'bank_transfer',
+      // No providerId for bank_transfer
     };
 
     initiateMutation.mutate(initiateData);
+  };
+
+  const copyToClipboard = async (text: string) => {
+    await Clipboard.setStringAsync(text);
+    Alert.alert('Copied', 'Text copied to clipboard');
   };
 
   const handleConfirmDeposit = async () => {
@@ -315,22 +430,39 @@ const Fund = () => {
 
   // Check if proceed button should be enabled
   const isProceedEnabled = useMemo(() => {
-    return (
-      selectedProvider !== null &&
-      momoNumber.length >= 9 &&
-      amount.replace(/,/g, '').length > 0 &&
-      !initiateMutation.isPending
-    );
-  }, [selectedProvider, momoNumber, amount, initiateMutation.isPending]);
+    const hasAmount = amount.replace(/,/g, '').length > 0;
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    const isValidAmount = !isNaN(numericAmount) && numericAmount > 0;
+
+    if (selectedChannel === 'bank_transfer') {
+      return hasAmount && isValidAmount && !isLoadingBankDetails && !!bankDetails && !initiateMutation.isPending;
+    } else if (selectedChannel === 'mobile_money') {
+      return (
+        selectedProvider !== null &&
+        momoNumber.length >= 9 &&
+        hasAmount &&
+        isValidAmount &&
+        !initiateMutation.isPending
+      );
+    }
+    return false;
+  }, [selectedChannel, selectedProvider, momoNumber, amount, bankDetails, isLoadingBankDetails, initiateMutation.isPending]);
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
     console.log('[Fund] Refreshing wallet funding data...');
     try {
-      await Promise.all([
+      const promises = [
         refetchBalances(),
-        refetchProviders(),
-      ]);
+      ];
+      
+      if (selectedChannel === 'bank_transfer') {
+        promises.push(refetchBankDetails());
+      } else if (selectedChannel === 'mobile_money') {
+        promises.push(refetchProviders());
+      }
+      
+      await Promise.all(promises);
       console.log('[Fund] Wallet funding data refreshed successfully');
     } catch (error) {
       console.error('[Fund] Error refreshing wallet funding data:', error);
@@ -421,6 +553,57 @@ const Fund = () => {
 
         {/* Main Card */}
         <View style={styles.mainCard}>
+          {/* Channel Selector */}
+          <View style={styles.channelSelector}>
+            <TouchableOpacity
+              style={[
+                styles.channelButton,
+                selectedChannel === 'bank_transfer' && styles.channelButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedChannel('bank_transfer');
+                setSelectedProvider(null);
+                setMomoNumber('');
+                setAccountName('');
+              }}
+            >
+              <MaterialCommunityIcons 
+                name="bank" 
+                size={20 * SCALE} 
+                color={selectedChannel === 'bank_transfer' ? '#000000' : '#FFFFFF'} 
+              />
+              <ThemedText style={[
+                styles.channelButtonText,
+                selectedChannel === 'bank_transfer' && styles.channelButtonTextActive,
+              ]}>
+                Bank Transfer
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.channelButton,
+                selectedChannel === 'mobile_money' && styles.channelButtonActive,
+              ]}
+              onPress={() => {
+                setSelectedChannel('mobile_money');
+                setHasMadeTransfer(false);
+                setShowBankDetailsModal(false);
+              }}
+            >
+              <MaterialCommunityIcons 
+                name="cellphone" 
+                size={20 * SCALE} 
+                color={selectedChannel === 'mobile_money' ? '#000000' : '#FFFFFF'} 
+              />
+              <ThemedText style={[
+                styles.channelButtonText,
+                selectedChannel === 'mobile_money' && styles.channelButtonTextActive,
+              ]}>
+                Mobile Money
+              </ThemedText>
+            </TouchableOpacity>
+          </View>
+
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <TextInput
@@ -440,71 +623,152 @@ const Fund = () => {
             <View style={styles.amountDivider} />
           </View>
 
-          {/* Form Fields */}
+          {/* Form Fields - Conditionally rendered based on channel */}
           <View style={styles.formFields}>
-            {/* Destination Provider */}
-            <TouchableOpacity
-              style={styles.inputField}
-              onPress={() => setShowProviderModal(true)}
-              disabled={isLoadingProviders}
-            >
-              {isLoadingProviders ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                  <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading providers...</ThemedText>
+            {selectedChannel === 'bank_transfer' ? (
+              <>
+                {/* Bank Transfer Info */}
+                {isLoadingBankDetails ? (
+                  <View style={[styles.inputField, { justifyContent: 'center', alignItems: 'center', paddingVertical: 30 }]}>
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                    <ThemedText style={[styles.inputLabel, { marginTop: 10, color: 'rgba(255, 255, 255, 0.5)' }]}>
+                      Loading bank details...
+                    </ThemedText>
+                  </View>
+                ) : isBankDetailsError ? (
+                  <View style={[styles.inputField, { justifyContent: 'center', alignItems: 'center', paddingVertical: 20 }]}>
+                    <MaterialCommunityIcons name="alert-circle" size={24 * SCALE} color="#ff0000" />
+                    <ThemedText style={[styles.inputLabel, { marginTop: 10, color: '#ff0000', textAlign: 'center' }]}>
+                      {bankDetailsError?.message || 'Failed to load bank details'}
+                    </ThemedText>
+                    <TouchableOpacity
+                      style={[styles.retryButton, { marginTop: 10 }]}
+                      onPress={() => refetchBankDetails()}
+                    >
+                      <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                ) : bankDetails ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.inputField}
+                      onPress={() => setShowBankDetailsModal(true)}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <ThemedText style={styles.inputLabel}>Bank Details</ThemedText>
+                        <ThemedText style={[styles.inputLabel, { fontSize: 12 * SCALE, marginTop: 4, color: 'rgba(255, 255, 255, 0.7)' }]}>
+                          {bankDetails.bankName} - {bankDetails.accountNumber}
+                        </ThemedText>
+                      </View>
+                      <MaterialCommunityIcons name="chevron-right" size={24 * SCALE} color="#FFFFFF" />
+                    </TouchableOpacity>
+                    {pendingTransactionData?.reference && (
+                      <View style={styles.inputField}>
+                        <View style={{ flex: 1 }}>
+                          <ThemedText style={styles.inputLabel}>Reference</ThemedText>
+                          <ThemedText style={[styles.inputLabel, { fontSize: 12 * SCALE, marginTop: 4, color: '#A9EF45' }]}>
+                            {pendingTransactionData.reference}
+                          </ThemedText>
+                        </View>
+                        <TouchableOpacity onPress={() => copyToClipboard(pendingTransactionData.reference)}>
+                          <MaterialCommunityIcons name="content-copy" size={20 * SCALE} color="#A9EF45" />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <>
+                {/* Mobile Money Fields */}
+                {/* Destination Provider */}
+                <TouchableOpacity
+                  style={styles.inputField}
+                  onPress={() => setShowProviderModal(true)}
+                  disabled={isLoadingProviders}
+                >
+                  {isLoadingProviders ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <ThemedText style={[styles.inputLabel, styles.inputPlaceholder]}>Loading providers...</ThemedText>
+                    </View>
+                  ) : (
+                    <>
+                      <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
+                        {selectedProvider
+                          ? providers.find((p) => p.id === selectedProvider)?.name || 'Destination Provider'
+                          : providers.length > 0 
+                            ? 'Destination Provider' 
+                            : 'No providers available'}
+                      </ThemedText>
+                      <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                    </>
+                  )}
+                </TouchableOpacity>
+
+                {/* Momo Number */}
+                <View style={styles.inputField}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="Momo Number"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={momoNumber}
+                    onChangeText={setMomoNumber}
+                    keyboardType="phone-pad"
+                  />
                 </View>
-              ) : (
-                <>
-                  <ThemedText style={[styles.inputLabel, !selectedProvider && styles.inputPlaceholder]}>
-                    {selectedProvider
-                      ? providers.find((p) => p.id === selectedProvider)?.name || 'Destination Provider'
-                      : providers.length > 0 
-                        ? 'Destination Provider' 
-                        : 'No providers available'}
-                  </ThemedText>
-                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
-                </>
-              )}
-            </TouchableOpacity>
 
-            {/* Momo Number */}
-            <View style={styles.inputField}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="Momo Number"
-                placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={momoNumber}
-                onChangeText={setMomoNumber}
-                keyboardType="phone-pad"
-              />
-            </View>
-
-            {/* Account holder name (Auto-filled) */}
-            {accountName && (
-              <View style={styles.inputField}>
-                <ThemedText style={styles.inputLabel}>Account holder name</ThemedText>
-                <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
-              </View>
+                {/* Account holder name (Auto-filled) */}
+                {accountName && (
+                  <View style={styles.inputField}>
+                    <ThemedText style={styles.inputLabel}>Account holder name</ThemedText>
+                    <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>
+                  </View>
+                )}
+              </>
             )}
           </View>
         </View>
 
         {/* Warning Section */}
         <View style={styles.warningSection}>
-          <View style={styles.warningRow}>
-            <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <ThemedText style={styles.warningText}>
-              You will receive a mobile money prompt to confirm your payment
-            </ThemedText>
-          </View>
-          <View style={styles.warningRow}>
-            <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <ThemedText style={styles.warningText}>Payment will take a few minutes to reflect</ThemedText>
-          </View>
-          <View style={styles.warningRow}>
-            <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <ThemedText style={styles.warningText}>Fees : 20{currencySymbol}</ThemedText>
-          </View>
+          {selectedChannel === 'bank_transfer' ? (
+            <>
+              <View style={styles.warningRow}>
+                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
+                <ThemedText style={styles.warningText}>
+                  Include the reference number in your bank transfer narration
+                </ThemedText>
+              </View>
+              <View style={styles.warningRow}>
+                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
+                <ThemedText style={styles.warningText}>
+                  Transfer will take a few minutes to reflect after confirmation
+                </ThemedText>
+              </View>
+              <View style={styles.warningRow}>
+                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
+                <ThemedText style={styles.warningText}>Fee : {pendingTransactionData?.fee || '0.00'}{currencySymbol}</ThemedText>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.warningRow}>
+                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
+                <ThemedText style={styles.warningText}>
+                  You will receive a mobile money prompt to confirm your payment
+                </ThemedText>
+              </View>
+              <View style={styles.warningRow}>
+                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
+                <ThemedText style={styles.warningText}>Payment will take a few minutes to reflect</ThemedText>
+              </View>
+              <View style={styles.warningRow}>
+                <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
+                <ThemedText style={styles.warningText}>Fee : {pendingTransactionData?.fee || '0.00'}{currencySymbol}</ThemedText>
+              </View>
+            </>
+          )}
         </View>
 
         {/* Bottom spacing for proceed button */}
@@ -521,10 +785,158 @@ const Fund = () => {
           {initiateMutation.isPending ? (
             <ActivityIndicator size="small" color="#000000" />
           ) : (
-            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            <ThemedText style={styles.proceedButtonText}>
+              {selectedChannel === 'bank_transfer' ? 'Get Bank Details' : 'Proceed'}
+            </ThemedText>
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Bank Details Modal */}
+      <Modal
+        visible={showBankDetailsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowBankDetailsModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <View style={styles.bankDetailsModalContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.bankDetailsModalScrollContent}
+            >
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Bank Transfer Details</ThemedText>
+                <TouchableOpacity onPress={() => setShowBankDetailsModal(false)}>
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+
+              {isLoadingBankDetails ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                    Loading bank details...
+                  </ThemedText>
+                </View>
+              ) : bankDetails ? (
+                <>
+                  <View style={styles.bankDetailsCard}>
+                    <View style={styles.bankDetailRow}>
+                      <ThemedText style={styles.bankDetailLabel}>Bank Name</ThemedText>
+                      <View style={styles.bankDetailValueContainer}>
+                        <ThemedText style={styles.bankDetailValue}>{bankDetails.bankName || 'N/A'}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.bankName || '')}>
+                          <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.bankDetailRow}>
+                      <ThemedText style={styles.bankDetailLabel}>Account Number</ThemedText>
+                      <View style={styles.bankDetailValueContainer}>
+                        <ThemedText style={styles.bankDetailValue}>{bankDetails.accountNumber || 'N/A'}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountNumber || '')}>
+                          <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.bankDetailRow}>
+                      <ThemedText style={styles.bankDetailLabel}>Account Name</ThemedText>
+                      <View style={styles.bankDetailValueContainer}>
+                        <ThemedText style={styles.bankDetailValue}>{bankDetails.accountName || 'N/A'}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountName || '')}>
+                          <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {pendingTransactionData?.reference && (
+                      <View style={styles.bankDetailRow}>
+                        <ThemedText style={styles.bankDetailLabel}>Reference</ThemedText>
+                        <View style={styles.bankDetailValueContainer}>
+                          <ThemedText style={[styles.bankDetailValue, { color: '#A9EF45' }]}>
+                            {pendingTransactionData.reference}
+                          </ThemedText>
+                          <TouchableOpacity onPress={() => copyToClipboard(pendingTransactionData.reference)}>
+                            <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  <View style={styles.bankDetailsInstructions}>
+                    <ThemedText style={styles.instructionsTitle}>Instructions</ThemedText>
+                    <View style={styles.instructionItem}>
+                      <MaterialCommunityIcons name="circle-small" size={16 * SCALE} color="#A9EF45" />
+                      <ThemedText style={styles.instructionText}>
+                        Transfer the exact amount: {currencySymbol}{amount}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.instructionItem}>
+                      <MaterialCommunityIcons name="circle-small" size={16 * SCALE} color="#A9EF45" />
+                      <ThemedText style={styles.instructionText}>
+                        Include the reference number in the transfer narration
+                      </ThemedText>
+                    </View>
+                    <View style={styles.instructionItem}>
+                      <MaterialCommunityIcons name="circle-small" size={16 * SCALE} color="#A9EF45" />
+                      <ThemedText style={styles.instructionText}>
+                        After making the transfer, click "I've Made the Transfer" below
+                      </ThemedText>
+                    </View>
+                  </View>
+
+                  {!hasMadeTransfer ? (
+                    <TouchableOpacity
+                      style={styles.initiateButton}
+                      onPress={handleBankTransferInitiate}
+                      disabled={initiateMutation.isPending}
+                    >
+                      {initiateMutation.isPending ? (
+                        <ActivityIndicator size="small" color="#000000" />
+                      ) : (
+                        <ThemedText style={styles.initiateButtonText}>Initiate Deposit</ThemedText>
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.confirmTransferButton}
+                      onPress={() => {
+                        setShowBankDetailsModal(false);
+                        if (pendingTransactionId) {
+                          setShowPinModal(true);
+                        }
+                      }}
+                    >
+                      <ThemedText style={styles.confirmTransferButtonText}>I've Made the Transfer</ThemedText>
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
+                  <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
+                    {bankDetailsError?.message || 'Failed to load bank details. Please try again.'}
+                  </ThemedText>
+                  <TouchableOpacity
+                    style={[styles.retryButton, { marginTop: 20 }]}
+                    onPress={() => refetchBankDetails()}
+                  >
+                    <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       {/* Select Provider Modal */}
       <Modal
@@ -758,21 +1170,35 @@ const Fund = () => {
               </View>
             ) : (
               <ScrollView style={styles.countryList}>
-                {countries.map((country) => (
+                {countries.map((country: any) => (
                   <TouchableOpacity
                     key={country.id}
                     style={styles.countryItem}
                     onPress={() => {
                       setSelectedCountry(country.code);
                       setSelectedCountryName(country.name);
-                      // Refetch providers when country changes
-                      refetchProviders();
+                      // Refetch data when country changes
+                      if (selectedChannel === 'bank_transfer') {
+                        refetchBankDetails();
+                      } else if (selectedChannel === 'mobile_money') {
+                        refetchProviders();
+                      }
                       // Reset provider selection
                       setSelectedProvider(null);
                       setShowCountryModal(false);
                     }}
                   >
-                    <Image source={country.flag} style={styles.countryFlagImage} resizeMode="cover" />
+                    {country.flagUrl ? (
+                      <Image
+                        source={{ uri: country.flagUrl }}
+                        style={styles.countryFlagImageModal}
+                        resizeMode="cover"
+                      />
+                    ) : country.flag ? (
+                      <ThemedText style={styles.countryFlagEmoji}>{country.flag}</ThemedText>
+                    ) : (
+                      <View style={styles.countryFlagPlaceholder} />
+                    )}
                     <ThemedText style={styles.countryNameText}>{country.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={selectedCountry === country.code ? 'radiobox-marked' : 'radiobox-blank'}
@@ -883,6 +1309,20 @@ const styles = StyleSheet.create({
     width: 36 * SCALE,
     height: 38 * SCALE,
     borderRadius: 18 * SCALE,
+  },
+  countryFlagImageModal: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+  },
+  countryFlagEmoji: {
+    fontSize: 24 * 1,
+  },
+  countryFlagPlaceholder: {
+    width: 32 * SCALE,
+    height: 32 * SCALE,
+    borderRadius: 16 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   countryNameText: {
     fontSize: 14 * 1,
@@ -1251,6 +1691,146 @@ const styles = StyleSheet.create({
     fontSize: 14 * SCALE,
     fontWeight: '500',
     color: '#FFFFFF',
+  },
+  channelSelector: {
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF08',
+    borderRadius: 10 * SCALE,
+    padding: 4 * SCALE,
+    marginBottom: 20 * SCALE,
+    gap: 4 * SCALE,
+  },
+  channelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12 * SCALE,
+    borderRadius: 8 * SCALE,
+    gap: 8 * SCALE,
+  },
+  channelButtonActive: {
+    backgroundColor: '#A9EF45',
+  },
+  channelButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  channelButtonTextActive: {
+    color: '#000000',
+  },
+  bankDetailsModalContent: {
+    backgroundColor: '#020C19',
+    borderTopLeftRadius: 20 * SCALE,
+    borderTopRightRadius: 20 * SCALE,
+    maxHeight: '90%',
+  },
+  bankDetailsModalScrollContent: {
+    paddingBottom: 30 * SCALE,
+  },
+  bankDetailsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 10 * SCALE,
+    padding: 14 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  bankDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  bankDetailLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.7)',
+    flex: 1,
+  },
+  bankDetailValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  bankDetailValue: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    textAlign: 'right',
+  },
+  bankDetailsInstructions: {
+    backgroundColor: '#CE56001A',
+    borderRadius: 10 * SCALE,
+    padding: 14 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  instructionsTitle: {
+    fontSize: 14 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 12 * SCALE,
+  },
+  instructionItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8 * SCALE,
+    marginBottom: 8 * SCALE,
+  },
+  instructionText: {
+    flex: 1,
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    lineHeight: 16 * SCALE,
+  },
+  initiateButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 18 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10 * SCALE,
+  },
+  initiateButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  confirmTransferButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 18 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10 * SCALE,
+  },
+  confirmTransferButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  retryButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 12 * SCALE,
+    paddingHorizontal: 24 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  retryButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
   },
 });
 

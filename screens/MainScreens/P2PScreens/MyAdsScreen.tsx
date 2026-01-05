@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -8,12 +8,17 @@ import {
   Dimensions,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetMyP2PAds } from '../../../queries/p2p.queries';
+import { useUpdateP2PAdStatus } from '../../../mutations/p2p.mutations';
+import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -21,6 +26,7 @@ const SCALE = 0.9;
 // Types for API integration
 interface Ad {
   id: string;
+  numericId: number; // Numeric ID for API calls
   type: 'Buy' | 'Sell';
   asset: string;
   status: 'Online' | 'Offline';
@@ -33,86 +39,108 @@ interface Ad {
   paymentMethods: string[];
   price: string;
   userAvatar: any;
+  rawData?: any; // Raw API data
 }
 
 const MyAdsScreen = () => {
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'Buy' | 'Sell'>('Buy');
 
-  // Mock data - Replace with API calls
-  const ads: Ad[] = [
-    {
-      id: '1',
-      type: 'Buy',
-      asset: 'USDT',
-      status: 'Online',
-      adState: 'Running',
-      ordersReceived: 1200,
-      responseTime: '15min',
-      score: '98%',
-      quantity: '50 USDT',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank',],
-      price: '1,550.70',
-      userAvatar: require('../../../assets/Frame 2398.png'),
-    },
-    {
-      id: '2',
-      type: 'Buy',
-      asset: 'USDT',
-      status: 'Online',
-      adState: 'Running',
-      ordersReceived: 1200,
-      responseTime: '15min',
-      score: '98%',
-      quantity: '50 USDT',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank', 'Chipper Cash'],
-      price: '1,550.70',
-      userAvatar: require('../../../assets/Frame 2398.png'),
-    },
-    {
-      id: '3',
-      type: 'Sell',
-      asset: 'USDT',
-      status: 'Online',
-      adState: 'Running',
-      ordersReceived: 1200,
-      responseTime: '15min',
-      score: '98%',
-      quantity: '50 USDT',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank', 'Chipper Cash'],
-      price: '1,550.70',
-      userAvatar: require('../../../assets/Frame 2398.png'),
-    },
-    {
-      id: '4',
-      type: 'Sell',
-      asset: 'ETH',
-      status: 'Online',
-      adState: 'Running',
-      ordersReceived: 1200,
-      responseTime: '15min',
-      score: '98%',
-      quantity: '50 ETH',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank', 'Chipper Cash'],
-      price: '1,550.70',
-      userAvatar: require('../../../assets/Frame 2398.png'),
-    },
-  ];
+  // Fetch my ads from API
+  const {
+    data: adsData,
+    isLoading: isLoadingAds,
+    refetch: refetchAds,
+  } = useGetMyP2PAds({
+    type: activeTab === 'Buy' ? 'buy' : 'sell',
+  });
 
-  const filteredAds = ads.filter(ad => ad.type === activeTab);
+  // Transform ads data to UI format
+  const ads: Ad[] = useMemo(() => {
+    if (!adsData?.data || !Array.isArray(adsData.data)) {
+      return [];
+    }
+    return adsData.data.map((ad: any) => {
+      // Map API status to UI status
+      const status = ad.isOnline ? 'Online' : 'Offline';
+      const adState = ad.status === 'available' ? 'Running' : ad.status === 'paused' ? 'Paused' : 'Running';
+      
+      // Format limits
+      const limits = `${parseFloat(ad.minOrder || '0').toLocaleString()} - ${parseFloat(ad.maxOrder || '0').toLocaleString()} ${ad.fiatCurrency || 'NGN'}`;
+      
+      // Format quantity
+      const quantity = `${ad.volume || '0'} ${ad.cryptoCurrency || 'USDT'}`;
+      
+      // Format price
+      const price = parseFloat(ad.price || '0').toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      
+      // Get payment methods (if available in response)
+      const paymentMethods = ad.paymentMethods || [];
+      
+      return {
+        id: String(ad.id),
+        numericId: typeof ad.id === 'number' ? ad.id : parseInt(String(ad.id), 10), // Store numeric ID for API calls
+        type: ad.type === 'buy' ? 'Buy' : 'Sell',
+        asset: ad.cryptoCurrency || 'USDT',
+        status,
+        adState,
+        ordersReceived: ad.ordersReceived || 0,
+        responseTime: ad.responseTime || 'N/A',
+        score: ad.score ? `${ad.score}%` : 'N/A',
+        quantity,
+        limits,
+        paymentMethods: paymentMethods.map((pm: any) => pm.name || pm.bankName || 'Unknown'),
+        price,
+        userAvatar: require('../../../assets/Frame 2398.png'),
+        rawData: ad, // Store raw API data
+      };
+    });
+  }, [adsData?.data]);
+
+  const filteredAds = ads;
+
+  // Calculate summary statistics
+  const summaryStats = useMemo(() => {
+    const totalOrders = ads.reduce((sum, ad) => sum + ad.ordersReceived, 0);
+    // Calculate completion rate (assuming all completed orders = total orders for now)
+    // In real scenario, you'd need to fetch completed orders count
+    const completedOrders = totalOrders; // Placeholder
+    const completionRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 100;
+    
+    // Calculate total value (sum of all ad volumes * prices)
+    const totalValue = ads.reduce((sum, ad) => {
+      const volume = parseFloat(ad.quantity.replace(/[^\d.]/g, ''));
+      const price = parseFloat(ad.price.replace(/,/g, ''));
+      return sum + (volume * price);
+    }, 0);
+    
+    return {
+      totalOrders,
+      completionRate,
+      totalValue,
+      completedOrdersCount: completedOrders,
+    };
+  }, [ads]);
+
+  // Update ad status mutation
+  const updateAdStatusMutation = useUpdateP2PAdStatus({
+    onSuccess: () => {
+      showSuccessAlert('Success', 'Ad status updated successfully', () => {
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'vendor', 'ads'] });
+      });
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to update ad status');
+    },
+  });
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing my ads data...');
-        resolve();
-      }, 1000);
-    });
+    await refetchAds();
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -172,11 +200,18 @@ const MyAdsScreen = () => {
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMain}>2,000,000.00</ThemedText>
+                <ThemedText style={styles.summaryAmountMain}>
+                  {isLoadingAds ? '...' : summaryStats.totalValue.toLocaleString('en-US', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </ThemedText>
                 <ThemedText style={styles.summaryAmountCurrency}>NGN</ThemedText>
               </View>
             </View>
-            <ThemedText style={styles.summaryUSD}>$20,000</ThemedText>
+            <ThemedText style={styles.summaryUSD}>
+              {isLoadingAds ? '...' : `${summaryStats.totalOrders} Orders`}
+            </ThemedText>
           </LinearGradient>
 
           {/* Completion Rate Card - Same as Outgoing Card */}
@@ -193,11 +228,15 @@ const MyAdsScreen = () => {
             </View>
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
-                <ThemedText style={styles.summaryAmountMainWhite}>100</ThemedText>
+                <ThemedText style={styles.summaryAmountMainWhite}>
+                  {isLoadingAds ? '...' : summaryStats.completionRate}
+                </ThemedText>
                 <ThemedText style={styles.summaryAmountCurrencyWhite}>%</ThemedText>
               </View>
             </View>
-            <ThemedText style={styles.summaryUSDWhite}>200 Orders</ThemedText>
+            <ThemedText style={styles.summaryUSDWhite}>
+              {isLoadingAds ? '...' : `${summaryStats.completedOrdersCount} Orders`}
+            </ThemedText>
           </View>
         </View>
 
@@ -267,8 +306,15 @@ const MyAdsScreen = () => {
           </View>
 
           {/* Ad Cards List */}
-          {filteredAds.map((ad) => (
-            <>
+          {isLoadingAds ? (
+            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading ads...
+              </ThemedText>
+            </View>
+          ) : filteredAds.length > 0 ? (
+            filteredAds.map((ad) => (
               <LinearGradient
                 key={ad.id}
                 colors={['#FFFFFF0D', '#FFFFFF0D']}
@@ -360,9 +406,11 @@ const MyAdsScreen = () => {
                     <TouchableOpacity
                       style={styles.openAdButton}
                       onPress={() => {
+                        // Use the numeric ID directly (backend expects integer but receives string from URL)
+                        // The backend should convert the route parameter string to number, but we ensure it's valid
                         (navigation as any).navigate('Settings', {
                           screen: 'AdDetails',
-                          params: { adId: ad.id },
+                          params: { adId: String(ad.numericId) },
                         });
                       }}
                     >
@@ -371,8 +419,14 @@ const MyAdsScreen = () => {
                   </View>
                 </View>
               </LinearGradient>
-            </>
-          ))}
+            ))
+          ) : (
+            <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: SCREEN_WIDTH * 0.047 }}>
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center' }}>
+                No {activeTab.toLowerCase()} ads found. Create one to get started.
+              </ThemedText>
+            </View>
+          )}
         </View>
 
         {/* Bottom Spacer */}

@@ -21,9 +21,11 @@ import QRCode from 'react-native-qrcode-svg';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
-import { useGetWallets, useGetWalletBalances, useGetWalletTransactions } from '../../../queries/wallet.queries';
-import { useGetHomeData } from '../../../queries/home.queries';
+import TransactionErrorModal from '../../components/TransactionErrorModal';
+import { useGetWallets, useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetHomeData, useGetHomeTransactions } from '../../../queries/home.queries';
 import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
+import { useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 
 
@@ -56,6 +58,7 @@ interface RecentTransaction {
   date: string;
   status: 'Successful' | 'Pending' | 'Failed';
   icon: any; // Image source
+  rawData?: any; // Raw API data
 }
 
 interface CryptoAsset {
@@ -79,6 +82,8 @@ const Wallet = () => {
   const [showCopyMessage, setShowCopyMessage] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<RecentTransaction | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [cryptoSearchQuery, setCryptoSearchQuery] = useState<string>('');
   const [showCryptoSearch, setShowCryptoSearch] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
@@ -111,27 +116,27 @@ const Wallet = () => {
     refetch: refetchVirtualAccounts 
   } = useGetVirtualAccounts();
 
-  // Get selected wallet ID from first fiat wallet or use first wallet
-  const firstWalletId = useMemo(() => {
-    if (walletsData?.data && Array.isArray(walletsData.data)) {
-      const fiatWallets = walletsData.data.filter((w: any) => w.type === 'fiat' && w.isActive);
-      if (fiatWallets.length > 0) {
-        return String(fiatWallets[0].id);
-      }
-      return String(walletsData.data[0]?.id || '');
-    }
-    return null;
-  }, [walletsData]);
-
-  // Fetch transactions for selected wallet
-  const walletIdForTransactions = selectedWalletId || firstWalletId || '';
+  // Fetch home transactions (both fiat and crypto)
   const { 
-    data: transactionsData, 
+    data: homeTransactionsData, 
     isLoading: isLoadingTransactions, 
     refetch: refetchTransactions 
-  } = useGetWalletTransactions(
-    { walletId: walletIdForTransactions, limit: 10 },
-    { enabled: !!walletIdForTransactions } as any
+  } = useGetHomeTransactions({
+    limit: 10,
+    fiatLimit: 10,
+    cryptoLimit: 10,
+  });
+
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingTransactionDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      enabled: !!selectedTransactionId,
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+    }
   );
 
   // Get currency name mapping
@@ -208,8 +213,8 @@ const Wallet = () => {
     if (fiatWallets.length > 0) {
       return fiatWallets[0].id;
     }
-    return firstWalletId || 'NGN1234';
-  }, [fiatWallets, firstWalletId]);
+    return 'NGN1234';
+  }, [fiatWallets]);
 
   // Transform API virtual accounts to UI format
   const cryptoAssets: CryptoAsset[] = useMemo(() => {
@@ -434,11 +439,21 @@ const Wallet = () => {
     return require('../../../assets/send-2.png');
   };
 
-  // Transform API transactions to UI format
+  // Transform API transactions to UI format (combining fiat and crypto)
   const recentTransactions: RecentTransaction[] = useMemo(() => {
-    if (!transactionsData?.data || !Array.isArray(transactionsData.data)) return [];
+    if (!homeTransactionsData?.data) return [];
     
-    return transactionsData.data.map((tx: any) => {
+    const fiatTransactions = homeTransactionsData.data.fiat?.recentTransactions || [];
+    const cryptoTransactions = homeTransactionsData.data.crypto?.recentTransactions || [];
+    
+    // Combine and sort by date (newest first)
+    const allTransactions = [...fiatTransactions, ...cryptoTransactions].sort((a: any, b: any) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    }).slice(0, 10); // Limit to 10 most recent
+    
+    return allTransactions.map((tx: any) => {
       const date = tx.createdAt 
         ? new Date(tx.createdAt).toLocaleDateString('en-US', { 
             month: 'short', 
@@ -447,22 +462,31 @@ const Wallet = () => {
           })
         : 'N/A';
       
-      const amount = parseFloat(tx.amount || '0');
-      const isPositive = tx.type === 'deposit' || tx.type === 'credit';
-      const formattedAmount = `${isPositive ? '+' : ''}${tx.currency || ''}${formatBalance(amount)}`;
+      // Handle formatted amount if available, otherwise format manually
+      let formattedAmount = tx.formattedAmount;
+      if (!formattedAmount) {
+        const amount = parseFloat(tx.amount || '0');
+        const currency = tx.currency || '';
+        const currencySymbol = tx.currencySymbol || '';
+        const isPositive = tx.isPositive !== false && (tx.type === 'deposit' || tx.type === 'credit');
+        formattedAmount = `${isPositive ? '+' : ''}${currencySymbol}${formatBalance(amount)}`;
+      }
+      
+      // Get transaction title from description or type
+      const title = tx.description || tx.normalizedType || tx.type || 'Transaction';
       
       return {
         id: String(tx.id),
-        title: tx.type || 'Transaction',
+        title: title,
         subtitle: tx.status || 'Completed',
         amount: formattedAmount,
         date: date,
         status: (tx.status === 'completed' ? 'Successful' : tx.status === 'pending' ? 'Pending' : 'Failed') as 'Successful' | 'Pending' | 'Failed',
-        icon: getIconFromType(tx.type || ''),
+        icon: getIconFromType(tx.type || tx.normalizedType || ''),
         rawData: tx,
       };
     });
-  }, [transactionsData?.data]);
+  }, [homeTransactionsData?.data]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -608,8 +632,26 @@ const Wallet = () => {
 
   const handleTransactionPress = (transaction: RecentTransaction) => {
     setSelectedTransaction(transaction);
-    setShowReceiptModal(true);
+    const transactionId = transaction.rawData?.id || parseInt(transaction.id);
+    if (transactionId) {
+      setSelectedTransactionId(transactionId);
+    }
   };
+
+  // Show receipt modal when transaction details are loaded
+  React.useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransactionId) {
+      const details = transactionDetailsData.data;
+      // Only show receipt if transaction is successful
+      if (details.status === 'completed' || details.status === 'successful') {
+        setShowReceiptModal(true);
+        setShowErrorModal(false);
+      } else {
+        setShowErrorModal(true);
+        setShowReceiptModal(false);
+      }
+    }
+  }, [transactionDetailsData?.data, selectedTransactionId]);
 
   const scrollLeft = () => {
     scrollViewRef.current?.scrollTo({ x: 0, animated: true });
@@ -1378,25 +1420,141 @@ const Wallet = () => {
       </Modal>
 
       {/* Transaction Receipt Modal */}
-      {selectedTransaction && (
+      {selectedTransaction && transactionDetailsData?.data && (
         <TransactionReceiptModal
-          visible={showReceiptModal}
-          transaction={{
-            transactionTitle: selectedTransaction.title,
-            amountNGN: selectedTransaction.amount,
-            dateTime: selectedTransaction.date,
-            transactionType: selectedTransaction.title.includes('Fund')
-              ? 'fund'
-              : selectedTransaction.title.includes('NGN to') || selectedTransaction.title.includes('Convert')
-              ? 'convert'
-              : 'send',
-            transactionId: `TXN-${selectedTransaction.id}-${Date.now()}`,
-          }}
+          visible={showReceiptModal && !isLoadingTransactionDetails}
+          transaction={(() => {
+            const details = transactionDetailsData.data;
+            const type = details.type || details.normalizedType || '';
+            const typeLower = type.toLowerCase();
+            
+            // Determine transaction type
+            let transactionType: 'send' | 'withdrawal' | 'fund' | 'deposit' | 'convert' | 'billPayment' | 'p2p' | 'cryptoDeposit' | 'cryptoWithdrawal' = 'deposit';
+            if (typeLower.includes('deposit') || typeLower.includes('fund')) {
+              transactionType = details.walletType === 'crypto' ? 'cryptoDeposit' : 'fund';
+            } else if (typeLower.includes('withdraw') || typeLower.includes('send')) {
+              transactionType = details.walletType === 'crypto' ? 'cryptoWithdrawal' : 'send';
+            } else if (typeLower.includes('convert') || typeLower.includes('exchange')) {
+              transactionType = 'convert';
+            } else if (typeLower.includes('bill') || typeLower.includes('payment')) {
+              transactionType = 'billPayment';
+            } else if (typeLower.includes('p2p')) {
+              transactionType = 'p2p';
+            }
+            
+            // Format amount
+            const amount = parseFloat(details.amount || '0');
+            const currency = details.currency || 'NGN';
+            const currencySymbol = currency === 'NGN' ? '₦' : currency === 'USD' ? '$' : currency;
+            const formattedAmount = `${currencySymbol}${formatBalance(amount)}`;
+            
+            // Format date
+            const dateTime = details.createdAt || details.completedAt || selectedTransaction.date;
+            const formattedDateTime = dateTime
+              ? new Date(dateTime).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : selectedTransaction.date;
+            
+            // Base transaction object
+            const baseTransaction: any = {
+              transactionType,
+              transactionTitle: details.description || details.normalizedType || selectedTransaction.title,
+              amountNGN: formattedAmount,
+              transferAmount: formattedAmount,
+              dateTime: formattedDateTime,
+              transactionId: details.reference || `TXN-${details.id}`,
+              fee: details.fee ? `${currencySymbol}${formatBalance(parseFloat(details.fee))}` : undefined,
+              paymentAmount: details.totalAmount ? `${currencySymbol}${formatBalance(parseFloat(details.totalAmount))}` : formattedAmount,
+            };
+            
+            // Add type-specific fields
+            if (transactionType === 'send' || transactionType === 'cryptoWithdrawal') {
+              baseTransaction.recipientName = details.recipientInfo?.name || details.metadata?.recipientInfo?.name || details.accountName;
+              baseTransaction.accountNumber = details.recipientInfo?.phone || details.metadata?.recipientInfo?.phone || details.accountNumber;
+              baseTransaction.bank = details.paymentMethod || details.channel;
+              baseTransaction.country = details.country;
+            } else if (transactionType === 'fund' || transactionType === 'deposit') {
+              baseTransaction.fundingRoute = details.channel;
+              baseTransaction.provider = details.paymentMethod || details.channel;
+            } else if (transactionType === 'convert') {
+              baseTransaction.recipientName = details.metadata?.toCurrency || details.currency;
+            } else if (transactionType === 'billPayment') {
+              baseTransaction.billerType = details.provider?.name || details.category?.name;
+              baseTransaction.mobileNumber = details.accountNumber;
+              baseTransaction.plan = details.plan?.name;
+              baseTransaction.recipientName = details.accountName || details.description;
+            }
+            
+            if (transactionType === 'cryptoDeposit' || transactionType === 'cryptoWithdrawal') {
+              baseTransaction.cryptoType = details.currency;
+              baseTransaction.quantity = `${details.amount} ${details.currency}`;
+              baseTransaction.receivingAddress = details.metadata?.address || details.metadata?.walletAddress;
+              baseTransaction.txHash = details.metadata?.txHash || details.reference;
+            }
+            
+            return baseTransaction;
+          })()}
           onClose={() => {
             setShowReceiptModal(false);
+            setShowErrorModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
+      )}
+
+      {/* Transaction Error Modal */}
+      {selectedTransaction && transactionDetailsData?.data && (
+        <TransactionErrorModal
+          visible={showErrorModal && !isLoadingTransactionDetails}
+          transaction={{
+            amountNGN: selectedTransaction.amount,
+            recipientName: transactionDetailsData.data.description || transactionDetailsData.data.normalizedType || selectedTransaction.title,
+            errorMessage: 'Transaction failed. Please try again or contact support.',
+            transactionType: (() => {
+              const type = transactionDetailsData.data.type || transactionDetailsData.data.normalizedType || '';
+              const typeLower = type.toLowerCase();
+              if (typeLower.includes('withdraw') || typeLower.includes('send')) return 'withdrawal';
+              if (typeLower.includes('deposit') || typeLower.includes('fund')) return 'fund';
+              if (typeLower.includes('convert')) return 'convert';
+              return 'send';
+            })() as 'send' | 'withdrawal' | 'fund' | 'deposit' | 'convert',
+            transferAmount: selectedTransaction.amount,
+          }}
+          onRetry={() => {
+            // Retry logic - could navigate to retry screen or show retry modal
+            setShowErrorModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+          onCancel={() => {
+            setShowErrorModal(false);
+            setShowReceiptModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Loading overlay when fetching transaction details */}
+      {isLoadingTransactionDetails && selectedTransactionId && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={{ color: '#FFFFFF', marginTop: 10, fontSize: 14 * SCALE }}>
+              Loading transaction details...
+            </ThemedText>
+          </View>
+        </Modal>
       )}
     </View>
   );

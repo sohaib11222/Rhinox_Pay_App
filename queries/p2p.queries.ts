@@ -48,9 +48,14 @@ export const useBrowseP2PAds = (
 /**
  * Get ad details (PUBLIC)
  */
-export const getP2PAdDetails = async (adId: string): Promise<ApiResponse> => {
+export const getP2PAdDetails = async (adId: string | number): Promise<ApiResponse> => {
   try {
-    const route = buildRouteWithParams(`/p2p/ads/{id}`, { id: adId });
+    // Convert adId to number if it's a string (API expects integer)
+    const numericId = typeof adId === 'string' ? parseInt(adId, 10) : adId;
+    if (isNaN(numericId)) {
+      throw new Error('Invalid ad ID');
+    }
+    const route = buildRouteWithParams(`/p2p/ads/{id}`, { id: String(numericId) });
     const response = await apiClient.get(route);
     return response.data;
   } catch (error: any) {

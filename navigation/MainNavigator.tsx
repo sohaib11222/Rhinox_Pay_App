@@ -51,6 +51,7 @@ import MobileFundScreen from "../screens/MainScreens/SendFundScreens/MobileFundS
 import Conversion from "../screens/MainScreens/SendFundScreens/Conversion";
 import AssetsScreen from "../screens/MainScreens/SendFundScreens/AssetsScreen";
 import P2PFundScreen from "../screens/MainScreens/SendFundScreens/P2PFundScreen";
+import CryptoFundDepositScreen from "../screens/MainScreens/SendFundScreens/CryptoFundDepositScreen";
 import { View, StyleSheet, Dimensions, Image } from "react-native";
 import { BlurView } from "expo-blur";
 
@@ -131,6 +132,7 @@ const SettingsStackNavigator = () => {
       <SettingsStack.Screen name="Conversion" component={Conversion} />
       <SettingsStack.Screen name="Assets" component={AssetsScreen} />
       <SettingsStack.Screen name="P2PFund" component={P2PFundScreen} />
+      <SettingsStack.Screen name="CryptoFundDeposit" component={CryptoFundDepositScreen} />
       <SettingsStack.Screen name="AccountSecurity" component={AccountSecurity} />
       <SettingsStack.Screen name="Support" component={Support} />
       <SettingsStack.Screen name="ChatScreen" component={ChatScreen} />

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     View,
     StyleSheet,
@@ -12,6 +12,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     RefreshControl,
+    ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -20,6 +21,14 @@ import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetTransferEligibility, useGetTransferReceipt } from '../../../queries/transfer.queries';
+import { useGetPaymentSettingsMobileMoneyProviders } from '../../../queries/paymentSettings.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
+import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -75,12 +84,17 @@ const MobileFundScreen = () => {
         }, [navigation])
     );
 
+    const queryClient = useQueryClient();
     const [balance, setBalance] = useState('0');
-    const [amount, setAmount] = useState('200,000');
-    const [selectedCountry, setSelectedCountry] = useState<number | null>(4); // Kenya
-    const [selectedCountryName, setSelectedCountryName] = useState('Kenya');
+    const [amount, setAmount] = useState('');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [selectedCountry, setSelectedCountry] = useState<number | null>(1); // Default to Nigeria
+    const [selectedCountryCode, setSelectedCountryCode] = useState('NG');
+    const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
+    const [selectedCurrency, setSelectedCurrency] = useState('NGN');
     const [showCountryModal, setShowCountryModal] = useState(false);
     const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
+    const [tempSelectedProvider, setTempSelectedProvider] = useState<number | null>(null);
     const [showProviderModal, setShowProviderModal] = useState(false);
     const [showSummaryModal, setShowSummaryModal] = useState(false);
     const [showPinModal, setShowPinModal] = useState(false);
@@ -91,6 +105,175 @@ const MobileFundScreen = () => {
     const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
     const [emailCode, setEmailCode] = useState('');
     const [authenticatorCode, setAuthenticatorCode] = useState('');
+    const [transactionId, setTransactionId] = useState<number | null>(null);
+    const [transferData, setTransferData] = useState<any>(null);
+    const [searchProviderQuery, setSearchProviderQuery] = useState('');
+
+    // Check transfer eligibility
+    const {
+        data: eligibilityData,
+        isLoading: isLoadingEligibility,
+        refetch: refetchEligibility,
+    } = useGetTransferEligibility();
+
+    // Fetch mobile money providers
+    const {
+        data: providersData,
+        isLoading: isLoadingProviders,
+    } = useGetPaymentSettingsMobileMoneyProviders({
+        countryCode: selectedCountryCode,
+        currency: selectedCurrency,
+    });
+
+    // Fetch countries
+    const {
+        data: countriesData,
+        isLoading: isLoadingCountries,
+    } = useGetCountries();
+
+    // Fetch wallet balances
+    const {
+        data: balancesData,
+        isLoading: isLoadingBalances,
+    } = useGetWalletBalances();
+
+    // Transform providers from API
+    const providers = useMemo(() => {
+        if (!providersData?.data || !Array.isArray(providersData.data)) {
+            return PROVIDERS;
+        }
+        return providersData.data.map((provider: any) => ({
+            id: provider.id,
+            name: provider.name || provider.code || 'Unknown',
+            code: provider.code || '',
+            logo: provider.logoUrl 
+                ? { uri: `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}` }
+                : require('../../../assets/Ellipse 21 (2).png'),
+            rawData: provider,
+        }));
+    }, [providersData?.data]);
+
+    // Filter providers by search query
+    const filteredProviders = useMemo(() => {
+        if (!searchProviderQuery.trim()) {
+            return providers;
+        }
+        const query = searchProviderQuery.toLowerCase();
+        return providers.filter((provider) =>
+            provider.name.toLowerCase().includes(query)
+        );
+    }, [providers, searchProviderQuery]);
+
+    // Transform countries from API
+    const countries = useMemo(() => {
+        if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+            return COUNTRIES;
+        }
+        return countriesData.data.map((country: any, index: number) => {
+            const flagValue = country.flag || '';
+            const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+            const flagUrl = isFlagUrl 
+                ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+                : null;
+            const defaultFlag = require('../../../assets/login/nigeria-flag.png');
+            
+            return {
+                id: country.id || index + 1,
+                name: country.name || '',
+                code: country.code || '',
+                flag: defaultFlag,
+                flagUrl: flagUrl,
+            };
+        });
+    }, [countriesData?.data]);
+
+    // Get currency from country code
+    const getCurrencyFromCountryCode = (code: string): string => {
+        const currencyMap: { [key: string]: string } = {
+            'NG': 'NGN',
+            'KE': 'KES',
+            'GH': 'GHS',
+            'ZA': 'ZAR',
+            'BW': 'BWP',
+            'TZ': 'TZS',
+            'UG': 'UGX',
+        };
+        return currencyMap[code] || 'NGN';
+    };
+
+    // Get balance for selected currency
+    const fiatBalance = useMemo(() => {
+        if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) {
+            return '0';
+        }
+        const wallet = balancesData.data.fiat.find(
+            (w: any) => w.currency === selectedCurrency
+        );
+        return wallet?.balance || '0';
+    }, [balancesData?.data?.fiat, selectedCurrency]);
+
+    // Update balance when currency changes
+    useEffect(() => {
+        if (fiatBalance) {
+            const formatted = parseFloat(fiatBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            setBalance(formatted);
+        }
+    }, [fiatBalance]);
+
+    // Check eligibility on mount
+    useEffect(() => {
+        if (eligibilityData?.data) {
+            const eligible = eligibilityData.data.eligible;
+            if (!eligible) {
+                showErrorAlert('Not Eligible', eligibilityData.data.message || 'You cannot complete your transaction because you are yet to complete your KYC');
+            }
+        }
+    }, [eligibilityData?.data]);
+
+    // Initiate transfer mutation
+    const initiateTransferMutation = useInitiateTransfer({
+        onSuccess: (data) => {
+            const transactionIdFromResponse = data.data?.id;
+            if (transactionIdFromResponse) {
+                setTransactionId(transactionIdFromResponse);
+                setTransferData(data.data);
+                setShowSummaryModal(false);
+                setShowPinModal(true);
+                showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+            }
+        },
+        onError: (error: any) => {
+            showErrorAlert('Error', error?.message || 'Failed to initiate transfer');
+        },
+    });
+
+    // Verify transfer mutation
+    const verifyTransferMutation = useVerifyTransfer({
+        onSuccess: (data) => {
+            showSuccessAlert('Success', 'Transfer completed successfully', () => {
+                setShowPinModal(false);
+                setShowSecurityModal(false);
+                setShowSuccessModal(true);
+                // Invalidate queries to refresh balances
+                queryClient.invalidateQueries({ queryKey: ['home', 'wallets'] });
+                queryClient.invalidateQueries({ queryKey: ['wallets'] });
+            });
+        },
+        onError: (error: any) => {
+            showErrorAlert('Error', error?.message || 'Failed to verify transfer');
+        },
+    });
+
+    // Get transfer receipt
+    const {
+        data: receiptData,
+        isLoading: isLoadingReceipt,
+    } = useGetTransferReceipt(
+        transactionId ? String(transactionId) : '',
+        {
+            enabled: !!transactionId && showReceiptModal,
+        }
+    );
 
     const handlePinPress = (num: string) => {
         setLastPressedButton(num);
@@ -122,16 +305,68 @@ const MobileFundScreen = () => {
     };
 
     const handleSecurityComplete = () => {
-        if (emailCode && authenticatorCode) {
-            setShowSecurityModal(false);
-            setShowSuccessModal(true);
+        if (!transactionId) {
+            showErrorAlert('Error', 'Transaction ID not found');
+            return;
         }
+        if (!emailCode || emailCode.length !== 5) {
+            showErrorAlert('Validation Error', 'Please enter a valid 5-digit email code');
+            return;
+        }
+        if (!pin || pin.length !== 5) {
+            showErrorAlert('Validation Error', 'Please enter a valid 5-digit PIN');
+            return;
+        }
+
+        // Verify transfer
+        verifyTransferMutation.mutate({
+            transactionId: transactionId,
+            emailCode: emailCode,
+            pin: pin,
+        });
     };
 
     const handleSummaryComplete = () => {
-        setShowSummaryModal(false);
-        setShowPinModal(true);
+        // Validation
+        if (!amount || parseFloat(amount.replace(/,/g, '')) <= 0) {
+            showErrorAlert('Validation Error', 'Please enter a valid amount');
+            return;
+        }
+        if (!selectedProvider) {
+            showErrorAlert('Validation Error', 'Please select a mobile money provider');
+            return;
+        }
+        if (!phoneNumber || phoneNumber.length < 10) {
+            showErrorAlert('Validation Error', 'Please enter a valid phone number (minimum 10 characters)');
+            return;
+        }
+        if (!eligibilityData?.data?.eligible) {
+            showErrorAlert('Not Eligible', eligibilityData?.data?.message || 'You cannot complete your transaction because you are yet to complete your KYC');
+            return;
+        }
+
+        // Initiate transfer
+        const numericAmount = amount.replace(/,/g, '');
+        
+        initiateTransferMutation.mutate({
+            amount: numericAmount,
+            currency: selectedCurrency,
+            countryCode: selectedCountryCode,
+            channel: 'mobile_money',
+            providerId: selectedProvider,
+            phoneNumber: phoneNumber,
+        });
     };
+
+    // Check if form is valid
+    const isFormValid = useMemo(() => {
+        const numericAmount = amount.replace(/,/g, '');
+        return amount.trim() !== '' &&
+               parseFloat(numericAmount) > 0 &&
+               selectedProvider !== null &&
+               phoneNumber.length >= 10 &&
+               eligibilityData?.data?.eligible === true;
+    }, [amount, selectedProvider, phoneNumber, eligibilityData?.data?.eligible]);
 
     const handleViewTransaction = () => {
         setShowSuccessModal(false);
@@ -149,20 +384,24 @@ const MobileFundScreen = () => {
     };
 
     const getCurrencySymbol = () => {
-        if (selectedCountryName === 'Kenya') return 'Ksh';
-        if (selectedCountryName === 'Nigeria') return 'N';
-        if (selectedCountryName === 'Ghana') return 'GHC';
-        return '';
+        if (selectedCurrency === 'NGN') return '₦';
+        if (selectedCurrency === 'KES') return 'Ksh';
+        if (selectedCurrency === 'GHS') return 'GHC';
+        if (selectedCurrency === 'ZAR') return 'R';
+        return selectedCurrency;
     };
 
     // Pull-to-refresh functionality
     const handleRefresh = async () => {
-        return new Promise<void>((resolve) => {
-            setTimeout(() => {
-                console.log('Refreshing mobile fund data...');
-                resolve();
-            }, 1000);
-        });
+        try {
+            await Promise.all([
+                refetchEligibility(),
+                // Refetch providers, countries, and balances if needed
+            ]);
+            console.log('[MobileFund] Data refreshed successfully');
+        } catch (error) {
+            console.error('[MobileFund] Error refreshing data:', error);
+        }
     };
 
     const { refreshing, onRefresh } = usePullToRefresh({
@@ -214,25 +453,46 @@ const MobileFundScreen = () => {
                         <View style={styles.balanceCardContent}>
                             <ThemedText style={styles.balanceLabel}>My Balance</ThemedText>
                             <View style={styles.balanceRow}>
-                                <Image
-                                    source={require('../../../assets/Vector (34).png')}
-                                    style={styles.walletIcon}
-                                    resizeMode="cover"
-                                />
-                                <ThemedText style={styles.balanceAmount}>{getCurrencySymbol()}{balance}</ThemedText>
+                                {isLoadingBalances ? (
+                                    <ActivityIndicator size="small" color="#A9EF45" />
+                                ) : (
+                                    <>
+                                        <Image
+                                            source={require('../../../assets/Vector (34).png')}
+                                            style={styles.walletIcon}
+                                            resizeMode="cover"
+                                        />
+                                        <ThemedText style={styles.balanceAmount}>{getCurrencySymbol()}{balance}</ThemedText>
+                                    </>
+                                )}
                             </View>
                         </View>
                         <TouchableOpacity
                             style={styles.countrySelector}
                             onPress={() => setShowCountryModal(true)}
+                            disabled={isLoadingCountries}
                         >
-                            <Image
-                                source={require('../../../assets/login/nigeria-flag.png')}
-                                style={styles.countryFlagImage}
-                                resizeMode="cover"
-                            />
-                            <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-                            <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                            {isLoadingCountries ? (
+                                <ActivityIndicator size="small" color="#A9EF45" />
+                            ) : (
+                                <>
+                                    {(() => {
+                                        const country = countries.find(c => c.id === selectedCountry);
+                                        const flagSource = country?.flagUrl 
+                                            ? { uri: country.flagUrl }
+                                            : country?.flag || require('../../../assets/login/nigeria-flag.png');
+                                        return (
+                                            <Image
+                                                source={flagSource}
+                                                style={styles.countryFlagImage}
+                                                resizeMode="cover"
+                                            />
+                                        );
+                                    })()}
+                                    <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                                    <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                                </>
+                            )}
                         </TouchableOpacity>
                     </LinearGradient>
                 </View>
@@ -263,16 +523,33 @@ const MobileFundScreen = () => {
 
                     {/* Provider Section */}
                     <View style={styles.providerSection}>
-                        {/* <ThemedText style={styles.fieldLabel}>Provider</ThemedText> */}
                         <TouchableOpacity
                             style={styles.providerField}
                             onPress={() => setShowProviderModal(true)}
                         >
                             <ThemedText style={[styles.providerFieldText, !selectedProvider && styles.providerFieldPlaceholder]}>
-                                {selectedProvider ? PROVIDERS.find(p => p.id === selectedProvider)?.name : 'Select Provider'}
+                                {selectedProvider ? providers.find(p => p.id === selectedProvider)?.name : 'Select Provider'}
                             </ThemedText>
                             <MaterialCommunityIcons name="chevron-down" size={18 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
+                    </View>
+
+                    {/* Phone Number Section */}
+                    <View style={styles.providerSection}>
+                        <View style={styles.providerField}>
+                            <TextInput
+                                style={styles.providerFieldText}
+                                placeholder="Enter Phone Number"
+                                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                value={phoneNumber}
+                                onChangeText={(text) => {
+                                    // Remove non-numeric characters
+                                    const numericText = text.replace(/[^0-9]/g, '');
+                                    setPhoneNumber(numericText);
+                                }}
+                                keyboardType="phone-pad"
+                            />
+                        </View>
                     </View>
 
                     {/* Important Notes Section */}
@@ -288,7 +565,11 @@ const MobileFundScreen = () => {
                         </View>
                         <View style={styles.noteItem}>
                             <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#A9EF45" />
-                            <ThemedText style={styles.noteText}>Fees : 20{getCurrencySymbol()}</ThemedText>
+                            <ThemedText style={styles.noteText}>
+                                Fees : {transferData?.fee 
+                                    ? `${getCurrencySymbol()}${parseFloat(transferData.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                    : 'Calculating...'}
+                            </ThemedText>
                         </View>
                     </View>
             </ScrollView>
@@ -296,11 +577,18 @@ const MobileFundScreen = () => {
             {/* Proceed Button - Fixed at Bottom */}
             <View style={styles.proceedButtonContainer}>
                 <TouchableOpacity
-                    style={[styles.proceedButton, !selectedProvider && styles.proceedButtonDisabled]}
+                    style={[
+                        styles.proceedButton,
+                        (!isFormValid || initiateTransferMutation.isPending || isLoadingEligibility) && styles.proceedButtonDisabled
+                    ]}
                     onPress={() => setShowSummaryModal(true)}
-                    disabled={!selectedProvider}
+                    disabled={!isFormValid || initiateTransferMutation.isPending || isLoadingEligibility}
                 >
-                    <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+                    {initiateTransferMutation.isPending || isLoadingEligibility ? (
+                        <ActivityIndicator size="small" color="#000000" />
+                    ) : (
+                        <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+                    )}
                 </TouchableOpacity>
             </View>
 
@@ -319,26 +607,48 @@ const MobileFundScreen = () => {
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
                             </TouchableOpacity>
                         </View>
-                        <ScrollView style={styles.modalList}>
-                            {COUNTRIES.map((c) => (
-                                <TouchableOpacity
-                                    key={c.id}
-                                    style={styles.countryItem}
-                                    onPress={() => {
-                                        setSelectedCountry(c.id);
-                                        setSelectedCountryName(c.name);
-                                    }}
-                                >
-                                    <ThemedText style={styles.countryFlag}>{c.flag}</ThemedText>
-                                    <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                                    <MaterialCommunityIcons
-                                        name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                                        size={24 * SCALE}
-                                        color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                                    />
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
+                        {isLoadingCountries ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                                <ActivityIndicator size="small" color="#A9EF45" />
+                                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                                    Loading countries...
+                                </ThemedText>
+                            </View>
+                        ) : (
+                            <ScrollView style={styles.modalList}>
+                                {countries.map((c) => {
+                                    const flagSource = c.flagUrl 
+                                        ? { uri: c.flagUrl }
+                                        : c.flag;
+                                    
+                                    return (
+                                        <TouchableOpacity
+                                            key={c.id}
+                                            style={styles.countryItem}
+                                            onPress={() => {
+                                                setSelectedCountry(c.id);
+                                                setSelectedCountryName(c.name);
+                                                setSelectedCountryCode(c.code);
+                                                setSelectedCurrency(getCurrencyFromCountryCode(c.code));
+                                                setShowCountryModal(false);
+                                            }}
+                                        >
+                                            <Image
+                                                source={flagSource}
+                                                style={styles.countryFlagImage}
+                                                resizeMode="cover"
+                                            />
+                                            <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                                            <MaterialCommunityIcons
+                                                name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                                                size={24 * SCALE}
+                                                color={selectedCountry === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                                            />
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        )}
                         <TouchableOpacity
                             style={styles.applyButton}
                             onPress={() => setShowCountryModal(false)}
@@ -371,38 +681,63 @@ const MobileFundScreen = () => {
                             <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
                             <TextInput
                                 style={styles.searchInput}
-                                placeholder="Search"
+                                placeholder="Search Provider"
                                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                value={searchProviderQuery}
+                                onChangeText={setSearchProviderQuery}
                             />
                         </View>
 
                         {/* Provider List */}
-                        <ScrollView style={styles.providerList}>
-                            {PROVIDERS.map((provider) => (
-                                <TouchableOpacity
-                                    key={provider.id}
-                                    style={styles.providerItem}
-                                    onPress={() => setSelectedProvider(provider.id)}
-                                >
-                                    <Image
-                                        source={provider.logo}
-                                        style={styles.providerLogo}
-                                        resizeMode="cover"
-                                    />
-                                    <ThemedText style={styles.providerItemName}>{provider.name}</ThemedText>
-                                    <MaterialCommunityIcons
-                                        name={selectedProvider === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
-                                        size={24 * SCALE}
-                                        color={selectedProvider === provider.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                                    />
-                                </TouchableOpacity>
-                            ))}
-                        </ScrollView>
+                        {isLoadingProviders ? (
+                            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                                <ActivityIndicator size="small" color="#A9EF45" />
+                                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                                    Loading providers...
+                                </ThemedText>
+                            </View>
+                        ) : filteredProviders.length > 0 ? (
+                            <ScrollView style={styles.providerList}>
+                                {filteredProviders.map((provider) => (
+                                    <TouchableOpacity
+                                        key={provider.id}
+                                        style={styles.providerItem}
+                                        onPress={() => setTempSelectedProvider(provider.id)}
+                                    >
+                                        <Image
+                                            source={provider.logo}
+                                            style={styles.providerLogo}
+                                            resizeMode="cover"
+                                        />
+                                        <ThemedText style={styles.providerItemName}>{provider.name}</ThemedText>
+                                        <MaterialCommunityIcons
+                                            name={tempSelectedProvider === provider.id ? 'radiobox-marked' : 'radiobox-blank'}
+                                            size={24 * SCALE}
+                                            color={tempSelectedProvider === provider.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                                        />
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        ) : (
+                            <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', paddingHorizontal: 20 }}>
+                                    {searchProviderQuery ? 'No providers found' : 'No mobile money providers available for this country.'}
+                                </ThemedText>
+                            </View>
+                        )}
 
                         {/* Apply Button */}
                         <TouchableOpacity
-                            style={styles.applyButton}
-                            onPress={() => setShowProviderModal(false)}
+                            style={[styles.applyButton, !tempSelectedProvider && styles.applyButtonDisabled]}
+                            onPress={() => {
+                                if (tempSelectedProvider) {
+                                    setSelectedProvider(tempSelectedProvider);
+                                    setTempSelectedProvider(null);
+                                    setSearchProviderQuery('');
+                                    setShowProviderModal(false);
+                                }
+                            }}
+                            disabled={!tempSelectedProvider}
                         >
                             <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
                         </TouchableOpacity>
@@ -439,7 +774,11 @@ const MobileFundScreen = () => {
                             <View style={styles.summaryDetailsCard}>
                                 <View style={[styles.summaryRow, {borderWidth:0.5, borderTopRightRadius:10 * SCALE, borderTopLeftRadius:10 * SCALE}]}>
                                     <ThemedText style={styles.summaryLabel}>Transaction Fee</ThemedText>
-                                    <ThemedText style={styles.summaryValue}>20 {getCurrencySymbol()}</ThemedText>
+                                    <ThemedText style={styles.summaryValue}>
+                                        {transferData?.fee 
+                                            ? `${getCurrencySymbol()}${parseFloat(transferData.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            : 'Calculating...'}
+                                    </ThemedText>
                                 </View>
                                 <View style={styles.summaryDivider} />
                                 <View style={styles.summaryRow}>
@@ -447,10 +786,24 @@ const MobileFundScreen = () => {
                                     <ThemedText style={styles.summaryValue}>Mobile Money</ThemedText>
                                 </View>
                                 <View style={styles.summaryDivider} />
-                                <View style={[styles.summaryRow, {borderWidth:0.5, borderBottomRightRadius:10 * SCALE, borderBottomLeftRadius:10 * SCALE}]}>
+                                <View style={styles.summaryRow}>
                                     <ThemedText style={styles.summaryLabel}>Provider</ThemedText>
                                     <ThemedText style={styles.summaryValue}>
-                                        {PROVIDERS.find(p => p.id === selectedProvider)?.name || ''}
+                                        {providers.find(p => p.id === selectedProvider)?.name || ''}
+                                    </ThemedText>
+                                </View>
+                                <View style={styles.summaryDivider} />
+                                <View style={styles.summaryRow}>
+                                    <ThemedText style={styles.summaryLabel}>Phone Number</ThemedText>
+                                    <ThemedText style={styles.summaryValue}>{phoneNumber}</ThemedText>
+                                </View>
+                                <View style={styles.summaryDivider} />
+                                <View style={[styles.summaryRow, {borderWidth:0.5, borderBottomRightRadius:10 * SCALE, borderBottomLeftRadius:10 * SCALE}]}>
+                                    <ThemedText style={styles.summaryLabel}>Total</ThemedText>
+                                    <ThemedText style={styles.summaryValue}>
+                                        {transferData?.totalDeduction 
+                                            ? `${getCurrencySymbol()}${parseFloat(transferData.totalDeduction).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                            : `${getCurrencySymbol()}${amount.replace(/,/g, '')}.00`}
                                     </ThemedText>
                                 </View>
                             </View>
@@ -470,10 +823,18 @@ const MobileFundScreen = () => {
 
                         {/* I Understand Button */}
                         <TouchableOpacity
-                            style={styles.understandButton}
+                            style={[
+                                styles.understandButton,
+                                initiateTransferMutation.isPending && styles.understandButtonDisabled
+                            ]}
                             onPress={handleSummaryComplete}
+                            disabled={initiateTransferMutation.isPending}
                         >
-                            <ThemedText style={styles.understandButtonText}>I understand</ThemedText>
+                            {initiateTransferMutation.isPending ? (
+                                <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                                <ThemedText style={styles.understandButtonText}>I understand</ThemedText>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -720,11 +1081,18 @@ const MobileFundScreen = () => {
                         </View>
 
                         <TouchableOpacity
-                            style={[styles.securityProceedButton, (!emailCode || !authenticatorCode) && styles.securityProceedButtonDisabled]}
+                            style={[
+                                styles.securityProceedButton,
+                                (!emailCode || emailCode.length !== 5 || !pin || pin.length !== 5 || verifyTransferMutation.isPending) && styles.securityProceedButtonDisabled
+                            ]}
                             onPress={handleSecurityComplete}
-                            disabled={!emailCode || !authenticatorCode}
+                            disabled={!emailCode || emailCode.length !== 5 || !pin || pin.length !== 5 || verifyTransferMutation.isPending}
                         >
-                            <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
+                            {verifyTransferMutation.isPending ? (
+                                <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                                <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -742,28 +1110,60 @@ const MobileFundScreen = () => {
             />
 
             {/* Receipt Modal */}
-            <TransactionReceiptModal
-                visible={showReceiptModal}
-                transaction={{
-                    transactionType: 'fund',
-                    transactionTitle: 'Fund Wallet - Mobile Money',
-                    transferAmount: `${getCurrencySymbol()}${amount.replace(/,/g, '')}`,
-                    fee: `20 ${getCurrencySymbol()}`,
-                    paymentAmount: `${getCurrencySymbol()}${amount.replace(/,/g, '')}`,
-                    country: selectedCountryName,
-                    recipientName: PROVIDERS.find(p => p.id === selectedProvider)?.name || '',
-                    transactionId: `FW${Date.now().toString().slice(-10)}`,
-                    dateTime: new Date().toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                    }),
-                    paymentMethod: 'Mobile Money',
-                }}
-                onClose={handleReceiptClose}
-            />
+            {receiptData?.data && (
+                <TransactionReceiptModal
+                    visible={showReceiptModal && !isLoadingReceipt}
+                    transaction={{
+                        transactionType: 'send',
+                        transactionTitle: `Send Funds - Mobile Money`,
+                        transferAmount: `${getCurrencySymbol()}${parseFloat(receiptData.data.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                        fee: receiptData.data.fee 
+                            ? `${getCurrencySymbol()}${parseFloat(receiptData.data.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'N0',
+                        paymentAmount: receiptData.data.totalAmount 
+                            ? `${getCurrencySymbol()}${parseFloat(receiptData.data.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${getCurrencySymbol()}${amount.replace(/,/g, '')}`,
+                        country: selectedCountryName,
+                        recipientName: receiptData.data.recipientInfo?.provider || providers.find(p => p.id === selectedProvider)?.name || '',
+                        bank: receiptData.data.recipientInfo?.phoneNumber || phoneNumber,
+                        accountNumber: receiptData.data.recipientInfo?.phoneNumber || phoneNumber,
+                        transactionId: receiptData.data.reference || receiptData.data.transactionId || `TRF-${transactionId}`,
+                        dateTime: receiptData.data.date || receiptData.data.completedAt || receiptData.data.createdAt
+                            ? new Date(receiptData.data.date || receiptData.data.completedAt || receiptData.data.createdAt).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            })
+                            : new Date().toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                            }),
+                        paymentMethod: 'Mobile Money',
+                    }}
+                    onClose={handleReceiptClose}
+                />
+            )}
+
+            {/* Loading overlay when fetching receipt */}
+            {isLoadingReceipt && showReceiptModal && (
+                <Modal
+                    visible={true}
+                    transparent={true}
+                    animationType="fade"
+                >
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator size="large" color="#A9EF45" />
+                        <ThemedText style={{ color: '#FFFFFF', marginTop: 10, fontSize: 14 * SCALE }}>
+                            Loading receipt...
+                        </ThemedText>
+                    </View>
+                </Modal>
+            )}
         </KeyboardAvoidingView>
     );
 };

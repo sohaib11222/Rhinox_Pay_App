@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
     View,
     StyleSheet,
@@ -110,7 +110,7 @@ const Conversion = () => {
 
     const [sendCountry, setSendCountry] = useState<number | string>(1); // Nigeria
     const [receiveCountry, setReceiveCountry] = useState<number | string>(4); // Kenya
-    const [sendAmount, setSendAmount] = useState('0.00');
+    const [sendAmount, setSendAmount] = useState('');
     const [receiveAmount, setReceiveAmount] = useState('0.00');
     const [exchangeRate, setExchangeRate] = useState('0');
     const [exchangeRateDisplay, setExchangeRateDisplay] = useState('0');
@@ -207,6 +207,10 @@ const Conversion = () => {
     
     // Get numeric amount for API calls
     const numericAmount = useMemo(() => {
+        if (!sendAmount || sendAmount.trim() === '') {
+            return '0';
+        }
+        // Remove commas but keep decimal point for parsing
         const cleaned = sendAmount.replace(/,/g, '');
         const num = parseFloat(cleaned);
         return isNaN(num) || num <= 0 ? '0' : num.toString();
@@ -240,28 +244,41 @@ const Conversion = () => {
     };
 
     // Calculate conversion preview
-    const shouldCalculate = numericAmount !== '0' && fromCurrency !== toCurrency;
+    // Only calculate when user has entered a valid amount (> 0) and currencies are different
+    const numericAmountValue = parseFloat(numericAmount);
+    const isValidAmount = !isNaN(numericAmountValue) && numericAmountValue > 0;
+    // Ensure both currencies are valid before calculating
+    const hasValidCurrencies = fromCurrency && toCurrency && fromCurrency !== toCurrency;
+    const shouldCalculate = isValidAmount && hasValidCurrencies && sendAmount.trim() !== '';
+    
     const {
         data: calculateData,
         isLoading: isLoadingCalculation,
         error: calculateError,
     } = useCalculateConversion(
         {
-            fromCurrency,
-            toCurrency,
+            fromCurrency: fromCurrency || 'NGN',
+            toCurrency: toCurrency || 'KES',
             amount: shouldCalculate ? numericAmount : '0',
-        }
+        },
+        {
+            // Only enable the query when we have a valid amount to calculate
+            // This prevents API call on initial page load or when currencies are invalid
+            enabled: shouldCalculate && isValidAmount && hasValidCurrencies && sendAmount.trim() !== '' && !!fromCurrency && !!toCurrency,
+        } as any
     );
 
     // Update amounts and rates when calculation data changes
+    // API Response: { fromAmount, toAmount, receivedAmount, fee, feeCurrency, exchangeRate }
     useEffect(() => {
-        if (calculateData?.data) {
+        if (calculateData?.data && !calculateError) {
             const data = calculateData.data;
-            if (data.toAmount) {
-                setReceiveAmount(formatNumber(data.toAmount));
-            }
+            // Use receivedAmount (final amount after fee) for display
             if (data.receivedAmount) {
                 setReceiveAmount(formatNumber(data.receivedAmount));
+            } else if (data.toAmount) {
+                // Fallback to toAmount if receivedAmount not available
+                setReceiveAmount(formatNumber(data.toAmount));
             }
             if (data.exchangeRate) {
                 setExchangeRate(data.exchangeRate);
@@ -278,36 +295,80 @@ const Conversion = () => {
             if (data.feeCurrency) {
                 setFeeCurrency(data.feeCurrency);
             }
+        } else if (calculateError) {
+            // Reset receive amount on error
+            setReceiveAmount('0.00');
+            console.error('[Conversion] Calculation error:', calculateError);
         }
-    }, [calculateData]);
+    }, [calculateData, calculateError]);
 
     // Initiate conversion mutation
+    // API Response: { conversionReference, debitTransaction, creditTransaction, exchangeRate, fee }
     const initiateMutation = useInitiateConversion({
         onSuccess: (response) => {
+            console.log('[Conversion] Initiate response:', JSON.stringify(response, null, 2));
             if (response?.data?.conversionReference) {
                 setConversionReference(response.data.conversionReference);
+                // Store transaction data for reference
+                if (response.data.debitTransaction) {
+                    console.log('[Conversion] Debit transaction:', response.data.debitTransaction);
+                }
+                if (response.data.creditTransaction) {
+                    console.log('[Conversion] Credit transaction:', response.data.creditTransaction);
+                }
+                // Reset PIN before showing modal
+                setPin('');
                 setShowSummaryModal(false);
                 setShowPinModal(true);
             } else {
-                Alert.alert('Error', 'Failed to initiate conversion. Please try again.');
+                Alert.alert('Error', 'Failed to initiate conversion. Conversion reference not found.');
             }
         },
         onError: (error: any) => {
+            console.error('[Conversion] Initiate error:', error);
             Alert.alert('Error', error?.message || 'Failed to initiate conversion. Please try again.');
         },
     });
 
     // Confirm conversion mutation
+    // API Request: { conversionReference, pin }
+    // API Response: { conversionReference, fromTransaction, toTransaction, exchangeRate }
     const confirmMutation = useConfirmConversion({
         onSuccess: (response) => {
+            console.log('[Conversion] Confirm response:', JSON.stringify(response, null, 2));
             setShowPinModal(false);
-            setShowSecurityModal(true);
+            setPin(''); // Reset PIN on success
+            // Refetch balances after successful conversion
+            refetchBalances();
+            // Show success modal directly (skip security modal for now)
+            setShowSuccessModal(true);
         },
         onError: (error: any) => {
+            console.error('[Conversion] Confirm error:', error);
             Alert.alert('Error', error?.message || 'Invalid PIN. Please try again.');
-            setPin('');
+            // Don't reset PIN on error so user can try again
         },
     });
+
+    // Reset PIN when PIN modal opens (only when modal becomes visible)
+    // Use a ref to track if we've already reset to prevent multiple resets
+    const pinResetRef = useRef(false);
+    const previousShowPinModal = useRef(false);
+    
+    useEffect(() => {
+        // Only reset PIN when modal transitions from closed to open
+        if (showPinModal && !previousShowPinModal.current) {
+            // Reset PIN only when modal first opens
+            setPin('');
+            pinResetRef.current = true;
+            console.log('[Conversion] PIN modal opened, PIN reset');
+        } else if (!showPinModal && previousShowPinModal.current) {
+            // Reset the flag when modal closes
+            pinResetRef.current = false;
+            console.log('[Conversion] PIN modal closed');
+        }
+        previousShowPinModal.current = showPinModal;
+    }, [showPinModal]);
 
     // Get conversion receipt
     const {
@@ -452,38 +513,68 @@ const Conversion = () => {
         }, 200);
 
         if (num === 'backspace') {
-            const cleaned = sendAmount.replace(/,/g, '');
-            if (cleaned.length > 1) {
-                const newValue = cleaned.slice(0, -1);
-                const formatted = formatNumber(newValue);
-                setSendAmount(formatted);
-                // The receive amount will be updated via the useCalculateConversion hook
-            } else {
-                setSendAmount('0.00');
-                setReceiveAmount('0.00');
-            }
+            setSendAmount((currentAmount) => {
+                if (!currentAmount || currentAmount.trim() === '') {
+                    return '';
+                }
+                const cleaned = currentAmount.replace(/,/g, '');
+                if (cleaned.length > 1 && cleaned !== '0.00') {
+                    const newValue = cleaned.slice(0, -1);
+                    if (newValue === '' || newValue === '0') {
+                        return '';
+                    }
+                    const formatted = formatNumber(newValue);
+                    return formatted;
+                } else {
+                    return '';
+                }
+            });
             return;
         }
 
         if (num === '.') {
-            if (!sendAmount.includes('.')) {
-                setSendAmount(prev => prev + '.');
-            }
+            setSendAmount((currentAmount) => {
+                if (!currentAmount || currentAmount.trim() === '') {
+                    return '0.';
+                }
+                if (!currentAmount.includes('.')) {
+                    return currentAmount + '.';
+                }
+                return currentAmount;
+            });
             return;
         }
 
-        const cleaned = sendAmount.replace(/,/g, '');
-        const newValue = cleaned === '0.00' ? num : cleaned + num;
-        const formatted = formatNumber(newValue);
-        setSendAmount(formatted);
-        // The receive amount will be updated via the useCalculateConversion hook
+        // Handle numeric input
+        setSendAmount((currentAmount) => {
+            if (!currentAmount || currentAmount.trim() === '') {
+                // Start with the first digit
+                return num;
+            }
+            const cleaned = currentAmount.replace(/,/g, '');
+            // If it's '0' or '0.00', replace with new digit, otherwise append
+            if (cleaned === '0' || cleaned === '0.00' || cleaned === '0.0') {
+                return num;
+            }
+            const newValue = cleaned + num;
+            const formatted = formatNumber(newValue);
+            return formatted;
+        });
     };
 
     const formatNumber = (value: string): string => {
+        if (!value || value.trim() === '') {
+            return '';
+        }
+        // If value ends with '.', don't format decimals yet
+        if (value.endsWith('.')) {
+            const integerPart = value.slice(0, -1).replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            return integerPart + '.';
+        }
         const parts = value.split('.');
-        const integerPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-        const decimalPart = parts[1] ? (parts[1].length > 2 ? parts[1].substring(0, 2) : parts[1].padEnd(2, '0')) : '00';
-        return `${integerPart}.${decimalPart}`;
+        const integerPart = parts[0].replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        const decimalPart = parts[1] ? (parts[1].length > 2 ? parts[1].substring(0, 2) : parts[1]) : '';
+        return decimalPart ? `${integerPart}.${decimalPart}` : integerPart;
     };
 
     const handleSwap = () => {
@@ -496,35 +587,42 @@ const Conversion = () => {
         // The receive amount and rates will be recalculated via the useCalculateConversion hook
     };
 
-    const handlePinPress = (num: string) => {
-        setLastPressedButton(num);
-        setTimeout(() => {
-            setLastPressedButton(null);
-        }, 200);
-
+    const handlePinPress = React.useCallback((num: string) => {
         // Only allow numeric digits for PIN
         if (num === '.' || !/^\d$/.test(num)) {
             return;
         }
 
-        if (pin.length < 5) {
-            const newPin = pin + num;
-            setPin(newPin);
-
-            if (newPin.length === 5) {
-                // Confirm conversion with PIN
-                if (conversionReference) {
-                    confirmMutation.mutate({
-                        conversionReference,
-                        pin: newPin,
-                    });
-                }
+        // Use functional setState to ensure we're working with the latest PIN value
+        // Allow up to 5 digits for PIN
+        setPin((currentPin) => {
+            const currentPinValue = currentPin || '';
+            // Only add digit if PIN is less than 5 digits
+            if (currentPinValue.length < 5) {
+                const newPin = currentPinValue + num;
+                console.log('[Conversion] PIN updated:', newPin, 'Length:', newPin.length, 'Previous:', currentPinValue);
+                return newPin;
             }
-        }
-    };
+            // If PIN is already 5 digits, don't add more
+            console.log('[Conversion] PIN already at max length (5):', currentPinValue);
+            return currentPinValue;
+        });
+
+        // Update last pressed button for visual feedback
+        setLastPressedButton(num);
+        setTimeout(() => {
+            setLastPressedButton(null);
+        }, 200);
+    }, []);
 
     const handlePinBackspace = () => {
-        setPin(pin.slice(0, -1));
+        setPin((currentPin) => {
+            // Remove last digit if PIN has any digits
+            if (currentPin.length > 0) {
+                return currentPin.slice(0, -1);
+            }
+            return currentPin;
+        });
     };
 
     const handleSecurityComplete = () => {
@@ -536,6 +634,44 @@ const Conversion = () => {
             // Refetch balances after successful conversion
             refetchBalances();
         }
+    };
+
+    // Handle PIN confirmation manually if user presses confirm button
+    const handleConfirmPin = () => {
+        console.log('[Conversion] Confirm PIN called, current PIN:', pin, 'Length:', pin?.length);
+        
+        // Validate PIN
+        if (!pin || pin.length !== 5) {
+            Alert.alert('Error', 'Please enter your 5-digit PIN');
+            return;
+        }
+
+        // Validate PIN contains only digits
+        if (!/^\d{5}$/.test(pin)) {
+            Alert.alert('Error', 'PIN must contain exactly 5 digits');
+            setPin('');
+            return;
+        }
+
+        // Validate conversion reference exists
+        if (!conversionReference) {
+            Alert.alert('Error', 'Conversion reference not found. Please try again.');
+            setPin('');
+            return;
+        }
+
+        // Don't submit if already pending
+        if (confirmMutation.isPending) {
+            console.log('[Conversion] Confirmation already in progress');
+            return;
+        }
+
+        console.log('[Conversion] Submitting confirmation with PIN');
+        // Confirm conversion with PIN
+        confirmMutation.mutate({
+            conversionReference,
+            pin: pin,
+        });
     };
 
     const handleSummaryComplete = () => {
@@ -638,7 +774,7 @@ const Conversion = () => {
                             <ThemedText style={styles.countryNameText}>{sendCountryData?.name}</ThemedText>
                             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
-                        <ThemedText style={styles.amountText}>{sendCountryData?.currencySymbol}{sendAmount}</ThemedText>
+                        <ThemedText style={styles.amountText}>{sendCountryData?.currencySymbol}{sendAmount || '0.00'}</ThemedText>
                     </View>
                     <View style={styles.balanceRow}>
                         <Image
@@ -1048,8 +1184,8 @@ const Conversion = () => {
                                     <View style={styles.summaryDividerLine} />
                                 </View>
 
-                                {/* User Received Section */}
-                                <ThemedText style={styles.summarySectionLabel}>User Received</ThemedText>
+                                {/* User Received Section - Shows receivedAmount (final amount after fee) */}
+                                <ThemedText style={styles.summarySectionLabel}>You Will Receive</ThemedText>
                                 <View style={styles.summaryRow}>
                                     <View style={styles.summaryRowLeft}>
                                         <Image
@@ -1060,7 +1196,7 @@ const Conversion = () => {
                                         <ThemedText style={styles.summaryCountryText}>{receiveCountryData?.name}</ThemedText>
                                     </View>
                                     <ThemedText style={styles.summaryAmount}>
-                                        {receiveCountryData?.currencySymbol.toLowerCase()}{receiveAmount.replace(/,/g, '')}.00
+                                        {receiveCountryData?.currencySymbol}{receiveAmount.replace(/,/g, '')}
                                     </ThemedText>
                                 </View>
                             </View>
@@ -1070,7 +1206,7 @@ const Conversion = () => {
                                 <View style={[styles.summaryDetailRow, {borderTopRightRadius: 10, borderTopLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                                     <ThemedText style={styles.summaryDetailLabel}>Transaction Fee</ThemedText>
                                     <ThemedText style={styles.summaryDetailValue}>
-                                        {isLoadingCalculation ? '...' : `${fee} ${feeCurrency || fromCurrency}`}
+                                        {isLoadingCalculation ? '...' : `${fee} ${feeCurrency || toCurrency}`}
                                     </ThemedText>
                                 </View>
                                 <View style={styles.summaryDetailRow}>
@@ -1112,13 +1248,19 @@ const Conversion = () => {
                 visible={showPinModal}
                 animationType="slide"
                 transparent={true}
-                onRequestClose={() => setShowPinModal(false)}
+                onRequestClose={() => {
+                    setShowPinModal(false);
+                    setPin(''); // Reset PIN when modal closes
+                }}
             >
                 <View style={styles.modalOverlay}>
                     <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
                         <View style={styles.pinModalHeader}>
                             <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
-                            <TouchableOpacity onPress={() => setShowPinModal(false)}>
+                            <TouchableOpacity onPress={() => {
+                                setShowPinModal(false);
+                                setPin(''); // Reset PIN when modal closes
+                            }}>
                                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                             </TouchableOpacity>
                         </View>
@@ -1191,6 +1333,17 @@ const Conversion = () => {
                                     {confirmMutation.error?.message || 'Invalid PIN. Please try again.'}
                                 </ThemedText>
                             </View>
+                        )}
+
+                        {/* Manual Confirm Button - Only show when PIN is exactly 5 digits */}
+                        {pin && pin.length === 5 && !confirmMutation.isPending && !confirmMutation.isSuccess && (
+                            <TouchableOpacity
+                                style={styles.confirmButton}
+                                onPress={handleConfirmPin}
+                                disabled={confirmMutation.isPending || !conversionReference}
+                            >
+                                <ThemedText style={styles.confirmButtonText}>Confirm Conversion</ThemedText>
+                            </TouchableOpacity>
                         )}
 
                         <View style={styles.numpad}>
@@ -1397,7 +1550,7 @@ const Conversion = () => {
                 visible={showSuccessModal}
                 transaction={{
                     amount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
-                    fee: `500 ${sendCountryData?.currency}`,
+                    fee: `${fee} ${feeCurrency || toCurrency}`,
                 }}
                 onViewTransaction={handleViewTransaction}
                 onCancel={handleSuccessCancel}
@@ -1424,32 +1577,42 @@ const Conversion = () => {
                             minute: '2-digit',
                         }),
                         paymentMethod: 'Conversion',
-                    } : receiptData?.data ? {
-                        transactionType: 'fund',
-                        transactionTitle: 'Currency Conversion',
-                        transferAmount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
-                        fee: receiptData.data.fee ? `${receiptData.data.fee} ${receiptData.data.feeCurrency || feeCurrency}` : `${fee} ${feeCurrency}`,
-                        paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
-                        country: receiveCountryData?.name || '',
-                        recipientName: 'Currency Conversion',
-                        transactionId: receiptData.data.conversionReference || conversionReference || `CV${Date.now().toString().slice(-10)}`,
-                        dateTime: receiptData.data.toTransaction?.createdAt 
-                            ? new Date(receiptData.data.toTransaction.createdAt).toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                            })
-                            : new Date().toLocaleString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                            }),
-                        paymentMethod: receiptData.data.paymentMethod || 'Conversion',
-                    } : {
+                    } : receiptData?.data ? (() => {
+                        // API Response: { conversionReference, fromTransaction, toTransaction, exchangeRate, channel, paymentMethod }
+                        const receipt = receiptData.data;
+                        const fromTx = receipt.fromTransaction || {};
+                        const toTx = receipt.toTransaction || {};
+                        
+                        // Use completedAt if available, otherwise createdAt
+                        const completedDate = toTx.completedAt || fromTx.completedAt || toTx.createdAt || fromTx.createdAt;
+                        
+                        return {
+                            transactionType: 'fund',
+                            transactionTitle: 'Currency Conversion',
+                            transferAmount: `${sendCountryData?.currencySymbol}${formatBalance(fromTx.amount || sendAmount.replace(/,/g, ''))}`,
+                            fee: toTx.fee ? `${formatBalance(toTx.fee)} ${toTx.currency || feeCurrency}` : `${fee} ${feeCurrency}`,
+                            paymentAmount: `${receiveCountryData?.currencySymbol}${formatBalance(toTx.amount || receiveAmount.replace(/,/g, ''))}`,
+                            country: receiveCountryData?.name || '',
+                            recipientName: 'Currency Conversion',
+                            transactionId: receipt.conversionReference || conversionReference || `CV${Date.now().toString().slice(-10)}`,
+                            dateTime: completedDate
+                                ? new Date(completedDate).toLocaleString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                })
+                                : new Date().toLocaleString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                }),
+                            paymentMethod: receipt.paymentMethod || receipt.channel || 'Conversion',
+                        };
+                    })() : {
                         transactionType: 'fund',
                         transactionTitle: 'Currency Conversion',
                         transferAmount: `${sendCountryData?.currencySymbol}${sendAmount.replace(/,/g, '')}`,
@@ -2171,6 +2334,24 @@ const styles = StyleSheet.create({
         fontSize: 14 * SCALE,
         fontWeight: '400',
         color: '#000',
+    },
+    confirmButton: {
+        backgroundColor: '#A9EF45',
+        borderRadius: 100,
+        paddingVertical: 17 * SCALE,
+        marginHorizontal: 20 * SCALE,
+        marginTop: 20 * SCALE,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 60 * SCALE,
+    },
+    confirmButtonDisabled: {
+        backgroundColor: 'rgba(169, 239, 69, 0.3)',
+    },
+    confirmButtonText: {
+        fontSize: 14 * SCALE,
+        fontWeight: '400',
+        color: '#000000',
     },
 });
 

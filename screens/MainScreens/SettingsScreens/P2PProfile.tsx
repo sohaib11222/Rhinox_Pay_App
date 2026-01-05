@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,25 +9,19 @@ import {
   StatusBar,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetP2POrders } from '../../../queries/p2p.queries';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
-
-const COUNTRIES = [
-  { id: 1, name: 'Nigeria', flag: '🇳🇬', flagImage: require('../../../assets/login/nigeria-flag.png') },
-  { id: 2, name: 'Botswana', flag: '🇧🇼', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-  { id: 3, name: 'Ghana', flag: '🇬🇭', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-  { id: 4, name: 'Kenya', flag: '🇰🇪', flagImage: require('../../../assets/login/south-africa-flag.png') }, // Using available flag
-  { id: 5, name: 'South Africa', flag: '🇿🇦', flagImage: require('../../../assets/login/south-africa-flag.png') },
-  { id: 6, name: 'Tanzania', flag: '🇹🇿', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-  { id: 7, name: 'Uganda', flag: '🇺🇬', flagImage: require('../../../assets/login/nigeria-flag.png') }, // Placeholder
-];
 
 // Types for API integration
 interface P2POrder {
@@ -58,6 +52,49 @@ const P2PProfile = () => {
   const [selectedCountryId, setSelectedCountryId] = useState<number | null>(1);
   const [showAdTypeModal, setShowAdTypeModal] = useState(false);
 
+  // Fetch countries from API
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+
+  // Transform countries data to match the expected format
+  const COUNTRIES = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      // Fallback to default countries
+      return [
+        { id: 1, name: 'Nigeria', code: 'NG', flag: '🇳🇬', flagImage: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+        { id: 2, name: 'Botswana', code: 'BW', flag: '🇧🇼', flagImage: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+        { id: 3, name: 'Ghana', code: 'GH', flag: '🇬🇭', flagImage: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+        { id: 4, name: 'Kenya', code: 'KE', flag: '🇰🇪', flagImage: require('../../../assets/login/south-africa-flag.png'), flagUrl: null },
+        { id: 5, name: 'South Africa', code: 'ZA', flag: '🇿🇦', flagImage: require('../../../assets/login/south-africa-flag.png'), flagUrl: null },
+        { id: 6, name: 'Tanzania', code: 'TZ', flag: '🇹🇿', flagImage: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+        { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬', flagImage: require('../../../assets/login/nigeria-flag.png'), flagUrl: null },
+      ];
+    }
+    return countriesData.data.map((country: any, index: number) => {
+      // Check if flag is a URL path (starts with /) or an emoji
+      const flagValue = country.flag || '';
+      const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+      const flagUrl = isFlagUrl 
+        ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+        : null;
+      const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+      
+      // Default flag image fallback
+      const defaultFlagImage = require('../../../assets/login/nigeria-flag.png');
+      
+      return {
+        id: country.id || index + 1,
+        name: country.name || '',
+        code: country.code || '',
+        flag: flagEmoji,
+        flagUrl: flagUrl,
+        flagImage: defaultFlagImage, // Fallback for local images
+      };
+    });
+  }, [countriesData?.data]);
+
     // Mock data - Replace with API calls
     const menuItems: P2PMenuItem[] = [
         {
@@ -83,41 +120,69 @@ const P2PProfile = () => {
         },
     ];
 
-    const orders: P2POrder[] = [
-        {
-            id: '1',
-            userName: 'Qamar Malik',
-            userAvatar: require('../../../assets/login/memoji.png'),
-            type: 'Buy',
-            asset: 'USDT',
-            status: 'Active',
-            amount: 'N20,000',
-            assetAmount: '15 USDT',
-            date: 'Oct 15,2025',
-        },
-        {
-            id: '2',
-            userName: 'Qamar Malik',
-            userAvatar: require('../../../assets/login/memoji.png'),
-            type: 'Sell',
-            asset: 'USDT',
-            status: 'Completed',
-            amount: 'N20,000',
-            assetAmount: '15 USDT',
-            date: 'Oct 15,2025',
-        },
-        {
-            id: '3',
-            userName: 'Qamar Malik',
-            userAvatar: require('../../../assets/login/memoji.png'),
-            type: 'Buy',
-            asset: 'USDT',
-            status: 'Cancelled',
-            amount: 'N20,000',
-            assetAmount: '15 USDT',
-            date: 'Oct 15,2025',
-        },
-    ];
+    // Fetch P2P orders from API
+    const {
+        data: ordersData,
+        isLoading: isLoadingOrders,
+        refetch: refetchOrders,
+    } = useGetP2POrders();
+
+    // Transform orders from API to match UI format
+    const orders: P2POrder[] = useMemo(() => {
+        if (!ordersData?.data || !Array.isArray(ordersData.data)) {
+            return [];
+        }
+
+        return ordersData.data.map((order: any) => {
+            // Determine the other party (vendor if user is buyer, buyer if user is vendor)
+            const otherParty = order.userAction === 'buy' 
+                ? (order.vendor || {}) 
+                : (order.buyer || {});
+            
+            // Map userAction to type
+            const type: 'Buy' | 'Sell' = order.userAction === 'buy' ? 'Buy' : 'Sell';
+            
+            // Map API status to UI status
+            let status: 'Active' | 'Completed' | 'Cancelled' = 'Active';
+            if (order.status === 'completed') {
+                status = 'Completed';
+            } else if (order.status === 'cancelled') {
+                status = 'Cancelled';
+            } else {
+                status = 'Active'; // pending, awaiting_payment, awaiting_coin_release, etc.
+            }
+
+            // Format amounts
+            const fiatAmount = order.fiatAmount 
+                ? `${order.fiatCurrency || 'NGN'}${parseFloat(order.fiatAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : 'N0.00';
+            const cryptoAmount = order.cryptoAmount 
+                ? `${parseFloat(order.cryptoAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${order.cryptoCurrency || 'USDT'}`
+                : '0 USDT';
+
+            // Format date
+            const date = order.createdAt 
+                ? new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                : 'N/A';
+
+            // Get user name
+            const userName = otherParty.firstName && otherParty.lastName
+                ? `${otherParty.firstName} ${otherParty.lastName}`
+                : otherParty.name || 'Unknown User';
+
+            return {
+                id: String(order.id),
+                userName: userName,
+                userAvatar: require('../../../assets/login/memoji.png'), // Default avatar
+                type: type,
+                asset: order.cryptoCurrency || 'USDT',
+                status: status,
+                amount: fiatAmount,
+                assetAmount: cryptoAmount,
+                date: date,
+            };
+        });
+    }, [ordersData?.data]);
 
     // Hide bottom tab bar when screen is focused
     useFocusEffect(
@@ -166,18 +231,17 @@ const P2PProfile = () => {
         }
     };
 
-    const filteredOrders = selectedTab === 'All'
-        ? orders
-        : orders.filter(order => order.type === selectedTab);
+    const filteredOrders = useMemo(() => {
+        if (selectedTab === 'All') {
+            return orders;
+        }
+        return orders.filter(order => order.type === selectedTab);
+    }, [orders, selectedTab]);
 
     // Pull-to-refresh functionality
     const handleRefresh = async () => {
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          console.log('Refreshing P2P orders data...');
-          resolve();
-        }, 1000);
-      });
+      await refetchOrders();
+      return Promise.resolve();
     };
 
     const { refreshing, onRefresh } = usePullToRefresh({
@@ -216,21 +280,27 @@ const P2PProfile = () => {
             style={styles.countrySelector}
             onPress={() => {
               // Initialize selectedCountryId based on current selectedCountry
-              const currentCountry = COUNTRIES.find((c) => c.name === selectedCountry);
+              const currentCountry = COUNTRIES.find((c: any) => c.name === selectedCountry);
               if (currentCountry) {
                 setSelectedCountryId(currentCountry.id);
               }
               setShowCountryModal(true);
             }}
           >
-            <Image
-              source={
-                COUNTRIES.find((c) => c.name === selectedCountry)?.flagImage ||
-                require('../../../assets/login/nigeria-flag.png')
-              }
-              style={styles.countryFlag}
-              resizeMode="cover"
-            />
+            {(() => {
+              const currentCountry = COUNTRIES.find((c: any) => c.name === selectedCountry);
+              const flagSource = currentCountry?.flagUrl 
+                ? { uri: currentCountry.flagUrl }
+                : (currentCountry?.flagImage || require('../../../assets/login/nigeria-flag.png'));
+              
+              return (
+                <Image
+                  source={flagSource}
+                  style={styles.countryFlag}
+                  resizeMode="cover"
+                />
+              );
+            })()}
             <ThemedText style={styles.countryText}>{selectedCountry}</ThemedText>
             <MaterialCommunityIcons
               name="chevron-down"
@@ -311,6 +381,10 @@ const P2PProfile = () => {
                                 } else if (item.id === 'my-ads') {
                                     (navigation as any).navigate('Settings', {
                                         screen: 'MyAdsScreen',
+                                    });
+                                } else if (item.id === 'notifications') {
+                                    (navigation as any).navigate('Home', {
+                                        screen: 'Notifications',
                                     });
                                 } else {
                                     console.log('Pressed:', item.id);
@@ -449,38 +523,53 @@ const P2PProfile = () => {
                       />
                     }
                 >
-                    {filteredOrders.map((order) => (
-                        <View key={order.id} style={styles.orderItem}>
-                            <Image
-                                source={order.userAvatar}
-                                style={styles.orderAvatar}
-                                resizeMode="cover"
-                            />
-                            <View style={styles.orderDetails}>
-                                <ThemedText style={styles.orderUserName}>{order.userName}</ThemedText>
-                                <ThemedText style={styles.orderDescription}>
-                                    {order.type} {order.asset}{' '}
-                                    <ThemedText style={[styles.orderStatus, { color: getStatusColor(order.status) }]}>
-                                        {order.status}
-                                    </ThemedText>
-                                </ThemedText>
-                            </View>
-                            <View style={styles.orderAmountContainer}>
-                                <ThemedText
-                                    style={[
-                                        styles.orderAmount,
-                                        order.status === 'Completed' && order.type === 'Sell' && styles.orderAmountRed,
-                                    ]}
-                                >
-                                    {order.amount}
-                                    <ThemedText style={styles.orderAssetAmount}>
-                                        ({order.assetAmount})
-                                    </ThemedText>
-                                </ThemedText>
-                                <ThemedText style={styles.orderDate}>{order.date}</ThemedText>
-                            </View>
+                    {isLoadingOrders ? (
+                        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                            <ActivityIndicator size="small" color="#A9EF45" />
+                            <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                                Loading orders...
+                            </ThemedText>
                         </View>
-                    ))}
+                    ) : filteredOrders.length > 0 ? (
+                        filteredOrders.map((order) => (
+                            <View key={order.id} style={styles.orderItem}>
+                                <Image
+                                    source={order.userAvatar}
+                                    style={styles.orderAvatar}
+                                    resizeMode="cover"
+                                />
+                                <View style={styles.orderDetails}>
+                                    <ThemedText style={styles.orderUserName}>{order.userName}</ThemedText>
+                                    <ThemedText style={styles.orderDescription}>
+                                        {order.type} {order.asset}{' '}
+                                        <ThemedText style={[styles.orderStatus, { color: getStatusColor(order.status) }]}>
+                                            {order.status}
+                                        </ThemedText>
+                                    </ThemedText>
+                                </View>
+                                <View style={styles.orderAmountContainer}>
+                                    <ThemedText
+                                        style={[
+                                            styles.orderAmount,
+                                            order.status === 'Completed' && order.type === 'Sell' && styles.orderAmountRed,
+                                        ]}
+                                    >
+                                        {order.amount}
+                                        <ThemedText style={styles.orderAssetAmount}>
+                                            ({order.assetAmount})
+                                        </ThemedText>
+                                    </ThemedText>
+                                    <ThemedText style={styles.orderDate}>{order.date}</ThemedText>
+                                </View>
+                            </View>
+                        ))
+                    ) : (
+                        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                            <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                                No orders found
+                            </ThemedText>
+                        </View>
+                    )}
                 </ScrollView>
             </View>
 
@@ -582,34 +671,49 @@ const P2PProfile = () => {
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {COUNTRIES.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={styles.countryItem}
-                  onPress={() => {
-                    setSelectedCountryId(c.id);
-                  }}
-                >
-                  <Image
-                    source={c.flagImage}
-                    style={styles.countryFlagModal}
-                    resizeMode="cover"
-                  />
-                  <ThemedText style={styles.countryName}>{c.name}</ThemedText>
-                  <MaterialCommunityIcons
-                    name={selectedCountryId === c.id ? 'radiobox-marked' : 'radiobox-blank'}
-                    size={24}
-                    color={selectedCountryId === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                  Loading countries...
+                </ThemedText>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {COUNTRIES.map((c) => {
+                  const flagSource = c.flagUrl 
+                    ? { uri: c.flagUrl }
+                    : (c.flagImage || require('../../../assets/login/nigeria-flag.png'));
+                  
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedCountryId(c.id);
+                      }}
+                    >
+                      <Image
+                        source={flagSource}
+                        style={styles.countryFlagModal}
+                        resizeMode="cover"
+                      />
+                      <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={selectedCountryId === c.id ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={selectedCountryId === c.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
             <TouchableOpacity 
               style={styles.applyButton} 
               onPress={() => {
                 if (selectedCountryId) {
-                  const selectedCountryData = COUNTRIES.find((c) => c.id === selectedCountryId);
+                  const selectedCountryData = COUNTRIES.find((c: any) => c.id === selectedCountryId);
                   if (selectedCountryData) {
                     setSelectedCountry(selectedCountryData.name);
                   }

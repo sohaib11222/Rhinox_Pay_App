@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -11,6 +11,7 @@ import {
   TextInput,
   Alert,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
@@ -18,6 +19,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
+import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mutations';
+import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
+import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -27,6 +34,7 @@ interface PaymentMethod {
   id: string;
   name: string;
   type: string;
+  paymentMethodData?: any; // Store full payment method data for API calls
 }
 
 interface OrderStep {
@@ -37,14 +45,24 @@ interface OrderStep {
 const BuyOrder = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const routeParams = route.params as { skipInitialScreen?: boolean; paymentMethod?: string; orderId?: string; amount?: string; assetAmount?: string } | undefined;
+  const queryClient = useQueryClient();
+  const routeParams = route.params as { 
+    skipInitialScreen?: boolean; 
+    paymentMethod?: string; 
+    orderId?: string; 
+    adId?: string;
+    amount?: string; 
+    assetAmount?: string;
+    cryptoAmount?: string;
+    paymentMethodId?: string;
+  } | undefined;
   
   // If skipInitialScreen is true, start at step 1, otherwise start at step 0
   const [currentStep, setCurrentStep] = useState<0 | 1 | 2 | 3 | 4>(
     routeParams?.skipInitialScreen ? 1 : 0
   );
   const [currencyType, setCurrencyType] = useState<'Fiat' | 'Crypto'>('Fiat');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(routeParams?.cryptoAmount || '');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [tempSelectedPaymentMethod, setTempSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
@@ -55,6 +73,8 @@ const BuyOrder = () => {
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [reviewRating, setReviewRating] = useState<'positive' | 'negative' | null>(null);
   const [reviewText, setReviewText] = useState('He is fast and reliable.');
+  const [orderId, setOrderId] = useState<string | null>(routeParams?.orderId || null);
+  const [adId, setAdId] = useState<string | null>(routeParams?.adId || null);
 
   // PIN states
   const [pin, setPin] = useState('');
@@ -140,57 +160,266 @@ const BuyOrder = () => {
     }
   }, [currentStep, countdown]);
 
-  // Mock payment methods - TODO: Replace with API call
-  const paymentMethods: PaymentMethod[] = [
-    { id: '1', name: 'All', type: 'all' },
-    { id: '2', name: 'RhinoxPay ID', type: 'rhinoxpay' },
-    { id: '3', name: 'Bank Transfer', type: 'bank' },
-    { id: '4', name: 'Mobile Money', type: 'mobile' },
-    { id: '5', name: 'Opay', type: 'bank' },
-    { id: '6', name: 'Palmpay', type: 'bank' },
-    { id: '7', name: 'Kuda Bank', type: 'bank' },
-    { id: '8', name: 'Access Bank', type: 'bank' },
-    { id: '9', name: 'Ec Bank', type: 'bank' },
-  ];
+  // Fetch ad details if adId is provided (enable for all steps if adId exists)
+  const {
+    data: adDetailsData,
+    isLoading: isLoadingAdDetails,
+    error: adDetailsError,
+    refetch: refetchAdDetails,
+  } = useGetP2PAdDetails(adId || '', {
+    enabled: !!adId, // Enable whenever adId exists, not just for step 0
+  } as any);
 
-  // Set default payment method if coming from AdDetails (after paymentMethods is defined)
+  // Fetch user's payment methods from payment settings
+  const {
+    data: userPaymentMethodsData,
+    isLoading: isLoadingUserPaymentMethods,
+    refetch: refetchUserPaymentMethods,
+  } = useGetPaymentMethods();
+
+  // Transform payment methods from ad details and user's payment settings
+  const paymentMethods: PaymentMethod[] = useMemo(() => {
+    const methods: PaymentMethod[] = [];
+    
+    // First, add payment methods from ad details (vendor's payment methods)
+    if (adDetailsData?.data?.paymentMethods && Array.isArray(adDetailsData.data.paymentMethods)) {
+      adDetailsData.data.paymentMethods.forEach((pm: any) => {
+        // Determine display name based on payment method type
+        let displayName = 'Unknown';
+        if (pm.type === 'bank_account') {
+          displayName = pm.bankName || 'Bank Transfer';
+          // If account number is partially masked, show it for clarity
+          if (pm.accountNumber && pm.accountNumber.includes('****')) {
+            displayName = `${pm.bankName || 'Bank'} ${pm.accountNumber}`;
+          } else if (pm.accountNumber) {
+            // Show last 4 digits if available
+            const last4 = pm.accountNumber.slice(-4);
+            displayName = `${pm.bankName || 'Bank'} (****${last4})`;
+          }
+        } else if (pm.type === 'mobile_money') {
+          displayName = pm.provider?.name || 'Mobile Money';
+          // If phone number is partially masked, show it
+          if (pm.phoneNumber && pm.phoneNumber.includes('****')) {
+            displayName = `${pm.provider?.name || 'Mobile Money'} ${pm.phoneNumber}`;
+          }
+        } else if (pm.type === 'rhinoxpay_id') {
+          displayName = 'RhinoxPay ID';
+        } else {
+          displayName = pm.type || 'Unknown';
+        }
+
+        methods.push({
+          id: String(pm.id),
+          name: displayName,
+          type: pm.type || 'unknown',
+          paymentMethodData: pm, // Store full data for API call
+        });
+      });
+    }
+    
+    // If no payment methods from ad, or as additional options, add user's payment methods
+    // Note: For buy orders, we typically use vendor's payment methods, but we can show user's as fallback
+    if (methods.length === 0 && userPaymentMethodsData?.data && Array.isArray(userPaymentMethodsData.data)) {
+      userPaymentMethodsData.data.forEach((pm: any) => {
+        let displayName = 'Unknown';
+        if (pm.type === 'bank_account') {
+          displayName = pm.bankName || 'Bank Transfer';
+          if (pm.accountNumber) {
+            const last4 = pm.accountNumber.slice(-4);
+            displayName = `${pm.bankName || 'Bank'} (****${last4})`;
+          }
+        } else if (pm.type === 'mobile_money') {
+          displayName = pm.provider?.name || 'Mobile Money';
+          if (pm.phoneNumber) {
+            const last4 = pm.phoneNumber.slice(-4);
+            displayName = `${pm.provider?.name || 'Mobile Money'} (****${last4})`;
+          }
+        } else if (pm.type === 'rhinoxpay_id') {
+          displayName = 'RhinoxPay ID';
+        } else {
+          displayName = pm.type || 'Unknown';
+        }
+
+        methods.push({
+          id: String(pm.id),
+          name: displayName,
+          type: pm.type || 'unknown',
+          paymentMethodData: pm,
+        });
+      });
+    }
+    
+    return methods;
+  }, [adDetailsData?.data?.paymentMethods, userPaymentMethodsData?.data]);
+
+  // Fetch order details if orderId is provided
+  const {
+    data: orderDetailsData,
+    isLoading: isLoadingOrderDetails,
+    refetch: refetchOrderDetails,
+  } = useGetP2POrderDetails(orderId || '', {
+    enabled: !!orderId && currentStep > 0,
+  } as any);
+
+  // Get ad price for rate display (when creating order)
+  const adPrice = useMemo(() => {
+    if (adDetailsData?.data?.price) {
+      return `${adDetailsData.data.fiatCurrency || 'NGN'}${adDetailsData.data.price}`;
+    }
+    return 'N1,520'; // Default fallback
+  }, [adDetailsData?.data?.price, adDetailsData?.data?.fiatCurrency]);
+
+  // Transform order data from API
+  const orderData = useMemo(() => {
+    if (orderDetailsData?.data) {
+      const order = orderDetailsData.data;
+      const vendor = order.vendor || {};
+      const buyer = order.buyer || {};
+      const paymentMethod = order.paymentMethod || {};
+      
+      return {
+        vendorName: `${vendor.firstName || ''} ${vendor.lastName || ''}`.trim() || 'Vendor',
+        vendorAvatar: require('../../../assets/login/memoji.png'), // Default avatar
+        vendorStatus: 'Online', // TODO: Get from API if available
+        vendorRating: '98%', // TODO: Get from API if available
+        rate: `${order.fiatCurrency || 'NGN'}${order.price || '0'}`,
+        buyerName: `${buyer.firstName || ''} ${buyer.lastName || ''}`.trim() || 'Buyer',
+        amountToBePaid: `${order.fiatCurrency || 'NGN'}${order.fiatAmount || '0'}`,
+        paymentAccount: paymentMethod.type === 'bank_account' ? (paymentMethod.bankName || 'Bank Transfer') :
+                        paymentMethod.type === 'mobile_money' ? (paymentMethod.provider?.name || 'Mobile Money') :
+                        paymentMethod.type === 'rhinoxpay_id' ? 'RhinoxPay ID' :
+                        'Payment Method',
+        price: `${order.price || '0'} ${order.fiatCurrency || 'NGN'}`,
+        txId: order.id ? String(order.id).substring(0, 15) : 'N/A',
+        orderTime: order.createdAt ? new Date(order.createdAt).toLocaleString() : 'N/A',
+        amountToPay: `${order.fiatCurrency || 'NGN'}${order.fiatAmount || '0'}`,
+        bankName: paymentMethod.bankName || 'N/A',
+        accountNumber: paymentMethod.accountNumber || paymentMethod.phoneNumber || 'N/A',
+        accountName: paymentMethod.accountName || 'N/A',
+        usdtAmount: `${order.cryptoAmount || '0'} ${order.cryptoCurrency || 'USDT'}`,
+        orderStatus: order.status || 'pending',
+        paymentMethodId: paymentMethod.id ? String(paymentMethod.id) : null,
+      };
+    }
+    
+    // Fallback to route params or defaults
+    return {
+      vendorName: adDetailsData?.data?.vendor ? 
+        `${adDetailsData.data.vendor.firstName || ''} ${adDetailsData.data.vendor.lastName || ''}`.trim() || 'Vendor' :
+        'Qamar Malik',
+      vendorAvatar: require('../../../assets/login/memoji.png'),
+      vendorStatus: 'Online',
+      vendorRating: '98%',
+      rate: adPrice,
+      buyerName: 'Lawal Afeez',
+      amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N25,000',
+      paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
+      price: adDetailsData?.data?.price ? `${adDetailsData.data.price} ${adDetailsData.data.fiatCurrency || 'NGN'}` : '1,500 NGN',
+      txId: '128DJ2I3I1DJKQKCM',
+      orderTime: 'Oct 16, 2025 - 07:22AM',
+      amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
+      bankName: 'Opay',
+      accountNumber: '1234567890',
+      accountName: 'Qamardeen Abdul Malik',
+      usdtAmount: routeParams?.assetAmount || '15 USDT',
+      orderStatus: 'pending',
+      paymentMethodId: null,
+    };
+  }, [orderDetailsData?.data, routeParams, adDetailsData?.data, adPrice]);
+
+  // Set default payment method from route params if provided
   useEffect(() => {
-    if (routeParams?.skipInitialScreen && routeParams?.paymentMethod && !selectedPaymentMethod) {
-      const method = paymentMethods.find(m => m.name === routeParams.paymentMethod);
+    if (routeParams?.paymentMethodId && paymentMethods.length > 0 && !selectedPaymentMethod) {
+      const method = paymentMethods.find(m => m.id === routeParams.paymentMethodId);
       if (method) {
         setSelectedPaymentMethod(method);
       }
     }
-  }, [routeParams?.skipInitialScreen, routeParams?.paymentMethod]);
+  }, [routeParams?.paymentMethodId, paymentMethods, selectedPaymentMethod]);
 
-  // Mock order data - TODO: Replace with API call
-  // Use route params if available (from AdDetails), otherwise use default values
-  const orderData = {
-    vendorName: 'Qamar Malik',
-    vendorAvatar: require('../../../assets/login/memoji.png'),
-    vendorStatus: 'Online',
-    vendorRating: '98%',
-    rate: 'N1,520',
-    buyerName: 'Lawal Afeez',
-    amountToBePaid: '25,000',
-    paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
-    price: '1,500 NGN',
-    txId: '128DJ2I3I1DJKQKCM',
-    orderTime: 'Oct 16, 2025 - 07:22AM',
-    amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
-    bankName: 'Opay',
-    accountNumber: '1234567890',
-    accountName: 'Qamardeen Abdul Malik',
-    usdtAmount: routeParams?.assetAmount || '15 USDT',
-  };
+  // Set adId from route params
+  useEffect(() => {
+    if (routeParams?.adId) {
+      setAdId(String(routeParams.adId));
+    }
+  }, [routeParams?.adId]);
+
+  // Debug: Log adId and payment methods when they change
+  useEffect(() => {
+    console.log('BuyOrder - adId:', adId);
+    console.log('BuyOrder - routeParams?.adId:', routeParams?.adId);
+    if (paymentMethods.length > 0) {
+      console.log('Payment methods loaded:', paymentMethods);
+    } else if (adDetailsData?.data && !isLoadingAdDetails) {
+      console.log('Ad details loaded but no payment methods:', adDetailsData.data);
+      console.log('Ad payment methods:', adDetailsData.data.paymentMethods);
+    } else if (!adId && !isLoadingAdDetails) {
+      console.log('No adId set - cannot load payment methods');
+    }
+  }, [adId, routeParams?.adId, paymentMethods, adDetailsData?.data, isLoadingAdDetails]);
+
+  // Create order mutation
+  const createOrderMutation = useCreateP2POrder({
+    onSuccess: (data) => {
+      const orderId = data?.data?.id ? String(data.data.id) : null;
+      if (orderId) {
+        setOrderId(orderId);
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'orders'] });
+        
+        // Check order status
+        const status = data?.data?.status;
+        if (status === 'awaiting_payment') {
+          // Auto-accepted, go directly to payment step
+          setCurrentStep(2);
+          showSuccessAlert('Success', 'Order created successfully. Please proceed to payment.');
+        } else {
+          // Pending vendor acceptance
+          setCurrentStep(1);
+          showSuccessAlert('Success', 'Order created successfully. Waiting for vendor acceptance.');
+        }
+      }
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to create order');
+    },
+  });
+
+  // Mark payment made mutation
+  const markPaymentMadeMutation = useMarkPaymentMade({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['p2p', 'orders', orderId] });
+      setPaymentConfirmed(true);
+      setCurrentStep(3); // Move to Awaiting Coin Release
+      showSuccessAlert('Success', 'Payment confirmed. Waiting for coin release.');
+      // After some time, move to step 4
+      setTimeout(() => {
+        setCurrentStep(4);
+      }, 2000);
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
+    },
+  });
 
   const handleBuy = () => {
-    if (!amount || !selectedPaymentMethod) {
+    if (!amount || !selectedPaymentMethod || !adId) {
       Alert.alert('Error', 'Please enter amount and select payment method');
       return;
     }
-    // Navigate to order flow screen
-    setCurrentStep(1);
+    
+    // Validate amount format
+    const numericAmount = amount.replace(/,/g, '');
+    if (!numericAmount || isNaN(parseFloat(numericAmount)) || parseFloat(numericAmount) <= 0) {
+      Alert.alert('Error', 'Please enter a valid amount');
+      return;
+    }
+
+    // Create order via API
+    createOrderMutation.mutate({
+      adId: adId,
+      cryptoAmount: numericAmount,
+      paymentMethodId: selectedPaymentMethod.id,
+    });
   };
 
   const handlePaymentMethodSelect = (method: PaymentMethod) => {
@@ -275,11 +504,17 @@ const BuyOrder = () => {
   };
 
   const handleSecurityProceed = () => {
-    if (emailCode && authenticatorCode) {
+    if (emailCode && authenticatorCode && orderId) {
+      setShowSecurityModal(false);
+      // Mark payment as made via API
+      markPaymentMadeMutation.mutate({
+        orderId: orderId,
+      });
+    } else if (emailCode && authenticatorCode) {
+      // Fallback if no orderId (shouldn't happen in normal flow)
       setShowSecurityModal(false);
       setPaymentConfirmed(true);
-      setCurrentStep(3); // Move to Awaiting Coin Release
-      // After some time, move to step 4
+      setCurrentStep(3);
       setTimeout(() => {
         setCurrentStep(4);
       }, 2000);
@@ -310,12 +545,10 @@ const BuyOrder = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing buy order data...');
-        resolve();
-      }, 1000);
-    });
+    if (orderId) {
+      await refetchOrderDetails();
+    }
+    return Promise.resolve();
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -375,7 +608,14 @@ const BuyOrder = () => {
           <View style={styles.headerTitleContainer}>
             <ThemedText style={styles.headerTitle}>Buy Order</ThemedText>
           </View>
-          <TouchableOpacity style={styles.backButton}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => {
+              (navigation as any).navigate('Settings', {
+                screen: 'Support',
+              });
+            }}
+          >
             <View style={styles.iconCircle}>
               <MaterialCommunityIcons name="headset" size={24 * SCALE} color="#FFFFFF" />
             </View>
@@ -397,18 +637,27 @@ const BuyOrder = () => {
           }
         >
           {/* Vendor Info Card */}
-          <View style={styles.vendorCard}>
-            <Image
-              source={orderData.vendorAvatar}
-              style={styles.vendorAvatar}
-              resizeMode="cover"
-            />
-            <View style={styles.vendorInfo}>
-              <ThemedText style={styles.vendorName}>{orderData.vendorName}</ThemedText>
-              <ThemedText style={styles.vendorStatus}>{orderData.vendorStatus}</ThemedText>
+          {isLoadingAdDetails ? (
+            <View style={[styles.vendorCard, { justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }]}>
+              <ActivityIndicator size="small" color="#A9EF45" />
+              <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                Loading ad details...
+              </ThemedText>
             </View>
-            <ThemedText style={styles.vendorRating}>{orderData.vendorRating}</ThemedText>
-          </View>
+          ) : (
+            <View style={styles.vendorCard}>
+              <Image
+                source={orderData.vendorAvatar}
+                style={styles.vendorAvatar}
+                resizeMode="cover"
+              />
+              <View style={styles.vendorInfo}>
+                <ThemedText style={styles.vendorName}>{orderData.vendorName}</ThemedText>
+                <ThemedText style={styles.vendorStatus}>{orderData.vendorStatus}</ThemedText>
+              </View>
+              <ThemedText style={styles.vendorRating}>{orderData.vendorRating}</ThemedText>
+            </View>
+          )}
 
           {/* Vendor Rate */}
           <ThemedText style={styles.rateTitle}>Vendor Rate</ThemedText>
@@ -529,11 +778,18 @@ const BuyOrder = () => {
 
         {/* Buy Button */}
         <TouchableOpacity
-          style={[styles.buyButton, (!amount || !selectedPaymentMethod) && styles.buyButtonDisabled]}
+          style={[
+            styles.buyButton, 
+            (!amount || !selectedPaymentMethod || !adId || createOrderMutation.isPending) && styles.buyButtonDisabled
+          ]}
           onPress={handleBuy}
-          disabled={!amount || !selectedPaymentMethod}
+          disabled={!amount || !selectedPaymentMethod || !adId || createOrderMutation.isPending}
         >
-          <ThemedText style={styles.buyButtonText}>Buy</ThemedText>
+          {createOrderMutation.isPending ? (
+            <ActivityIndicator size="small" color="#000000" />
+          ) : (
+            <ThemedText style={styles.buyButtonText}>Buy</ThemedText>
+          )}
         </TouchableOpacity>
 
         {/* Select Payment Method Modal */}
@@ -546,47 +802,98 @@ const BuyOrder = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.paymentModalContent}>
               <View style={styles.modalHeader}>
-                <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
+                <ThemedText style={styles.modalTitle}>Select Payment Method</ThemedText>
                 <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
                   <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.searchContainer}>
-                <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search Bank"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                />
-              </View>
+              {(isLoadingAdDetails || isLoadingUserPaymentMethods) ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+                    Loading payment methods...
+                  </ThemedText>
+                </View>
+              ) : paymentMethods.length > 0 ? (
+                <>
+                  <View style={styles.searchContainer}>
+                    <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search payment method"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    />
+                  </View>
 
-              <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
-                {paymentMethods.map((method) => (
-                  <TouchableOpacity
-                    key={method.id}
-                    style={styles.paymentMethodItem}
-                    onPress={() => handlePaymentMethodSelect(method)}
-                  >
-                    <ThemedText style={styles.paymentMethodItemText}>{method.name}</ThemedText>
-                    {tempSelectedPaymentMethod?.id === method.id ? (
-                      <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
-                    ) : (
-                      <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                  <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
+                    {paymentMethods.map((method) => (
+                      <TouchableOpacity
+                        key={method.id}
+                        style={styles.paymentMethodItem}
+                        onPress={() => handlePaymentMethodSelect(method)}
+                      >
+                        <ThemedText style={styles.paymentMethodItemText}>{method.name}</ThemedText>
+                        {tempSelectedPaymentMethod?.id === method.id ? (
+                          <MaterialCommunityIcons name="checkbox-marked" size={24 * SCALE} color="#A9EF45" />
+                        ) : (
+                          <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
 
-              <View style={styles.applyButtonContainer}>
-                <TouchableOpacity
-                  style={[styles.applyButton, !tempSelectedPaymentMethod && styles.applyButtonDisabled]}
-                  onPress={handleApplyPaymentMethod}
-                  disabled={!tempSelectedPaymentMethod}
-                >
-                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
-                </TouchableOpacity>
-              </View>
+                  <View style={styles.applyButtonContainer}>
+                    <TouchableOpacity
+                      style={[styles.applyButton, !tempSelectedPaymentMethod && styles.applyButtonDisabled]}
+                      onPress={handleApplyPaymentMethod}
+                      disabled={!tempSelectedPaymentMethod}
+                    >
+                      <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', marginBottom: 10 }}>
+                    {!adId 
+                      ? 'Please select an ad first to view payment methods'
+                      : (adDetailsError || (isLoadingAdDetails && isLoadingUserPaymentMethods))
+                      ? 'Error loading payment methods. Please try again.'
+                      : 'No payment methods available. Please add payment methods in Settings or ensure the ad has payment methods configured.'}
+                  </ThemedText>
+                  {(adDetailsError || (!isLoadingAdDetails && !isLoadingUserPaymentMethods && paymentMethods.length === 0)) && (
+                    <View style={{ gap: 10, marginTop: 10 }}>
+                      {adId && (
+                        <TouchableOpacity
+                          style={{ padding: 10, backgroundColor: '#A9EF45', borderRadius: 8 }}
+                          onPress={() => {
+                            refetchAdDetails();
+                            refetchUserPaymentMethods();
+                          }}
+                        >
+                          <ThemedText style={{ color: '#000000', fontSize: 12 * SCALE, fontWeight: '500' }}>
+                            Retry
+                          </ThemedText>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={{ padding: 10 }}
+                        onPress={() => {
+                          setShowPaymentMethodModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'PaymentSettings',
+                          });
+                        }}
+                      >
+                        <ThemedText style={{ color: '#A9EF45', fontSize: 12 * SCALE }}>
+                          Add Payment Method
+                        </ThemedText>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
             </View>
           </View>
         </Modal>
@@ -659,8 +966,18 @@ const BuyOrder = () => {
           />
         }
       >
+        {/* Loading indicator for order details */}
+        {currentStep > 0 && isLoadingOrderDetails && (
+          <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+            <ActivityIndicator size="small" color="#A9EF45" />
+            <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
+              Loading order details...
+            </ThemedText>
+          </View>
+        )}
+
         {/* Order Details Card - Only show in order flow */}
-        {currentStep > 0 && (
+        {currentStep > 0 && !isLoadingOrderDetails && (
           <View style={styles.orderDetailsCard}>
             <ThemedText style={styles.orderDetailsTitle}>Order Details</ThemedText>
             <View style={styles.orderDetailsContent}>
@@ -698,7 +1015,7 @@ const BuyOrder = () => {
         )}
 
         {/* Payment Account Card (All Steps) */}
-        {currentStep >= 1 && (
+        {currentStep >= 1 && !isLoadingOrderDetails && (
           <View style={styles.paymentAccountCard}>
             <View style={styles.paymentAccountHeader}>
               <View style={styles.paymentAccountHeaderLeft}>
@@ -854,8 +1171,19 @@ const BuyOrder = () => {
 
       {currentStep === 2 && (
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity style={styles.paymentMadeButton} onPress={handlePaymentMade}>
-            <ThemedText style={styles.paymentMadeButtonText}>Payment Made</ThemedText>
+          <TouchableOpacity 
+            style={[
+              styles.paymentMadeButton,
+              (markPaymentMadeMutation.isPending || !orderId) && styles.paymentMadeButtonDisabled
+            ]} 
+            onPress={handlePaymentMade}
+            disabled={markPaymentMadeMutation.isPending || !orderId}
+          >
+            {markPaymentMadeMutation.isPending ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <ThemedText style={styles.paymentMadeButtonText}>Payment Made</ThemedText>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.appealButton}>
             <ThemedText style={styles.appealButtonText}>Appeal</ThemedText>
@@ -1135,11 +1463,18 @@ const BuyOrder = () => {
             </View>
 
             <TouchableOpacity
-              style={[styles.proceedButton, (!emailCode || !authenticatorCode) && styles.proceedButtonDisabled]}
+              style={[
+                styles.proceedButton, 
+                (!emailCode || !authenticatorCode || markPaymentMadeMutation.isPending) && styles.proceedButtonDisabled
+              ]}
               onPress={handleSecurityProceed}
-              disabled={!emailCode || !authenticatorCode}
+              disabled={!emailCode || !authenticatorCode || markPaymentMadeMutation.isPending}
             >
-              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+              {markPaymentMadeMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -1950,6 +2285,9 @@ const styles = StyleSheet.create({
     paddingVertical: 17 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  paymentMadeButtonDisabled: {
+    opacity: 0.5,
   },
   paymentMadeButtonText: {
     fontSize: 14 * SCALE,

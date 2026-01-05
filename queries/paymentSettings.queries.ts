@@ -100,3 +100,37 @@ export const useGetPaymentSettingsMobileMoneyProviders = (
   });
 };
 
+/**
+ * Get available banks
+ */
+export interface GetBanksParams {
+  countryCode?: string;
+  currency?: string;
+}
+
+export const getPaymentSettingsBanks = async (
+  params?: GetBanksParams
+): Promise<ApiResponse> => {
+  try {
+    const url = buildApiUrl(API_ROUTES.PAYMENT_SETTINGS.BANKS, params as any);
+    const response = await apiClient.get(url);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Query hook for getting banks
+ */
+export const useGetPaymentSettingsBanks = (
+  params?: GetBanksParams,
+  options?: UseQueryOptions<ApiResponse, Error>
+) => {
+  return useQuery<ApiResponse, Error>({
+    queryKey: ['paymentSettings', 'banks', params],
+    queryFn: () => getPaymentSettingsBanks(params),
+    ...options,
+  });
+};
+

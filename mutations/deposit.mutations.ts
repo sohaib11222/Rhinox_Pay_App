@@ -15,7 +15,7 @@ export interface InitiateDepositRequest {
   currency: string;
   countryCode: string;
   channel: 'bank_transfer' | 'mobile_money';
-  providerId?: string;
+  providerId?: number; // Required for mobile_money, not used for bank_transfer
 }
 
 export const initiateDeposit = async (data: InitiateDepositRequest): Promise<ApiResponse> => {

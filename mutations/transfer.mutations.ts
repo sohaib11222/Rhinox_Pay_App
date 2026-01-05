@@ -15,12 +15,13 @@ export interface InitiateTransferRequest {
   currency: string;
   countryCode: string;
   channel: 'rhionx_user' | 'bank_account' | 'mobile_money';
+  paymentMethodId?: number; // Required for bank_account channel
   recipientEmail?: string;
   recipientUserId?: string;
   accountNumber?: string;
   bankName?: string;
-  providerId?: string;
-  phoneNumber?: string;
+  providerId?: number; // Required for mobile_money channel (integer, not string)
+  phoneNumber?: string; // Required for mobile_money channel
 }
 
 export const initiateTransfer = async (data: InitiateTransferRequest): Promise<ApiResponse> => {
@@ -48,7 +49,7 @@ export const useInitiateTransfer = (
  * Verify and complete transfer with email code and PIN
  */
 export interface VerifyTransferRequest {
-  transactionId: string;
+  transactionId: number; // API expects integer
   emailCode: string;
   pin: string;
 }

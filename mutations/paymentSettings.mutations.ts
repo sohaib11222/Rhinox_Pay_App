@@ -45,7 +45,7 @@ export const useAddBankAccount = (
  * Add a new mobile money payment method
  */
 export interface AddMobileMoneyRequest {
-  providerId: string;
+  providerId: number;
   phoneNumber: string;
   countryCode: string;
   currency: string;
@@ -161,6 +161,36 @@ export const useSetDefaultPaymentMethod = (
 ) => {
   return useMutation<ApiResponse, Error, string>({
     mutationFn: setDefaultPaymentMethod,
+    ...options,
+  });
+};
+
+/**
+ * Add Rhinox Pay ID as a payment method
+ */
+export interface AddRhinoxPayIdRequest {
+  countryCode: string;
+  currency: string;
+  isDefault?: boolean;
+}
+
+export const addRhinoxPayId = async (data: AddRhinoxPayIdRequest): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.post(API_ROUTES.PAYMENT_SETTINGS.ADD_RHINOXPAY_ID, data);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Mutation hook for adding RhinoxPay ID
+ */
+export const useAddRhinoxPayId = (
+  options?: UseMutationOptions<ApiResponse, Error, AddRhinoxPayIdRequest>
+) => {
+  return useMutation<ApiResponse, Error, AddRhinoxPayIdRequest>({
+    mutationFn: addRhinoxPayId,
     ...options,
   });
 };
