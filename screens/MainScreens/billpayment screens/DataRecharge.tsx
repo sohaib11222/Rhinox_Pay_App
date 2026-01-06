@@ -11,7 +11,6 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import TransactionErrorModal from '../../components/TransactionErrorModal';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -471,7 +471,7 @@ const DataRecharge = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[DataRecharge] Error initiating payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+      showErrorAlert('Error', error?.message || 'Failed to initiate payment');
     },
   });
 
@@ -494,23 +494,18 @@ const DataRecharge = ({ route }: any) => {
       refetchBalances();
       refetchBeneficiaries();
       
-      Alert.alert(
+      showSuccessAlert(
         'Success',
         'Data recharge successful!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
-            },
-          },
-        ]
+        () => {
+          // @ts-ignore - allow parent route name
+          navigation.navigate('Call' as never);
+        }
       );
     },
     onError: (error: any) => {
       console.error('[DataRecharge] Error confirming payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -553,13 +548,13 @@ const DataRecharge = ({ route }: any) => {
 
   const handleProceed = () => {
     if (!selectedProvider || !selectedPlan || !mobileNumber) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate mobile number
     if (mobileNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid mobile number');
+      showErrorAlert('Error', 'Please enter a valid mobile number');
       return;
     }
 
@@ -576,7 +571,7 @@ const DataRecharge = ({ route }: any) => {
 
   const handleConfirmPayment = async () => {
     if (!pin || pin.length < 5) {
-      Alert.alert('Error', 'Please enter your 5-digit PIN');
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -586,7 +581,7 @@ const DataRecharge = ({ route }: any) => {
         pin: pin,
       });
     } else {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
@@ -789,7 +784,7 @@ const DataRecharge = ({ route }: any) => {
                 onPress={() => {
                   // Only navigate if a provider is selected
                   if (!selectedProvider) {
-                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    showWarningAlert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
                     return;
                   }
                   

@@ -11,7 +11,6 @@ import {
     TextInput,
     RefreshControl,
     ActivityIndicator,
-    Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -21,6 +20,7 @@ import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetSupportChats } from '../../../queries/support.queries';
 import { useCreateSupportChat } from '../../../mutations/support.mutations';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
+import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -159,7 +159,7 @@ const Support = () => {
         },
         onError: (error: any) => {
             console.error('[Support] Error creating chat:', error);
-            Alert.alert('Error', error?.message || 'Failed to create support chat. Please try again.');
+            showErrorAlert('Error', error?.message || 'Failed to create support chat. Please try again.');
         },
     });
 
@@ -237,14 +237,14 @@ const Support = () => {
 
     const handleSaveDetails = () => {
         if (!chatName || !chatEmail || !selectedReason) {
-            Alert.alert('Validation Error', 'Please fill in all required fields (Name, Email, and Reason).');
+            showWarningAlert('Validation Error', 'Please fill in all required fields (Name, Email, and Reason).');
             return;
         }
 
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(chatEmail)) {
-            Alert.alert('Validation Error', 'Please enter a valid email address.');
+            showWarningAlert('Validation Error', 'Please enter a valid email address.');
             return;
         }
 

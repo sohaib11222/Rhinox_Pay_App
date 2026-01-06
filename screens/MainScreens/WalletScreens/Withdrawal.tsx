@@ -11,11 +11,12 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import * as LocalAuthentication from 'expo-local-authentication';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
@@ -27,6 +28,7 @@ import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -107,6 +109,8 @@ const Withdrawal = () => {
   const [selectedCountry, setSelectedCountry] = useState<string>('NG');
   const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState('All');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
@@ -114,6 +118,9 @@ const Withdrawal = () => {
   const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [pin, setPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
   const [emailCode, setEmailCode] = useState('');
   const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
@@ -246,7 +253,7 @@ const Withdrawal = () => {
       setShowPinModal(true);
     },
     onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to initiate transfer. Please try again.');
+      showErrorAlert('Error', error.message || 'Failed to initiate transfer. Please try again.');
     },
   });
 
@@ -261,7 +268,7 @@ const Withdrawal = () => {
       }
     },
     onError: (error: any) => {
-      Alert.alert('Error', error.message || 'Failed to verify transfer. Please try again.');
+      showErrorAlert('Error', error.message || 'Failed to verify transfer. Please try again.');
     },
   });
 
@@ -279,6 +286,8 @@ const Withdrawal = () => {
   const handleApplyBank = () => {
     if (selectedBank) {
       setShowBankModal(false);
+      setShowFilterDropdown(false);
+      setSearchQuery('');
     }
   };
 
@@ -290,12 +299,12 @@ const Withdrawal = () => {
 
   const handleCompleteWithdrawal = () => {
     if (!selectedBank || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     if (!isEligible) {
-      Alert.alert('Not Eligible', eligibilityData?.data?.message || 'You are not eligible to make transfers. Please complete your KYC verification.');
+      showWarningAlert('Not Eligible', eligibilityData?.data?.message || 'You are not eligible to make transfers. Please complete your KYC verification.');
       return;
     }
 
@@ -340,20 +349,123 @@ const Withdrawal = () => {
     setPin(pin.slice(0, -1));
   };
 
+  // Check biometric availability
+  useEffect(() => {
+    checkBiometricAvailability();
+  }, []);
+
+  const checkBiometricAvailability = async () => {
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      if (hasHardware) {
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        if (isEnrolled) {
+          setIsBiometricAvailable(true);
+          const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
+          if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+            setBiometricType('Face ID');
+          } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+            setBiometricType('Fingerprint');
+          } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+            setBiometricType('Iris');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error checking biometric availability:', error);
+      setIsBiometricAvailable(false);
+    }
+  };
+
+  // Get stored PIN from secure storage
+  const getStoredPin = async (): Promise<string | null> => {
+    try {
+      const storedPin = await AsyncStorage.getItem('user_pin');
+      return storedPin;
+    } catch (error) {
+      console.error('Error retrieving stored PIN:', error);
+      return null;
+    }
+  };
+
+  // Handle biometric authentication
+  const handleBiometricAuth = async () => {
+    if (!isBiometricAvailable) {
+      showWarningAlert(
+        'Biometrics Not Available',
+        'Your device does not support biometrics or it is not set up. Please enter your PIN manually.'
+      );
+      return;
+    }
+
+    setIsScanning(true);
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: `Authenticate with ${biometricType} to verify transaction`,
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+        fallbackLabel: 'Use PIN',
+      });
+
+      setIsScanning(false);
+
+      if (result.success) {
+        // Try to get stored PIN
+        const storedPin = await getStoredPin();
+        
+        if (storedPin) {
+          // Auto-fill PIN and proceed
+          setPin(storedPin);
+          // The handlePinPress logic will automatically proceed when PIN is 5 digits
+          // But since we're setting it directly, we need to trigger the proceed logic
+          if (storedPin.length >= 4) {
+            // Close PIN modal and proceed to security verification
+            setTimeout(() => {
+              setShowPinModal(false);
+              setShowSecurityModal(true);
+            }, 300);
+          }
+        } else {
+          // If no stored PIN, show message that PIN is still required
+          showWarningAlert(
+            'PIN Required',
+            'Biometric authentication successful. Please enter your PIN to complete the transaction.'
+          );
+        }
+      } else {
+        if (result.error === 'user_cancel') {
+          // User cancelled - do nothing
+        } else {
+          showErrorAlert(
+            'Authentication Failed',
+            'Biometric authentication failed. Please try again or enter your PIN manually.'
+          );
+        }
+      }
+    } catch (error: any) {
+      setIsScanning(false);
+      console.error('Biometric authentication error:', error);
+      showErrorAlert(
+        'Error',
+        'An error occurred during biometric authentication. Please enter your PIN manually.'
+      );
+    }
+  };
+
   const handleSecurityComplete = () => {
-    if (!emailCode || !pin || pin.length < 4) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (emailCode.length !== 5 || !pin || pin.length < 4) {
+      showErrorAlert('Error', 'Please enter a valid 5-digit email code and 4-digit PIN');
       return;
     }
 
     if (!pendingTransactionId) {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
       return;
     }
 
     // Verify transfer with email code and PIN
     verifyMutation.mutate({
-      transactionId: String(pendingTransactionId),
+      transactionId: pendingTransactionId,
       emailCode: emailCode,
       pin: pin,
     });
@@ -364,10 +476,18 @@ const Withdrawal = () => {
     // TODO: Show toast notification
   };
 
-  const filteredBanks = bankAccounts.filter((bank) =>
-    bank.bankName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    bank.accountNumber.includes(searchQuery)
-  );
+  const filteredBanks = bankAccounts.filter((bank) => {
+    // Search filter
+    const matchesSearch = 
+      bank.bankName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      bank.accountNumber.includes(searchQuery) ||
+      bank.accountName.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // Status filter (if needed in future, currently just "All")
+    const matchesFilter = selectedFilter === 'All' || true; // Add filter logic here if needed
+    
+    return matchesSearch && matchesFilter;
+  });
 
   // Update selected country when countries data loads
   useEffect(() => {
@@ -571,29 +691,101 @@ const Withdrawal = () => {
         visible={showBankModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowBankModal(false)}
+        onRequestClose={() => {
+          setShowBankModal(false);
+          setShowFilterDropdown(false);
+          setSearchQuery('');
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.bankModalContent}>
             {/* Modal Header */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
-              <TouchableOpacity onPress={() => setShowBankModal(false)}>
+              <TouchableOpacity onPress={() => {
+                setShowBankModal(false);
+                setShowFilterDropdown(false);
+                setSearchQuery('');
+              }}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
             {/* Search Bar */}
-            <View style={styles.filterContainer}>
-              <TouchableOpacity style={styles.filterButton}>
-                <ThemedText style={styles.filterText}>All</ThemedText>
-                <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
-                <Image
-                  source={require('../../../assets/Vector (35).png')}
-                  style={[{ marginBottom: -1, width: 14, height: 13, alignItems: 'flex-end', alignSelf:'flex-end', marginLeft: 300 }]}
-                  resizeMode="cover"
+            <View style={styles.searchContainer}>
+              <View style={styles.searchBar}>
+                <MaterialCommunityIcons name="magnify" size={18 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search by bank name, account number, or account name"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="none"
+                  autoCorrect={false}
                 />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <MaterialCommunityIcons name="close-circle" size={18 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Filter Button */}
+            <View style={styles.filterContainer}>
+              <TouchableOpacity 
+                style={styles.filterButton}
+                onPress={() => setShowFilterDropdown(!showFilterDropdown)}
+              >
+                <ThemedText style={styles.filterText}>{selectedFilter}</ThemedText>
+                <View style={styles.filterButtonRight}>
+                  <Image
+                    source={require('../../../assets/Vector (35).png')}
+                    style={styles.filterIcon}
+                    resizeMode="contain"
+                  />
+                  <MaterialCommunityIcons 
+                    name={showFilterDropdown ? "chevron-up" : "chevron-down"} 
+                    size={14 * SCALE} 
+                    color="#FFFFFF" 
+                  />
+                </View>
               </TouchableOpacity>
+              
+              {/* Filter Dropdown */}
+              {showFilterDropdown && (
+                <View style={styles.filterDropdown}>
+                  <TouchableOpacity
+                    style={[styles.filterOption, selectedFilter === 'All' && styles.filterOptionSelected]}
+                    onPress={() => {
+                      setSelectedFilter('All');
+                      setShowFilterDropdown(false);
+                    }}
+                  >
+                    <ThemedText style={[styles.filterOptionText, selectedFilter === 'All' && styles.filterOptionTextSelected]}>
+                      All
+                    </ThemedText>
+                    {selectedFilter === 'All' && (
+                      <MaterialCommunityIcons name="check" size={16 * SCALE} color="#A9EF45" />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.filterOption, selectedFilter === 'Active' && styles.filterOptionSelected]}
+                    onPress={() => {
+                      setSelectedFilter('Active');
+                      setShowFilterDropdown(false);
+                    }}
+                  >
+                    <ThemedText style={[styles.filterOptionText, selectedFilter === 'Active' && styles.filterOptionTextSelected]}>
+                      Active
+                    </ThemedText>
+                    {selectedFilter === 'Active' && (
+                      <MaterialCommunityIcons name="check" size={16 * SCALE} color="#A9EF45" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
             {/* Bank List */}
             <ScrollView style={styles.bankList} showsVerticalScrollIndicator={false}>
@@ -882,11 +1074,23 @@ const Withdrawal = () => {
                 ))}
               </View>
               <View style={styles.numpadRow}>
-                <View style={styles.numpadButton}>
+                <TouchableOpacity 
+                  style={styles.numpadButton}
+                  onPress={handleBiometricAuth}
+                  disabled={!isBiometricAvailable || isScanning}
+                >
                   <View style={styles.ghostCircle}>
-                    <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
+                    {isScanning ? (
+                      <ActivityIndicator size="small" color="#A9EF45" />
+                    ) : (
+                      <MaterialCommunityIcons 
+                        name="fingerprint" 
+                        size={24 * SCALE} 
+                        color={isBiometricAvailable ? "#A9EF45" : "rgba(169, 239, 69, 0.5)"} 
+                      />
+                    )}
                   </View>
-                </View>
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.numpadButton}
                   onPress={() => handlePinPress('0')}
@@ -960,14 +1164,18 @@ const Withdrawal = () => {
                   value={emailCode}
                   onChangeText={setEmailCode}
                   keyboardType="numeric"
+                  maxLength={5}
                 />
               </View>
             </View>
 
             <TouchableOpacity
-              style={[styles.proceedButton, (!emailCode || !pin || pin.length < 4 || verifyMutation.isPending) && styles.proceedButtonDisabled]}
+              style={[
+                styles.securityProceedButton,
+                (emailCode.length !== 5 || !pin || pin.length < 4 || verifyMutation.isPending) && styles.proceedButtonDisabled
+              ]}
               onPress={handleSecurityComplete}
-              disabled={!emailCode || !pin || pin.length < 4 || verifyMutation.isPending}
+              disabled={emailCode.length !== 5 || !pin || pin.length < 4 || verifyMutation.isPending}
             >
               {verifyMutation.isPending ? (
                 <ActivityIndicator size="small" color="#000000" />
@@ -1357,13 +1565,12 @@ const styles = StyleSheet.create({
     fontSize: 12 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
-    width: '100%',
   },
   filterContainer: {
-    flexDirection: 'row',
-    gap: 10 * SCALE,
-    marginTop: 20 * SCALE,
-    marginLeft: 14 * 1,
+    marginTop: 10 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    position: 'relative',
+    zIndex: 10,
   },
   filterButton: {
     flexDirection: 'row',
@@ -1373,12 +1580,57 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12 * SCALE,
     paddingVertical: 12 * SCALE,
     gap: 6 * SCALE,
-    width: '97%',
+    width: '100%',
+    justifyContent: 'space-between',
   },
   filterText: {
     fontSize: 12 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
+    flex: 1,
+  },
+  filterButtonRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+  },
+  filterIcon: {
+    width: 14 * SCALE,
+    height: 13 * SCALE,
+  },
+  filterDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#020c19',
+    borderRadius: 10 * SCALE,
+    marginTop: 5 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  filterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 12 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  filterOptionSelected: {
+    backgroundColor: 'rgba(169, 239, 69, 0.1)',
+  },
+  filterOptionText: {
+    fontSize: 12 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  filterOptionTextSelected: {
+    color: '#A9EF45',
+    fontWeight: '500',
   },
   bankList: {
     paddingHorizontal: 20 * SCALE,
@@ -1789,6 +2041,16 @@ const styles = StyleSheet.create({
     fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#FFFFFF',
+  },
+  securityProceedButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 18 * SCALE,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20 * SCALE,
+    minHeight: 56 * SCALE,
   },
 });
 

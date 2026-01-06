@@ -11,7 +11,6 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -457,7 +457,7 @@ const Electricity = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[Electricity] Error initiating payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+      showErrorAlert('Error', error?.message || 'Failed to initiate payment');
     },
   });
 
@@ -518,7 +518,7 @@ const Electricity = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[Electricity] Error confirming payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -564,20 +564,20 @@ const Electricity = ({ route }: any) => {
 
   const handleProceed = () => {
     if (!selectedBillerType || !selectedAccountType || !meterNumber || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate meter number
     if (meterNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid meter number');
+      showErrorAlert('Error', 'Please enter a valid meter number');
       return;
     }
 
     // Validate amount
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
@@ -596,7 +596,7 @@ const Electricity = ({ route }: any) => {
 
   const handleConfirmPayment = async () => {
     if (!pin || pin.length < 5) {
-      Alert.alert('Error', 'Please enter your 5-digit PIN');
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -606,7 +606,7 @@ const Electricity = ({ route }: any) => {
         pin: pin,
       });
     } else {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
@@ -790,7 +790,7 @@ const Electricity = ({ route }: any) => {
                 onPress={() => {
                   // Only navigate if a provider is selected
                   if (!selectedBillerType) {
-                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    showWarningAlert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
                     return;
                   }
                   

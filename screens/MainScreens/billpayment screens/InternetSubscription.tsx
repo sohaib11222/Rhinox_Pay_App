@@ -11,7 +11,6 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -438,7 +438,7 @@ const InternetSubscription = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[InternetSubscription] Error initiating payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+      showErrorAlert('Error', error?.message || 'Failed to initiate payment');
     },
   });
 
@@ -497,7 +497,7 @@ const InternetSubscription = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[InternetSubscription] Error confirming payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -540,13 +540,13 @@ const InternetSubscription = ({ route }: any) => {
 
   const handleProceed = () => {
     if (!selectedProvider || !selectedPlan || !mobileNumber) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate mobile number
     if (mobileNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid mobile number');
+      showErrorAlert('Error', 'Please enter a valid mobile number');
       return;
     }
 
@@ -563,7 +563,7 @@ const InternetSubscription = ({ route }: any) => {
 
   const handleConfirmPayment = async () => {
     if (!pin || pin.length < 5) {
-      Alert.alert('Error', 'Please enter your 5-digit PIN');
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -573,7 +573,7 @@ const InternetSubscription = ({ route }: any) => {
         pin: pin,
       });
     } else {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
@@ -773,7 +773,7 @@ const InternetSubscription = ({ route }: any) => {
                 onPress={() => {
                   // Only navigate if a provider is selected
                   if (!selectedProvider) {
-                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    showWarningAlert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
                     return;
                   }
                   

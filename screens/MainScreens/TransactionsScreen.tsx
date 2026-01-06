@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
     StyleSheet,
     View,
@@ -56,6 +56,8 @@ const TransactionsScreen = () => {
     const [endDate, setEndDate] = useState<string>('');
     const [tempStartDate, setTempStartDate] = useState<string>('');
     const [tempEndDate, setTempEndDate] = useState<string>('');
+    const [fiatDisplayLimit, setFiatDisplayLimit] = useState<number>(10);
+    const [cryptoDisplayLimit, setCryptoDisplayLimit] = useState<number>(10);
 
     // Format date for API (YYYY-MM-DD)
     const formatDateForAPI = (date: Date): string => {
@@ -311,6 +313,13 @@ const TransactionsScreen = () => {
         });
     }, [fiatTransactionsFromAPI]);
 
+    // Paginated fiat transactions
+    const displayedFiatTransactions = useMemo(() => {
+        return fiatTransactions.slice(0, fiatDisplayLimit);
+    }, [fiatTransactions, fiatDisplayLimit]);
+
+    const hasMoreFiatTransactions = fiatTransactions.length > fiatDisplayLimit;
+
     const cryptoTransactions = useMemo(() => {
         if (!Array.isArray(cryptoTransactionsFromAPI)) return [];
         return cryptoTransactionsFromAPI.map((tx: any) => {
@@ -342,6 +351,19 @@ const TransactionsScreen = () => {
             };
         });
     }, [cryptoTransactionsFromAPI]);
+
+    // Paginated crypto transactions
+    const displayedCryptoTransactions = useMemo(() => {
+        return cryptoTransactions.slice(0, cryptoDisplayLimit);
+    }, [cryptoTransactions, cryptoDisplayLimit]);
+
+    const hasMoreCryptoTransactions = cryptoTransactions.length > cryptoDisplayLimit;
+
+    // Reset pagination when period or dates change
+    useEffect(() => {
+        setFiatDisplayLimit(10);
+        setCryptoDisplayLimit(10);
+    }, [selectedPeriod, startDate, endDate]);
 
     // Calculate max value from current chart data
     const maxChartValue = Math.max(...chartData.map((d: ChartData) => d.value), 176);
@@ -608,9 +630,9 @@ const TransactionsScreen = () => {
                         <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                             <ActivityIndicator size="small" color="#A9EF45" />
                         </View>
-                    ) : fiatTransactions.length > 0 ? (
+                    ) : displayedFiatTransactions.length > 0 ? (
                         <View style={styles.transactionList}>
-                            {fiatTransactions.map((transaction: Transaction) => (
+                            {displayedFiatTransactions.map((transaction: Transaction) => (
                             <TouchableOpacity
                                 key={transaction.id}
                                 style={styles.transactionItem}
@@ -671,6 +693,18 @@ const TransactionsScreen = () => {
                         </View>
                     )}
 
+                    {/* Load More Button for Fiat */}
+                    {hasMoreFiatTransactions && (
+                        <TouchableOpacity
+                            style={styles.loadMoreButton}
+                            onPress={() => setFiatDisplayLimit(prev => prev + 10)}
+                        >
+                            <ThemedText style={styles.loadMoreText}>
+                                Load More ({fiatTransactions.length - fiatDisplayLimit} remaining)
+                            </ThemedText>
+                        </TouchableOpacity>
+                    )}
+
                     {/* Crypto Section */}
                     <View style={[styles.sectionHeader, { marginTop: 20 * SCALE }]}>
                         <ThemedText style={styles.sectionTitle}>Transaction History</ThemedText>
@@ -681,9 +715,9 @@ const TransactionsScreen = () => {
                         <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                             <ActivityIndicator size="small" color="#A9EF45" />
                         </View>
-                    ) : cryptoTransactions.length > 0 ? (
+                    ) : displayedCryptoTransactions.length > 0 ? (
                         <View style={styles.transactionList}>
-                            {cryptoTransactions.map((transaction: Transaction) => (
+                            {displayedCryptoTransactions.map((transaction: Transaction) => (
                             <TouchableOpacity
                                 key={transaction.id}
                                 style={styles.transactionItem}
@@ -733,6 +767,18 @@ const TransactionsScreen = () => {
                         <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                             <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>No crypto transactions found</ThemedText>
                         </View>
+                    )}
+
+                    {/* Load More Button for Crypto */}
+                    {hasMoreCryptoTransactions && (
+                        <TouchableOpacity
+                            style={styles.loadMoreButton}
+                            onPress={() => setCryptoDisplayLimit(prev => prev + 10)}
+                        >
+                            <ThemedText style={styles.loadMoreText}>
+                                Load More ({cryptoTransactions.length - cryptoDisplayLimit} remaining)
+                            </ThemedText>
+                        </TouchableOpacity>
                     )}
                 </View>
 
@@ -1170,6 +1216,23 @@ const styles = StyleSheet.create({
     },
     bottomSpacer: {
         height: 20 * 1,
+    },
+    loadMoreButton: {
+        marginTop: 15 * SCALE,
+        marginBottom: 10 * SCALE,
+        paddingVertical: 12 * SCALE,
+        paddingHorizontal: 20 * SCALE,
+        backgroundColor: 'rgba(169, 239, 69, 0.1)',
+        borderRadius: 10 * SCALE,
+        borderWidth: 1,
+        borderColor: 'rgba(169, 239, 69, 0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    loadMoreText: {
+        fontSize: 12 * SCALE,
+        fontWeight: '400',
+        color: '#A9EF45',
     },
     // Custom Date Modal Styles
     modalOverlay: {

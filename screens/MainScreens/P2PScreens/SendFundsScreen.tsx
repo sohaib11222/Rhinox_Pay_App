@@ -12,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -27,6 +26,7 @@ import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetP2PTransactions } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -228,15 +228,15 @@ const SendFundsScreen = () => {
           setShowSummaryModal(false);
           setShowSecurityModal(true);
         } else {
-          Alert.alert('Error', 'Invalid transaction ID received');
+          showErrorAlert('Error', 'Invalid transaction ID received');
         }
       } else {
-        Alert.alert('Error', 'Transaction ID not found in response');
+        showErrorAlert('Error', 'Transaction ID not found in response');
       }
     },
     onError: (error: any) => {
       console.error('[SendFundsScreen] Error initiating transfer:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate transfer');
+      showErrorAlert('Error', error?.message || 'Failed to initiate transfer');
     },
   });
 
@@ -265,7 +265,7 @@ const SendFundsScreen = () => {
     },
     onError: (error: any) => {
       console.error('[SendFundsScreen] Error verifying transfer:', error);
-      Alert.alert('Error', error?.message || 'Failed to verify transfer');
+      showErrorAlert('Error', error?.message || 'Failed to verify transfer');
     },
   });
 
@@ -320,7 +320,7 @@ const SendFundsScreen = () => {
     
     // Close scanner
     setShowQRScanner(false);
-    Alert.alert('QR Code Scanned', 'Wallet ID has been filled in');
+    showInfoAlert('QR Code Scanned', 'Wallet ID has been filled in');
   };
 
   const handleWalletIdChange = (text: string) => {
@@ -335,43 +335,35 @@ const SendFundsScreen = () => {
   const handleProceed = () => {
     // Check eligibility first
     if (!isEligible) {
-      Alert.alert(
+      showWarningAlert(
         'KYC Required',
-        eligibilityData?.data?.message || 'You need to complete KYC verification before sending funds.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              // Navigate to KYC screen if needed
-            },
-          },
-        ]
+        eligibilityData?.data?.message || 'You need to complete KYC verification before sending funds.'
       );
       return;
     }
 
     if (!walletId || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate amount
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
     // Check balance
     const balanceNum = parseFloat(balance.replace(/,/g, '') || '0');
     if (numericAmount > balanceNum) {
-      Alert.alert('Error', 'Insufficient balance');
+      showErrorAlert('Error', 'Insufficient balance');
       return;
     }
 
     // Validate wallet ID (should be email or wallet ID)
     if (walletId.length < 5) {
-      Alert.alert('Error', 'Please enter a valid wallet ID or email');
+      showErrorAlert('Error', 'Please enter a valid wallet ID or email');
       return;
     }
 
@@ -380,7 +372,7 @@ const SendFundsScreen = () => {
 
   const handleSummaryProceed = () => {
     if (!walletId || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
@@ -434,12 +426,12 @@ const SendFundsScreen = () => {
   const handleSecurityComplete = () => {
     // Only require PIN, email code can be dummy value
     if (!pin || pin.length < 4) {
-      Alert.alert('Error', 'Please enter your PIN');
+      showErrorAlert('Error', 'Please enter your PIN');
       return;
     }
 
     if (!pendingTransactionId) {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
       return;
     }
 

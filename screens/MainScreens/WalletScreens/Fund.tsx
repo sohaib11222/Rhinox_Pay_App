@@ -11,7 +11,6 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import * as Clipboard from 'expo-clipboard';
+import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -192,8 +192,9 @@ const Fund = () => {
     countryCode: selectedCountry,
     currency: currency,
   }, {
+    queryKey: ['deposit', 'bank-details', selectedCountry, currency],
     enabled: selectedChannel === 'bank_transfer' && !!selectedCountry && !!currency,
-  });
+  } as any);
 
   // Update bank details when data is fetched
   useEffect(() => {
@@ -213,8 +214,9 @@ const Fund = () => {
     countryCode: selectedCountry,
     currency: currency,
   }, {
+    queryKey: ['deposit', 'mobile-money-providers', selectedCountry, currency],
     enabled: selectedChannel === 'mobile_money' && !!selectedCountry && !!currency,
-  });
+  } as any);
 
   // Transform providers to UI format
   const providers = useMemo(() => {
@@ -269,28 +271,20 @@ const Fund = () => {
           }));
         }
         // Show success message with instructions
-        Alert.alert(
+        showInfoAlert(
           'Deposit Initiated',
           'Please make the bank transfer using the provided details. Include the reference in the transfer narration.',
-          [
-            {
-              text: 'I\'ve Made the Transfer',
-              onPress: () => {
-                setHasMadeTransfer(true);
-                if (transactionId) {
-                  const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
-                  if (!isNaN(id)) {
-                    setPendingTransactionId(id);
-                    setShowPinModal(true);
-                  }
-                }
-              },
-            },
-            {
-              text: 'View Details',
-              onPress: () => setShowBankDetailsModal(true),
-            },
-          ]
+          () => {
+            setHasMadeTransfer(true);
+            if (transactionId) {
+              const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
+              if (!isNaN(id)) {
+                setPendingTransactionId(id);
+                setShowPinModal(true);
+              }
+            }
+            setShowBankDetailsModal(true);
+          }
         );
       } else {
         // For mobile money, show PIN modal directly
@@ -300,16 +294,16 @@ const Fund = () => {
             setPendingTransactionId(id);
             setShowPinModal(true);
           } else {
-            Alert.alert('Error', 'Invalid transaction ID received');
+            showErrorAlert('Error', 'Invalid transaction ID received');
           }
         } else {
-          Alert.alert('Error', 'Transaction ID not found in response');
+          showErrorAlert('Error', 'Transaction ID not found in response');
         }
       }
     },
     onError: (error: any) => {
       console.error('[Fund] Error initiating deposit:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate deposit');
+      showErrorAlert('Error', error?.message || 'Failed to initiate deposit');
       if (selectedChannel === 'bank_transfer') {
         setShowBankDetailsModal(false);
       }
@@ -339,7 +333,7 @@ const Fund = () => {
     },
     onError: (error: any) => {
       console.error('[Fund] Error confirming deposit:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm deposit');
+      showErrorAlert('Error', error?.message || 'Failed to confirm deposit');
     },
   });
 
@@ -352,14 +346,14 @@ const Fund = () => {
     // Validate amount
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
     if (selectedChannel === 'bank_transfer') {
       // For bank transfer, show bank details modal first
       if (!bankDetails) {
-        Alert.alert('Error', 'Bank details not available. Please try again.');
+        showErrorAlert('Error', 'Bank details not available. Please try again.');
         refetchBankDetails();
         return;
       }
@@ -367,13 +361,13 @@ const Fund = () => {
     } else if (selectedChannel === 'mobile_money') {
       // Validate mobile money fields
       if (!selectedProvider || !momoNumber) {
-        Alert.alert('Error', 'Please fill in all required fields');
+        showErrorAlert('Error', 'Please fill in all required fields');
         return;
       }
 
       // Validate momo number
       if (momoNumber.length < 9) {
-        Alert.alert('Error', 'Please enter a valid mobile money number');
+        showErrorAlert('Error', 'Please enter a valid mobile money number');
         return;
       }
 
@@ -405,12 +399,12 @@ const Fund = () => {
 
   const copyToClipboard = async (text: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', 'Text copied to clipboard');
+    showSuccessAlert('Copied', 'Text copied to clipboard');
   };
 
   const handleConfirmDeposit = async () => {
     if (!pin || pin.length < 5) {
-      Alert.alert('Error', 'Please enter your 5-digit PIN');
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -420,7 +414,7 @@ const Fund = () => {
         pin: pin,
       });
     } else {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
@@ -533,20 +527,37 @@ const Fund = () => {
             <TouchableOpacity
               style={styles.countrySelector}
               onPress={() => setShowCountryModal(true)}
+              disabled={isLoadingCountries}
             >
               {isLoadingCountries ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <>
-                  <Image
-                    source={countries.find((c) => c.code === selectedCountry)?.flag || countries[0]?.flag || require('../../../assets/login/nigeria-flag.png')}
-                    style={styles.countryFlagImage}
-                    resizeMode="cover"
-                  />
-                  <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
-                  <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
-                </>
-              )}
+              ) : (() => {
+                const selectedCountryData = countries.find((c: any) => c.code === selectedCountry);
+                const flagUrl = selectedCountryData?.flagUrl;
+                const flagEmoji = selectedCountryData?.flag;
+                
+                return (
+                  <>
+                    {flagUrl ? (
+                      <Image
+                        source={{ uri: flagUrl }}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    ) : flagEmoji ? (
+                      <ThemedText style={styles.countryFlagEmojiSelector}>{flagEmoji}</ThemedText>
+                    ) : (
+                      <Image
+                        source={require('../../../assets/login/nigeria-flag.png')}
+                        style={styles.countryFlagImage}
+                        resizeMode="cover"
+                      />
+                    )}
+                    <ThemedText style={styles.countryNameText}>{selectedCountryName}</ThemedText>
+                    <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                  </>
+                );
+              })()}
             </TouchableOpacity>
           </LinearGradient>
         </View>
@@ -1317,6 +1328,13 @@ const styles = StyleSheet.create({
   },
   countryFlagEmoji: {
     fontSize: 24 * 1,
+  },
+  countryFlagEmojiSelector: {
+    fontSize: 24 * 1,
+    width: 36 * SCALE,
+    height: 38 * SCALE,
+    textAlign: 'center',
+    lineHeight: 38 * SCALE,
   },
   countryFlagPlaceholder: {
     width: 32 * SCALE,

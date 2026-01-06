@@ -13,7 +13,6 @@ import {
     Platform,
     RefreshControl,
     ActivityIndicator,
-    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -28,6 +27,7 @@ import { useCalculateConversion, useGetConversionReceipt } from '../../../querie
 import { useInitiateConversion, useConfirmConversion } from '../../../mutations/conversion.mutations';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
+import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -321,12 +321,12 @@ const Conversion = () => {
                 setShowSummaryModal(false);
                 setShowPinModal(true);
             } else {
-                Alert.alert('Error', 'Failed to initiate conversion. Conversion reference not found.');
+                showErrorAlert('Error', 'Failed to initiate conversion. Conversion reference not found.');
             }
         },
         onError: (error: any) => {
             console.error('[Conversion] Initiate error:', error);
-            Alert.alert('Error', error?.message || 'Failed to initiate conversion. Please try again.');
+            showErrorAlert('Error', error?.message || 'Failed to initiate conversion. Please try again.');
         },
     });
 
@@ -345,7 +345,7 @@ const Conversion = () => {
         },
         onError: (error: any) => {
             console.error('[Conversion] Confirm error:', error);
-            Alert.alert('Error', error?.message || 'Invalid PIN. Please try again.');
+            showErrorAlert('Error', error?.message || 'Invalid PIN. Please try again.');
             // Don't reset PIN on error so user can try again
         },
     });
@@ -431,16 +431,15 @@ const Conversion = () => {
     // Handle biometric authentication
     const handleBiometricAuth = async () => {
         if (!isBiometricAvailable) {
-            Alert.alert(
+            showWarningAlert(
                 'Biometrics Not Available',
-                'Your device does not support biometrics or it is not set up. Please enter your PIN manually.',
-                [{ text: 'OK' }]
+                'Your device does not support biometrics or it is not set up. Please enter your PIN manually.'
             );
             return;
         }
 
         if (!conversionReference) {
-            Alert.alert('Error', 'Conversion reference not found. Please try again.');
+            showErrorAlert('Error', 'Conversion reference not found. Please try again.');
             return;
         }
 
@@ -467,30 +466,27 @@ const Conversion = () => {
                     });
                 } else {
                     // If no stored PIN, prompt user to enter PIN
-                    Alert.alert(
+                    showWarningAlert(
                         'PIN Required',
-                        'Please enter your PIN to complete the conversion.',
-                        [{ text: 'OK' }]
+                        'Please enter your PIN to complete the conversion.'
                     );
                 }
             } else {
                 if (result.error === 'user_cancel') {
                     // User cancelled - do nothing
                 } else {
-                    Alert.alert(
+                    showWarningAlert(
                         'Biometric Authentication Failed',
-                        'Please try again or enter your PIN manually.',
-                        [{ text: 'OK' }]
+                        'Please try again or enter your PIN manually.'
                     );
                 }
             }
         } catch (error: any) {
             setIsScanning(false);
             console.error('Biometric authentication error:', error);
-            Alert.alert(
+            showErrorAlert(
                 'Error',
-                'An error occurred during biometric authentication. Please enter your PIN manually.',
-                [{ text: 'OK' }]
+                'An error occurred during biometric authentication. Please enter your PIN manually.'
             );
         }
     };
@@ -642,20 +638,20 @@ const Conversion = () => {
         
         // Validate PIN
         if (!pin || pin.length !== 5) {
-            Alert.alert('Error', 'Please enter your 5-digit PIN');
+            showErrorAlert('Error', 'Please enter your 5-digit PIN');
             return;
         }
 
         // Validate PIN contains only digits
         if (!/^\d{5}$/.test(pin)) {
-            Alert.alert('Error', 'PIN must contain exactly 5 digits');
+            showErrorAlert('Error', 'PIN must contain exactly 5 digits');
             setPin('');
             return;
         }
 
         // Validate conversion reference exists
         if (!conversionReference) {
-            Alert.alert('Error', 'Conversion reference not found. Please try again.');
+            showErrorAlert('Error', 'Conversion reference not found. Please try again.');
             setPin('');
             return;
         }

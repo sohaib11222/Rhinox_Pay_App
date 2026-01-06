@@ -10,7 +10,6 @@ import {
   Switch,
   Modal,
   RefreshControl,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +18,7 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useLogout } from '../../../mutations/auth.mutations';
 import { clearTokens, getBiometricEnabled, setBiometricEnabled } from '../../../utils/apiClient';
+import { showErrorAlert, showConfirmAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -75,7 +75,7 @@ const Settings = () => {
       console.error('[Settings] Error saving biometric preference:', error);
       // Revert state on error
       setBiometricEnabledState(!value);
-      Alert.alert('Error', 'Failed to save biometric preference. Please try again.');
+      showErrorAlert('Error', 'Failed to save biometric preference. Please try again.');
     }
   };
 
@@ -142,17 +142,12 @@ const Settings = () => {
         await navigateToLogin();
       } else {
         // For other errors, show alert but still try to navigate to login
-        Alert.alert(
+        showErrorAlert(
           'Logout Failed',
           error.message || 'Failed to logout. You will be redirected to login.',
-          [
-            {
-              text: 'OK',
-              onPress: async () => {
-                await navigateToLogin();
-              },
-            },
-          ]
+          async () => {
+            await navigateToLogin();
+          }
         );
       }
     },
@@ -274,23 +269,16 @@ const Settings = () => {
       });
     } else if (item.id === 'logout') {
       // Show confirmation before logout
-      Alert.alert(
+      showConfirmAlert(
         'Logout',
         'Are you sure you want to logout?',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Logout',
-            style: 'destructive',
-            onPress: () => {
-              console.log('[Settings] Logging out...');
-              logoutMutation.mutate();
-            },
-          },
-        ]
+        () => {
+          console.log('[Settings] Logging out...');
+          logoutMutation.mutate();
+        },
+        undefined,
+        'Logout',
+        'Cancel'
       );
     } else {
       console.log('Pressed:', item.id);

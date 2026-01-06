@@ -11,7 +11,6 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 import { checkSecurityRequirements, verifySecurityBeforeTransaction, getMissingVerificationMessage } from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -424,7 +424,7 @@ const CableTv = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[CableTv] Error initiating payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+      showErrorAlert('Error', error?.message || 'Failed to initiate payment');
     },
   });
 
@@ -487,7 +487,7 @@ const CableTv = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[CableTv] Error confirming payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -530,13 +530,13 @@ const CableTv = ({ route }: any) => {
 
   const handleProceed = () => {
     if (!selectedBillerType || !selectedPlan || !decoderNumber) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate decoder number
     if (decoderNumber.length < 10) {
-      Alert.alert('Error', 'Please enter a valid decoder number');
+      showErrorAlert('Error', 'Please enter a valid decoder number');
       return;
     }
 
@@ -577,13 +577,13 @@ const CableTv = ({ route }: any) => {
 
     if (!verification.success) {
       const message = getMissingVerificationMessage(verification.missingVerifications);
-      Alert.alert('Security Verification Required', message);
+      showWarningAlert('Security Verification Required', message);
       return;
     }
 
     // Basic PIN validation (always required by backend)
     if (!pin || pin.length < 5) {
-      Alert.alert('Error', 'Please enter your 5-digit PIN');
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -593,7 +593,7 @@ const CableTv = ({ route }: any) => {
         pin: pin,
       });
     } else {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
@@ -797,7 +797,7 @@ const CableTv = ({ route }: any) => {
                 onPress={() => {
                   // Only navigate if a provider is selected
                   if (!selectedBillerType) {
-                    Alert.alert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
+                    showWarningAlert('Provider Required', 'Please select a provider first before viewing beneficiaries.');
                     return;
                   }
                   

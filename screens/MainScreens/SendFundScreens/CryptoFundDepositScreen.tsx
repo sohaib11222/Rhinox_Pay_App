@@ -9,7 +9,6 @@ import {
   StatusBar,
   Modal,
   ActivityIndicator,
-  Alert,
   RefreshControl,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,6 +18,7 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetUSDTTokens, useGetDepositAddress, useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import * as Clipboard from 'expo-clipboard';
+import { showSuccessAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -160,7 +160,7 @@ const CryptoFundDepositScreen = () => {
     if (depositAddress) {
       await Clipboard.setStringAsync(depositAddress);
       setCopiedAddress(true);
-      Alert.alert('Success', 'Address copied to clipboard');
+      showSuccessAlert('Success', 'Address copied to clipboard');
       setTimeout(() => setCopiedAddress(false), 2000);
     }
   };

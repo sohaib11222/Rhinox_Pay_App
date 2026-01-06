@@ -456,6 +456,7 @@ const P2PTransactionsScreen = () => {
           transaction={{
             ...selectedTransaction,
             transactionType: 'p2p',
+            status: selectedTransaction.status,
           }}
           onClose={() => {
             setShowReceiptModal(false);

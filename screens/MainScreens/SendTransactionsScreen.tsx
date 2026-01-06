@@ -595,7 +595,10 @@ const SendTransactionsScreen = () => {
       {selectedTransaction && (
         <TransactionReceiptModal
           visible={showReceiptModal && !isLoadingTransactionDetails}
-          transaction={selectedTransaction}
+          transaction={{
+            ...selectedTransaction,
+            status: selectedTransaction.status,
+          }}
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedTransaction(null);

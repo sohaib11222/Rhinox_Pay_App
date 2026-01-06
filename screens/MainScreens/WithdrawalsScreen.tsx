@@ -485,6 +485,7 @@ const WithdrawalsScreen = () => {
           transaction={{
             ...selectedTransaction,
             transactionType: 'withdrawal',
+            status: selectedTransaction.status,
           }}
           onClose={() => {
             setShowReceiptModal(false);

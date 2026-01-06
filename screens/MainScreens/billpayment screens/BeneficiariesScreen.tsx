@@ -11,8 +11,9 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
@@ -23,6 +24,7 @@ import { useGetBillPaymentBeneficiaries } from '../../../queries/billPayment.que
 import { useCreateBeneficiary, useUpdateBeneficiary, useDeleteBeneficiary } from '../../../mutations/billPayment.mutations';
 import { useGetBillPaymentProviders } from '../../../queries/billPayment.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -41,6 +43,7 @@ interface Beneficiary {
 const BeneficiariesScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const insets = useSafeAreaInsets();
   const categoryCode = (route.params as any)?.categoryCode || 'airtime';
   const selectedProvider = (route.params as any)?.selectedProvider;
   const onSelectBeneficiary = (route.params as any)?.onSelectBeneficiary;
@@ -110,11 +113,11 @@ const BeneficiariesScreen = () => {
       setSelectedProviderForNew(null);
       setShowAddBeneficiaryModal(false);
       refetchBeneficiaries();
-      Alert.alert('Success', 'Beneficiary added successfully!');
+      showSuccessAlert('Success', 'Beneficiary added successfully!');
     },
     onError: (error: any) => {
       console.error('[BeneficiariesScreen] Error creating beneficiary:', error);
-      Alert.alert('Error', error?.message || 'Failed to create beneficiary');
+      showErrorAlert('Error', error?.message || 'Failed to create beneficiary');
     },
   });
 
@@ -128,11 +131,11 @@ const BeneficiariesScreen = () => {
       setSelectedProviderForNew(null);
       setShowEditBeneficiaryModal(false);
       refetchBeneficiaries();
-      Alert.alert('Success', 'Beneficiary updated successfully!');
+      showSuccessAlert('Success', 'Beneficiary updated successfully!');
     },
     onError: (error: any) => {
       console.error('[BeneficiariesScreen] Error updating beneficiary:', error);
-      Alert.alert('Error', error?.message || 'Failed to update beneficiary');
+      showErrorAlert('Error', error?.message || 'Failed to update beneficiary');
     },
   });
 
@@ -143,11 +146,11 @@ const BeneficiariesScreen = () => {
       setEditingBeneficiary(null);
       setShowDeleteConfirmModal(false);
       refetchBeneficiaries();
-      Alert.alert('Success', 'Beneficiary deleted successfully!');
+      showSuccessAlert('Success', 'Beneficiary deleted successfully!');
     },
     onError: (error: any) => {
       console.error('[BeneficiariesScreen] Error deleting beneficiary:', error);
-      Alert.alert('Error', error?.message || 'Failed to delete beneficiary');
+      showErrorAlert('Error', error?.message || 'Failed to delete beneficiary');
     },
   });
 
@@ -191,11 +194,11 @@ const BeneficiariesScreen = () => {
             tabBarStyle: {
               backgroundColor: 'rgba(0, 0, 0, 0.2)',
               borderTopWidth: 0,
-              height: 75 * 0.8,
+              height: 75 * SCALE,
               paddingBottom: 10,
               paddingTop: 0,
               position: 'absolute',
-              bottom: 26 * 0.8,
+              bottom: 26 * SCALE,
               borderRadius: 100,
               overflow: 'hidden',
               elevation: 0,
@@ -223,17 +226,17 @@ const BeneficiariesScreen = () => {
 
   const handleAddBeneficiary = () => {
     if (!newBeneficiaryName || !newBeneficiaryPhone) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     if (!selectedProviderForNew) {
-      Alert.alert('Error', 'Please select a provider');
+      showErrorAlert('Error', 'Please select a provider');
       return;
     }
 
     if (newBeneficiaryPhone.length < 10) {
-      Alert.alert('Error', 'Please enter a valid phone number');
+      showErrorAlert('Error', 'Please enter a valid phone number');
       return;
     }
 
@@ -249,12 +252,12 @@ const BeneficiariesScreen = () => {
     if (!editingBeneficiary) return;
 
     if (!newBeneficiaryName || !newBeneficiaryPhone) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     if (newBeneficiaryPhone.length < 10) {
-      Alert.alert('Error', 'Please enter a valid phone number');
+      showErrorAlert('Error', 'Please enter a valid phone number');
       return;
     }
 
@@ -435,7 +438,7 @@ const BeneficiariesScreen = () => {
       </ScrollView>
 
       {/* Add New Button - Fixed at bottom */}
-      <View style={styles.addNewButtonContainer}>
+      <View style={[styles.addNewButtonContainer, { paddingBottom: Math.max(insets.bottom, 20 * SCALE) }]}>
         <TouchableOpacity
           style={styles.addNewButton}
           onPress={() => setShowAddBeneficiaryModal(true)}
@@ -671,7 +674,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#020c19',
   },
   scrollContent: {
-    paddingBottom: 100 * SCALE, // Space for Add New button at bottom
+    paddingBottom: 120 * SCALE, // Space for Add New button at bottom
   },
   header: {
     flexDirection: 'row',
@@ -746,15 +749,15 @@ const styles = StyleSheet.create({
   },
   addNewButtonContainer: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 0, // Position at bottom since tab bar is hidden on this screen
     left: 0,
     right: 0,
     paddingHorizontal: SCREEN_WIDTH * 0.047,
-    paddingBottom: 20 * SCALE,
-    paddingTop: 10 * SCALE,
+    paddingTop: 15 * SCALE,
     backgroundColor: '#020c19',
     borderTopWidth: 0.3,
     borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    // paddingBottom will be set dynamically via inline style to use safe area insets
   },
   addNewButton: {
     backgroundColor: '#A9EF45',
@@ -783,7 +786,7 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   bottomSpacer: {
-    height: 80 * SCALE, // Space for Add New button at bottom
+    height: 120 * SCALE, // Space for Add New button at bottom
   },
   // Modal Styles
   modalOverlay: {

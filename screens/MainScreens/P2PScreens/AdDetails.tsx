@@ -9,7 +9,6 @@ import {
   StatusBar,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -18,7 +17,7 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails, useGetVendorOrders, useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useAcceptOrder, useDeclineOrder, useCancelVendorOrder } from '../../../mutations/p2p.mutations';
-import { showErrorAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -201,7 +200,7 @@ const AdDetails = () => {
       console.log('[AdDetails] Order accepted successfully:', data);
       refetchOrders();
       refetchAdDetails();
-      Alert.alert('Success', 'Order accepted successfully');
+      showSuccessAlert('Success', 'Order accepted successfully');
     },
     onError: (error: any) => {
       console.error('[AdDetails] Error accepting order:', error);
@@ -215,7 +214,7 @@ const AdDetails = () => {
       console.log('[AdDetails] Order declined successfully:', data);
       refetchOrders();
       refetchAdDetails();
-      Alert.alert('Success', 'Order declined');
+      showSuccessAlert('Success', 'Order declined');
     },
     onError: (error: any) => {
       console.error('[AdDetails] Error declining order:', error);
@@ -229,7 +228,7 @@ const AdDetails = () => {
       console.log('[AdDetails] Order cancelled successfully:', data);
       refetchOrders();
       refetchAdDetails();
-      Alert.alert('Success', 'Order cancelled');
+      showSuccessAlert('Success', 'Order cancelled');
     },
     onError: (error: any) => {
       console.error('[AdDetails] Error cancelling order:', error);
@@ -250,17 +249,13 @@ const AdDetails = () => {
       showErrorAlert('Invalid order ID');
       return;
     }
-    Alert.alert(
+    showConfirmAlert(
       'Decline Order',
       'Are you sure you want to decline this order?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Decline', 
-          style: 'destructive',
-          onPress: () => declineMutation.mutate(order.orderId)
-        },
-      ]
+      () => declineMutation.mutate(order.orderId),
+      undefined,
+      'Decline',
+      'Cancel'
     );
   };
 
@@ -269,68 +264,57 @@ const AdDetails = () => {
       showErrorAlert('Invalid order ID');
       return;
     }
-    Alert.alert(
+    showConfirmAlert(
       'Cancel Order',
       'Are you sure you want to cancel this order?',
-      [
-        { text: 'No', style: 'cancel' },
-        { 
-          text: 'Yes', 
-          style: 'destructive',
-          onPress: () => cancelMutation.mutate(order.orderId)
-        },
-      ]
+      () => cancelMutation.mutate(order.orderId),
+      undefined,
+      'Yes',
+      'No'
     );
   };
 
   const handleAcceptAll = () => {
     const pendingOrders = orders.filter(o => o.status === 'pending');
     if (pendingOrders.length === 0) {
-      Alert.alert('Info', 'No pending orders to accept');
+      showInfoAlert('Info', 'No pending orders to accept');
       return;
     }
-    Alert.alert(
+    showConfirmAlert(
       'Accept All Orders',
       `Are you sure you want to accept ${pendingOrders.length} pending order(s)?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Accept All', 
-          onPress: () => {
-            pendingOrders.forEach(order => {
-              if (order.orderId) {
-                acceptMutation.mutate(order.orderId);
-              }
-            });
+      () => {
+        pendingOrders.forEach(order => {
+          if (order.orderId) {
+            acceptMutation.mutate(order.orderId);
           }
-        },
-      ]
+        });
+      },
+      undefined,
+      'Accept All',
+      'Cancel'
     );
   };
 
   const handleDeclineAll = () => {
     const pendingOrders = orders.filter(o => o.status === 'pending');
     if (pendingOrders.length === 0) {
-      Alert.alert('Info', 'No pending orders to decline');
+      showInfoAlert('Info', 'No pending orders to decline');
       return;
     }
-    Alert.alert(
+    showConfirmAlert(
       'Decline All Orders',
       `Are you sure you want to decline ${pendingOrders.length} pending order(s)?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Decline All', 
-          style: 'destructive',
-          onPress: () => {
+      () => {
             pendingOrders.forEach(order => {
               if (order.orderId) {
                 declineMutation.mutate(order.orderId);
               }
             });
-          }
-        },
-      ]
+      },
+      undefined,
+      'Decline All',
+      'Cancel'
     );
   };
 

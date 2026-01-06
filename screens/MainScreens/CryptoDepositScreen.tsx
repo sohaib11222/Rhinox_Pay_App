@@ -484,6 +484,7 @@ const CryptoDepositScreen = () => {
           transaction={{
             ...selectedTransaction,
             transactionType: 'cryptoDeposit',
+            status: selectedTransaction.status,
           }}
           onClose={() => {
             setShowReceiptModal(false);

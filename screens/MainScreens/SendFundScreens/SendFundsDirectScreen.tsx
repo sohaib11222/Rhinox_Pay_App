@@ -11,7 +11,6 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -28,7 +27,7 @@ import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
-import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 
@@ -438,9 +437,9 @@ const SendFundsDirectScreen = () => {
   const handleCopyAuthenticatorCode = async () => {
     try {
       await Clipboard.setStringAsync(authenticatorSetupCode);
-      Alert.alert('Copied', 'Authenticator code copied to clipboard');
+      showSuccessAlert('Copied', 'Authenticator code copied to clipboard');
     } catch (error) {
-      Alert.alert('Error', 'Failed to copy code');
+      showErrorAlert('Error', 'Failed to copy code');
     }
   };
 

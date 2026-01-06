@@ -189,7 +189,7 @@ const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }
 // Custom Tab Bar Component that checks navigation state
 const CustomTabBar = (props: any) => {
   // Screens that should hide the tab bar
-  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings', 'Rewards', 'RewardsHistory', 'ClaimReward', 'NotificationSettings', 'DevicesAndSessions'];
+  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings', 'Rewards', 'RewardsHistory', 'ClaimReward', 'NotificationSettings', 'DevicesAndSessions', 'Beneficiaries'];
   
   // Get the current navigation state
   const navigationState = useNavigationState((state) => state);

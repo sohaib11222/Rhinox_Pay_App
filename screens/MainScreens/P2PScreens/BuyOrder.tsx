@@ -9,7 +9,6 @@ import {
   StatusBar,
   Modal,
   TextInput,
-  Alert,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -23,6 +22,7 @@ import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
 import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mutations';
 import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
+import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -170,6 +170,12 @@ const BuyOrder = () => {
     enabled: !!adId, // Enable whenever adId exists, not just for step 0
   } as any);
 
+  // Fetch current user data
+  const {
+    data: currentUserData,
+    isLoading: isLoadingCurrentUser,
+  } = useGetCurrentUser();
+
   // Fetch user's payment methods from payment settings
   const {
     data: userPaymentMethodsData,
@@ -302,16 +308,22 @@ const BuyOrder = () => {
       };
     }
     
+    // Get current user name
+    const currentUser = currentUserData?.data?.user || currentUserData?.data;
+    const currentUserName = currentUser 
+      ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || 'User'
+      : 'User';
+
     // Fallback to route params or defaults
     return {
       vendorName: adDetailsData?.data?.vendor ? 
         `${adDetailsData.data.vendor.firstName || ''} ${adDetailsData.data.vendor.lastName || ''}`.trim() || 'Vendor' :
-        'Qamar Malik',
+        'Vendor',
       vendorAvatar: require('../../../assets/login/memoji.png'),
       vendorStatus: 'Online',
       vendorRating: '98%',
       rate: adPrice,
-      buyerName: 'Lawal Afeez',
+      buyerName: currentUserName,
       amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N25,000',
       paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
       price: adDetailsData?.data?.price ? `${adDetailsData.data.price} ${adDetailsData.data.fiatCurrency || 'NGN'}` : '1,500 NGN',
@@ -320,12 +332,12 @@ const BuyOrder = () => {
       amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
       bankName: 'Opay',
       accountNumber: '1234567890',
-      accountName: 'Qamardeen Abdul Malik',
+      accountName: currentUserName,
       usdtAmount: routeParams?.assetAmount || '15 USDT',
       orderStatus: 'pending',
       paymentMethodId: null,
     };
-  }, [orderDetailsData?.data, routeParams, adDetailsData?.data, adPrice]);
+  }, [orderDetailsData?.data, routeParams, adDetailsData?.data, adPrice, currentUserData]);
 
   // Set default payment method from route params if provided
   useEffect(() => {
@@ -337,12 +349,15 @@ const BuyOrder = () => {
     }
   }, [routeParams?.paymentMethodId, paymentMethods, selectedPaymentMethod]);
 
-  // Set adId from route params
+  // Set adId from route params or ad details
   useEffect(() => {
     if (routeParams?.adId) {
       setAdId(String(routeParams.adId));
+    } else if (adDetailsData?.data?.id && !adId) {
+      // Fallback: get adId from ad details if available
+      setAdId(String(adDetailsData.data.id));
     }
-  }, [routeParams?.adId]);
+  }, [routeParams?.adId, adDetailsData?.data?.id, adId]);
 
   // Debug: Log adId and payment methods when they change
   useEffect(() => {
@@ -401,16 +416,61 @@ const BuyOrder = () => {
     },
   });
 
+  // Helper to check if amount is valid
+  const isValidAmount = useMemo(() => {
+    if (!amount || amount.trim() === '') return false;
+    const numericAmount = amount.replace(/,/g, '').trim();
+    if (!numericAmount) return false;
+    const parsed = parseFloat(numericAmount);
+    return !isNaN(parsed) && parsed > 0;
+  }, [amount]);
+
+  // Helper to check if button should be enabled
+  const isButtonEnabled = useMemo(() => {
+    const hasValidAmount = isValidAmount;
+    const hasPaymentMethod = !!selectedPaymentMethod;
+    const hasAdId = !!adId && adId.trim() !== '';
+    const isNotPending = !createOrderMutation.isPending;
+    
+    return hasValidAmount && hasPaymentMethod && hasAdId && isNotPending;
+  }, [isValidAmount, selectedPaymentMethod, adId, createOrderMutation.isPending]);
+
+  // Debug: Log button state
+  useEffect(() => {
+    console.log('=== Buy Button State ===');
+    console.log('amount:', amount);
+    console.log('isValidAmount:', isValidAmount);
+    console.log('selectedPaymentMethod:', selectedPaymentMethod?.name || 'null');
+    console.log('adId:', adId);
+    console.log('createOrderMutation.isPending:', createOrderMutation.isPending);
+    console.log('isButtonEnabled:', isButtonEnabled);
+    if (!isButtonEnabled) {
+      console.log('Button disabled because:');
+      if (!isValidAmount) console.log('  - Invalid amount');
+      if (!selectedPaymentMethod) console.log('  - No payment method selected');
+      if (!adId || adId.trim() === '') console.log('  - No adId');
+      if (createOrderMutation.isPending) console.log('  - Mutation pending');
+    }
+  }, [amount, isValidAmount, selectedPaymentMethod, adId, createOrderMutation.isPending, isButtonEnabled]);
+
   const handleBuy = () => {
-    if (!amount || !selectedPaymentMethod || !adId) {
-      Alert.alert('Error', 'Please enter amount and select payment method');
+    if (!isValidAmount) {
+      showErrorAlert('Error', 'Please enter a valid amount');
+      return;
+    }
+    if (!selectedPaymentMethod) {
+      showErrorAlert('Error', 'Please select a payment method');
+      return;
+    }
+    if (!adId || adId.trim() === '') {
+      showErrorAlert('Error', 'Ad ID is missing. Please go back and select an ad first.');
       return;
     }
     
     // Validate amount format
     const numericAmount = amount.replace(/,/g, '');
     if (!numericAmount || isNaN(parseFloat(numericAmount)) || parseFloat(numericAmount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
@@ -534,7 +594,7 @@ const BuyOrder = () => {
   const handleSendReview = () => {
     // TODO: Implement API call to submit review
     console.log('Review submitted:', { rating: reviewRating, text: reviewText });
-    Alert.alert('Success', 'Review submitted successfully');
+    showSuccessAlert('Success', 'Review submitted successfully');
   };
 
   const formatCountdown = (seconds: number) => {
@@ -780,10 +840,10 @@ const BuyOrder = () => {
         <TouchableOpacity
           style={[
             styles.buyButton, 
-            (!amount || !selectedPaymentMethod || !adId || createOrderMutation.isPending) && styles.buyButtonDisabled
+            !isButtonEnabled && styles.buyButtonDisabled
           ]}
           onPress={handleBuy}
-          disabled={!amount || !selectedPaymentMethod || !adId || createOrderMutation.isPending}
+          disabled={!isButtonEnabled}
         >
           {createOrderMutation.isPending ? (
             <ActivityIndicator size="small" color="#000000" />

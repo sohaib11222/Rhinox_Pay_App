@@ -13,11 +13,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword } from '../../mutations/auth.mutations';
-import { getBiometricEnabled, setBiometricEnabled } from '../../utils/apiClient';
+import { getBiometricEnabled, setBiometricEnabled, getAccessToken } from '../../utils/apiClient';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../utils/customAlert';
 
 const LoginScreen = () => {
@@ -41,11 +41,14 @@ const LoginScreen = () => {
   const [biometricType, setBiometricType] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [biometricLoginEnabled, setBiometricLoginEnabled] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
 
   // Login mutation
   const loginMutation = useLogin({
     onSuccess: async (data) => {
       console.log('[LoginScreen] Login successful');
+      // Update token state after successful login
+      await checkToken();
       // Check if user has biometric enabled and update preference
       const biometricEnabled = await getBiometricEnabled();
       if (biometricEnabled) {
@@ -160,11 +163,31 @@ const LoginScreen = () => {
     }
   }, [showForgotPasswordModal, forgotPasswordStep]);
 
+  // Check token availability
+  const checkToken = async () => {
+    try {
+      const token = await getAccessToken();
+      setHasToken(!!token);
+      console.log('[LoginScreen] Token check:', token ? 'Token exists' : 'No token found');
+    } catch (error) {
+      console.error('[LoginScreen] Error checking token:', error);
+      setHasToken(false);
+    }
+  };
+
   // Check biometric availability and preference on mount
   useEffect(() => {
     checkBiometrics();
     loadBiometricPreference();
+    checkToken();
   }, []);
+
+  // Re-check token when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      checkToken();
+    }, [])
+  );
 
   const loadBiometricPreference = async () => {
     try {
@@ -196,6 +219,17 @@ const LoginScreen = () => {
   };
 
   const handleBiometricLogin = async () => {
+    // First check if token exists
+    const token = await getAccessToken();
+    if (!token) {
+      showWarningAlert(
+        'No Token Available',
+        'You are not logged in. Please use email and password to login first.'
+      );
+      setHasToken(false);
+      return;
+    }
+
     // Check if biometric login is enabled in settings
     if (!biometricLoginEnabled) {
       showWarningAlert(
@@ -225,6 +259,17 @@ const LoginScreen = () => {
       setIsScanning(false);
 
       if (result.success) {
+        // Double-check token before navigating
+        const currentToken = await getAccessToken();
+        if (!currentToken) {
+          showErrorAlert(
+            'Authentication Failed',
+            'No authentication token found. Please login with email and password.'
+          );
+          setHasToken(false);
+          return;
+        }
+
         // Check if user still has biometric enabled preference (in case it was disabled during auth)
         const biometricEnabled = await getBiometricEnabled();
         if (biometricEnabled) {
@@ -419,7 +464,7 @@ const handleRegister = () => {
                 />
                 <TouchableOpacity
                   onPress={handleBiometricLogin}
-                  disabled={isScanning || !isBiometricAvailable || !biometricLoginEnabled}
+                  disabled={isScanning || !isBiometricAvailable || !biometricLoginEnabled || !hasToken}
                   style={styles.fingerprintButton}
                 >
                   {isScanning ? (
@@ -428,7 +473,7 @@ const handleRegister = () => {
                     <MaterialCommunityIcons
                       name="fingerprint"
                       size={24}
-                      color={isBiometricAvailable && biometricLoginEnabled ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
+                      color={isBiometricAvailable && biometricLoginEnabled && hasToken ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
                     />
                   )}
                 </TouchableOpacity>

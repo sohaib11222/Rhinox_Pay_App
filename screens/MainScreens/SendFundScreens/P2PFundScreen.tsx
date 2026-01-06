@@ -11,7 +11,6 @@ import {
   TextInput,
   RefreshControl,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -23,6 +22,7 @@ import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mu
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetUSDTTokens } from '../../../queries/crypto.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -280,7 +280,7 @@ const P2PFundScreen = () => {
     },
     onError: (error: any) => {
       console.error('[P2P] Error creating order:', error);
-      Alert.alert('Error', error?.message || 'Failed to create order');
+      showErrorAlert('Error', error?.message || 'Failed to create order');
     },
   });
 
@@ -288,7 +288,7 @@ const P2PFundScreen = () => {
   const markPaymentMadeMutation = useMarkPaymentMade({
     onSuccess: (data: any) => {
       console.log('[P2P] Payment marked as made:', data);
-      Alert.alert('Success', 'Payment confirmed. Waiting for vendor to release crypto.');
+      showSuccessAlert('Success', 'Payment confirmed. Waiting for vendor to release crypto.');
       // Refetch order details
       if (selectedOrder?.id) {
         // Refetch order details would be handled by the order details query
@@ -297,7 +297,7 @@ const P2PFundScreen = () => {
     },
     onError: (error: any) => {
       console.error('[P2P] Error marking payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -423,13 +423,13 @@ const P2PFundScreen = () => {
   // Handle order creation
   const handleCreateOrder = () => {
     if (!selectedAd || !buyModalAmount || !selectedPaymentMethod) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     const numericAmount = parseFloat(buyModalAmount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
@@ -437,7 +437,7 @@ const P2PFundScreen = () => {
     const minOrder = parseFloat(selectedAd.minOrder || '0');
     const maxOrder = parseFloat(selectedAd.maxOrder || '0');
     if (numericAmount < minOrder || numericAmount > maxOrder) {
-      Alert.alert('Error', `Amount must be between ${minOrder} and ${maxOrder} ${fiatCurrency}`);
+      showErrorAlert('Error', `Amount must be between ${minOrder} and ${maxOrder} ${fiatCurrency}`);
       return;
     }
 
@@ -455,7 +455,7 @@ const P2PFundScreen = () => {
   // Handle payment confirmation
   const handleConfirmPayment = () => {
     if (!selectedOrder?.id) {
-      Alert.alert('Error', 'Order not found');
+      showErrorAlert('Error', 'Order not found');
       return;
     }
 

@@ -661,6 +661,7 @@ const BillPaymentsScreen = () => {
           transaction={{
             ...selectedTransaction,
             transactionType: 'billPayment',
+            status: selectedTransaction.status,
           }}
           onClose={() => {
             setShowReceiptModal(false);

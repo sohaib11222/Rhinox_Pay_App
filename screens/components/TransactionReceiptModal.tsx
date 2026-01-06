@@ -39,6 +39,8 @@ interface TransactionReceiptModalProps {
     paymentMethod?: string;
     dateTime?: string;
     amountNGN?: string;
+    // Transaction status
+    status?: 'Successful' | 'Pending' | 'Failed' | 'successful' | 'pending' | 'failed' | 'Completed' | 'completed';
     // Fund transaction fields
     fundingRoute?: string;
     route?: string;
@@ -196,39 +198,115 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
   const transactionType = getTransactionType();
   const amount = transaction.transferAmount || transaction.amountNGN || 'N200,000';
   
-  // Get title text based on transaction type
+  // Normalize status to 'Successful' | 'Pending' | 'Failed'
+  const normalizeStatus = (status?: string): 'Successful' | 'Pending' | 'Failed' => {
+    if (!status) return 'Successful'; // Default to successful if no status
+    const statusLower = status.toLowerCase();
+    if (statusLower === 'completed' || statusLower === 'successful' || statusLower === 'success') {
+      return 'Successful';
+    }
+    if (statusLower === 'pending') {
+      return 'Pending';
+    }
+    if (statusLower === 'failed' || statusLower === 'fail') {
+      return 'Failed';
+    }
+    return 'Successful'; // Default
+  };
+
+  const transactionStatus = normalizeStatus(transaction.status);
+  
+  // Get title text based on transaction type and status
   const getTitleText = () => {
+    const statusText = transactionStatus === 'Successful' ? 'Successful' : 
+                      transactionStatus === 'Pending' ? 'Pending' : 'Failed';
+    
     switch (transactionType) {
       case 'convert':
-        return `${amount} Converted`;
+        return transactionStatus === 'Successful' ? `${amount} Converted` : 
+               transactionStatus === 'Pending' ? `Conversion Pending` : `Conversion Failed`;
       case 'deposit':
-        return `${amount} Deposited`;
+        return transactionStatus === 'Successful' ? `${amount} Deposited` : 
+               transactionStatus === 'Pending' ? `Deposit Pending` : `Deposit Failed`;
       case 'fund':
-        return `${amount} Received`;
+        return transactionStatus === 'Successful' ? `${amount} Received` : 
+               transactionStatus === 'Pending' ? `Receipt Pending` : `Receipt Failed`;
       case 'withdrawal':
-        return `Withdrawal Successful`;
+        return transactionStatus === 'Successful' ? `Withdrawal Successful` : 
+               transactionStatus === 'Pending' ? `Withdrawal Pending` : `Withdrawal Failed`;
       case 'billPayment':
-        return `Success`;
+        return statusText;
       case 'p2p':
         // Format: "20 USDT Sold" or "20 USDT Bought"
         const cryptoAmount = transaction.totalQty || '20 USDT';
         const p2pAction = transaction.p2pType === 'Crypto Sell' ? 'Sold' : 'Bought';
-        return `${cryptoAmount} ${p2pAction}`;
+        return transactionStatus === 'Successful' ? `${cryptoAmount} ${p2pAction}` : 
+               transactionStatus === 'Pending' ? `P2P Transaction Pending` : `P2P Transaction Failed`;
       case 'cryptoDeposit':
         // Format: "0.25 ETH Received"
         const depositQuantity = transaction.quantity || '0.25 ETH';
-        return `${depositQuantity} Received`;
+        return transactionStatus === 'Successful' ? `${depositQuantity} Received` : 
+               transactionStatus === 'Pending' ? `Crypto Deposit Pending` : `Crypto Deposit Failed`;
       case 'cryptoWithdrawal':
         // Format: "0.25 ETH Sent"
         const withdrawalQuantity = transaction.quantity || '0.25 ETH';
-        return `${withdrawalQuantity} Sent`;
+        return transactionStatus === 'Successful' ? `${withdrawalQuantity} Sent` : 
+               transactionStatus === 'Pending' ? `Crypto Withdrawal Pending` : `Crypto Withdrawal Failed`;
       default:
-        return `${amount} Sent`;
+        return transactionStatus === 'Successful' ? `${amount} Sent` : 
+               transactionStatus === 'Pending' ? `Transaction Pending` : `Transaction Failed`;
     }
   };
 
-  // Get message text based on transaction type
+  // Get message text based on transaction type and status
   const getMessageText = () => {
+    if (transactionStatus === 'Pending') {
+      switch (transactionType) {
+        case 'convert':
+          return `Your conversion of ${amount} to Kenya Shiilings is being processed. Please wait for confirmation.`;
+        case 'deposit':
+          return `Your deposit of ${amount} to your ${transaction.country || 'Kenya'} Wallet is being processed.`;
+        case 'fund':
+          return `Your receipt of ${amount} from ${transaction.route || 'Yellow Card'} is being processed.`;
+        case 'withdrawal':
+          return `Your withdrawal of ${amount} to ${transaction.accountName || transaction.recipientName || 'Opay'} is being processed.`;
+        case 'billPayment':
+          return `Your bill payment is being processed. Please wait for confirmation.`;
+        case 'p2p':
+          return `Your P2P transaction is being processed. Please wait for confirmation.`;
+        case 'cryptoDeposit':
+          return `Your crypto deposit is being processed. Please wait for confirmation.`;
+        case 'cryptoWithdrawal':
+          return `Your crypto withdrawal is being processed. Please wait for confirmation.`;
+        default:
+          return `Your transaction is being processed. Please wait for confirmation.`;
+      }
+    }
+    
+    if (transactionStatus === 'Failed') {
+      switch (transactionType) {
+        case 'convert':
+          return `Your conversion of ${amount} to Kenya Shiilings has failed. Please try again or contact support.`;
+        case 'deposit':
+          return `Your deposit of ${amount} to your ${transaction.country || 'Kenya'} Wallet has failed. Please try again.`;
+        case 'fund':
+          return `Your receipt of ${amount} from ${transaction.route || 'Yellow Card'} has failed. Please try again.`;
+        case 'withdrawal':
+          return `Your withdrawal of ${amount} to ${transaction.accountName || transaction.recipientName || 'Opay'} has failed. Please try again.`;
+        case 'billPayment':
+          return `Your bill payment has failed. Please try again or contact support.`;
+        case 'p2p':
+          return `Your P2P transaction has failed. Please try again or contact support.`;
+        case 'cryptoDeposit':
+          return `Your crypto deposit has failed. Please try again or contact support.`;
+        case 'cryptoWithdrawal':
+          return `Your crypto withdrawal has failed. Please try again or contact support.`;
+        default:
+          return `Your transaction has failed. Please try again or contact support.`;
+      }
+    }
+    
+    // Successful status
     switch (transactionType) {
       case 'convert':
         return `Congratulations, You have successfully Converted ${amount} to Kenya Shiilings`;
@@ -320,19 +398,33 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Success Icon */}
+          {/* Status Icon */}
           <View style={styles.successIconContainer}>
-            <View style={styles.successIconCircle}>
-            <Image
-                source={require('../../assets/Vector (32).png')}
-                style={[{ marginBottom: -1, width: 26, height: 26 }]}
-                resizeMode="cover"
-              />   
-                       </View>
+            <View style={[
+              styles.successIconCircle,
+              transactionStatus === 'Pending' && styles.pendingIconCircle,
+              transactionStatus === 'Failed' && styles.failedIconCircle,
+            ]}>
+              {transactionStatus === 'Successful' ? (
+                <Image
+                  source={require('../../assets/Vector (32).png')}
+                  style={[{ marginBottom: -1, width: 26, height: 26 }]}
+                  resizeMode="cover"
+                />
+              ) : transactionStatus === 'Pending' ? (
+                <MaterialCommunityIcons name="clock-outline" size={32 * SCALE} color="#FFFFFF" />
+              ) : (
+                <MaterialCommunityIcons name="close-circle" size={32 * SCALE} color="#FFFFFF" />
+              )}
+            </View>
           </View>
 
-          {/* Success Message */}
-          <ThemedText style={styles.successTitle}>
+          {/* Status Message */}
+          <ThemedText style={[
+            styles.successTitle,
+            transactionStatus === 'Pending' && styles.pendingTitle,
+            transactionStatus === 'Failed' && styles.failedTitle,
+          ]}>
             {getTitleText()}
           </ThemedText>
           <ThemedText style={styles.successMessage}>
@@ -790,12 +882,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  pendingIconCircle: {
+    backgroundColor: '#ffa500',
+  },
+  failedIconCircle: {
+    backgroundColor: '#ff0000',
+  },
   successTitle: {
     fontSize: 20 * 1,
     fontWeight: '700',
     color: '#008000',
     textAlign: 'center',
     marginBottom: 10 * SCALE,
+  },
+  pendingTitle: {
+    color: '#ffa500',
+  },
+  failedTitle: {
+    color: '#ff0000',
   },
   successMessage: {
     fontSize: 10 * SCALE,

@@ -9,7 +9,6 @@ import {
   StatusBar,
   RefreshControl,
   Modal,
-  Alert,
   ActivityIndicator,
   TextInput,
 } from 'react-native';
@@ -27,6 +26,7 @@ import { useGetHomeData, useGetHomeTransactions } from '../../../queries/home.qu
 import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import { useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showErrorAlert } from '../../../utils/customAlert';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -86,6 +86,8 @@ const Wallet = () => {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [cryptoSearchQuery, setCryptoSearchQuery] = useState<string>('');
   const [showCryptoSearch, setShowCryptoSearch] = useState(false);
+  const [fiatSearchQuery, setFiatSearchQuery] = useState<string>('');
+  const [showFiatSearch, setShowFiatSearch] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState<string>('USD');
   const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
   const [currencySearchQuery, setCurrencySearchQuery] = useState<string>('');
@@ -614,7 +616,7 @@ const Wallet = () => {
         setShowCopyMessage(false);
       }, 2000);
     } catch (error) {
-      Alert.alert('Error', 'Failed to copy wallet ID');
+      showErrorAlert('Error', 'Failed to copy wallet ID');
     }
   };
 
@@ -665,7 +667,22 @@ const Wallet = () => {
     }
   };
 
-  const currentWallets = activeTab === 'fiat' ? fiatWallets : [];
+  // Filter fiat wallets based on search query
+  const filteredFiatWallets = useMemo(() => {
+    if (!fiatSearchQuery.trim()) {
+      return fiatWallets;
+    }
+    const query = fiatSearchQuery.toLowerCase().trim();
+    return fiatWallets.filter((wallet) => {
+      return (
+        wallet.currencyCode.toLowerCase().includes(query) ||
+        wallet.currencyName.toLowerCase().includes(query) ||
+        wallet.userName.toLowerCase().includes(query)
+      );
+    });
+  }, [fiatWallets, fiatSearchQuery]);
+
+  const currentWallets = activeTab === 'fiat' ? filteredFiatWallets : [];
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
@@ -821,10 +838,30 @@ const Wallet = () => {
             My {activeTab === 'fiat' ? 'Fiat' : 'Crypto'} Wallets{' '}
             <ThemedText style={styles.sectionCount}>({currentWallets.length})</ThemedText>
           </ThemedText>
-          <TouchableOpacity>
-            <MaterialCommunityIcons name="magnify" size={24 * SCALE} color="#FFFFFF" />
+          <TouchableOpacity onPress={() => setShowFiatSearch(!showFiatSearch)}>
+            <MaterialCommunityIcons name={showFiatSearch ? "close" : "magnify"} size={24 * SCALE} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+
+        {/* Search Bar - Fiat */}
+        {showFiatSearch && (
+          <View style={styles.searchContainer}>
+            <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search by currency, name..."
+              placeholderTextColor="rgba(255, 255, 255, 0.5)"
+              value={fiatSearchQuery}
+              onChangeText={setFiatSearchQuery}
+              autoFocus={true}
+            />
+            {fiatSearchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setFiatSearchQuery('')}>
+                <MaterialCommunityIcons name="close-circle" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Wallet Cards - Horizontal Scrollable */}
         <ScrollView
@@ -1460,6 +1497,22 @@ const Wallet = () => {
                 })
               : selectedTransaction.date;
             
+            // Map API status to UI status
+            const mapStatusToUI = (status?: string): 'Successful' | 'Pending' | 'Failed' => {
+              if (!status) return 'Successful';
+              const statusLower = status.toLowerCase();
+              if (statusLower === 'completed' || statusLower === 'successful' || statusLower === 'success') {
+                return 'Successful';
+              }
+              if (statusLower === 'pending') {
+                return 'Pending';
+              }
+              if (statusLower === 'failed' || statusLower === 'fail') {
+                return 'Failed';
+              }
+              return 'Successful';
+            };
+
             // Base transaction object
             const baseTransaction: any = {
               transactionType,
@@ -1470,6 +1523,7 @@ const Wallet = () => {
               transactionId: details.reference || `TXN-${details.id}`,
               fee: details.fee ? `${currencySymbol}${formatBalance(parseFloat(details.fee))}` : undefined,
               paymentAmount: details.totalAmount ? `${currencySymbol}${formatBalance(parseFloat(details.totalAmount))}` : formattedAmount,
+              status: mapStatusToUI(details.status),
             };
             
             // Add type-specific fields
@@ -2095,6 +2149,19 @@ const styles = StyleSheet.create({
     fontSize: 14 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 12 * SCALE,
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 15 * SCALE,
+    minHeight: 45 * SCALE,
+    gap: 8 * SCALE,
   },
   searchInputContainer: {
     flexDirection: 'row',

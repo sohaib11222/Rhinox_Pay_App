@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,14 +9,17 @@ import {
   StatusBar,
   RefreshControl,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
-import { useGetBillPayments } from '../../../queries/transactionHistory.queries';
+import { useGetBillPayments, useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import TransactionReceiptModal from '../../components/TransactionReceiptModal';
+import TransactionErrorModal from '../../components/TransactionErrorModal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -89,7 +92,15 @@ const BillPaymentMainScreen = () => {
     },
   ];
 
-  // Fetch recent bill payment transactions
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [allTransactions, setAllTransactions] = useState<any[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const TRANSACTIONS_PER_PAGE = 5; // Show 5 transactions per page initially
+
+  // Fetch recent bill payment transactions with pagination
   const {
     data: transactionsData,
     isLoading: isLoadingTransactions,
@@ -97,17 +108,105 @@ const BillPaymentMainScreen = () => {
     error: transactionsError,
     refetch: refetchTransactions,
   } = useGetBillPayments({
-    limit: 10,
-    offset: 0,
+    limit: TRANSACTIONS_PER_PAGE,
+    offset: currentPage * TRANSACTIONS_PER_PAGE,
   });
+
+  // Transaction detail modal state
+  const [selectedTransaction, setSelectedTransaction] = useState<RecentTransaction | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+
+  // Fetch transaction details when a transaction is selected
+  const {
+    data: transactionDetailsData,
+    isLoading: isLoadingDetails,
+  } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+      enabled: !!selectedTransactionId,
+    }
+  );
+
+  // Handle pagination - accumulate transactions when new data arrives
+  useEffect(() => {
+    // Only process data if we have a valid response
+    if (!transactionsData?.data) {
+      return;
+    }
+
+    const currentTransactions = transactionsData.data.transactions;
+    
+    // Check if transactions array exists and is valid
+    if (Array.isArray(currentTransactions)) {
+      // Update transactions list and calculate hasMore
+      if (currentPage === 0) {
+        // First page - replace all transactions
+        setAllTransactions(currentTransactions);
+        
+        // Check if there are more transactions to load
+        // Use totalCount from summary (total number of transactions)
+        const totalCount = transactionsData.data.summary?.totalCount || 0;
+        if (currentTransactions.length === 0) {
+          // No transactions returned
+          setHasMore(false);
+        } else if (currentTransactions.length < TRANSACTIONS_PER_PAGE) {
+          // Got fewer than requested, no more to load
+          setHasMore(false);
+        } else if (totalCount > 0) {
+          // Use totalCount from API if available
+          setHasMore(currentTransactions.length < totalCount);
+        } else {
+          // If no total provided, assume more if we got a full page
+          setHasMore(currentTransactions.length === TRANSACTIONS_PER_PAGE);
+        }
+      } else {
+        // Subsequent pages - append new transactions (avoid duplicates)
+        setAllTransactions((prev) => {
+          const newTransactions = currentTransactions.filter(
+            (newTx: any) => !prev.some((existingTx: any) => existingTx.id === newTx.id)
+          );
+          const updatedTransactions = [...prev, ...newTransactions];
+          
+          // Check if there are more transactions to load
+          const totalCount = transactionsData.data.summary?.totalCount || 0;
+          if (currentTransactions.length === 0) {
+            setHasMore(false);
+          } else if (currentTransactions.length < TRANSACTIONS_PER_PAGE) {
+            setHasMore(false);
+          } else if (totalCount > 0) {
+            setHasMore(updatedTransactions.length < totalCount);
+          } else {
+            setHasMore(currentTransactions.length === TRANSACTIONS_PER_PAGE);
+          }
+          
+          return updatedTransactions;
+        });
+      }
+      
+      setIsLoadingMore(false);
+      setIsRefreshing(false);
+    } else {
+      // API returned data but no transactions array or invalid format
+      // Only clear on first page during initial load, not during refresh
+      if (currentPage === 0 && !isRefreshing) {
+        setAllTransactions([]);
+      }
+      setHasMore(false);
+      setIsLoadingMore(false);
+      setIsRefreshing(false);
+    }
+  }, [transactionsData?.data, currentPage, TRANSACTIONS_PER_PAGE, isRefreshing]);
 
   // Transform transactions to UI format
   const recentTransactions = useMemo(() => {
-    if (!transactionsData?.data?.transactions || !Array.isArray(transactionsData.data.transactions)) {
+    if (!allTransactions || allTransactions.length === 0) {
       return [];
     }
 
-    return transactionsData.data.transactions.map((tx: any) => {
+    return allTransactions.map((tx: any) => {
       const category = tx.category || {};
       const provider = tx.provider || {};
       
@@ -183,7 +282,7 @@ const BillPaymentMainScreen = () => {
         rawData: tx, // Store raw data for navigation
       };
     });
-  }, [transactionsData?.data?.transactions]);
+  }, [allTransactions]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -242,12 +341,77 @@ const BillPaymentMainScreen = () => {
   };
 
   const handleTransactionPress = (transaction: RecentTransaction) => {
-    // Navigate to Transactions tab first, then to BillPayments screen
-    // @ts-ignore - allow parent route name
-    navigation.navigate('Transactions' as never);
-    // Note: BillPayments is nested under Transactions stack, so we navigate to Transactions tab
-    // The user can then navigate to BillPayments from there
+    // Set the transaction ID to fetch details
+    const transactionId = parseInt(transaction.id);
+    if (!isNaN(transactionId)) {
+      setSelectedTransactionId(transactionId);
+      setSelectedTransaction(transaction);
+    }
   };
+
+  // Format balance for display
+  const formatBalance = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount.replace(/[^0-9.-]/g, '')) : amount;
+    if (isNaN(num)) return '0.00';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // When transaction details are loaded, show the appropriate modal
+  useEffect(() => {
+    if (transactionDetailsData?.data && selectedTransaction) {
+      const details = transactionDetailsData.data;
+      const status = details.status || selectedTransaction.status;
+      
+      // Update transaction with details from API
+      const updatedTransaction: any = {
+        ...selectedTransaction,
+        transferAmount: details.amount 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.amount))}`
+          : selectedTransaction.amount,
+        fee: details.fee 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.fee))}`
+          : 'N0',
+        paymentAmount: details.totalAmount 
+          ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.totalAmount))}`
+          : selectedTransaction.amount,
+        transactionId: details.reference || String(details.id) || selectedTransaction.id,
+        accountNumber: details.accountNumber || '',
+        accountName: details.accountName || selectedTransaction.title,
+        billerType: details.provider?.code || details.provider?.name || '',
+        mobileNumber: details.accountNumber || '',
+        plan: details.plan?.name || '',
+        dateTime: details.createdAt
+          ? new Date(details.createdAt).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : selectedTransaction.date,
+        country: details.country || 'NG',
+        transactionType: 'billPayment',
+      };
+
+      // Map API status to UI status
+      const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
+        'completed': 'Successful',
+        'pending': 'Pending',
+        'failed': 'Failed',
+      };
+      const uiStatus = statusMap[status?.toLowerCase()] || selectedTransaction.status;
+      updatedTransaction.status = uiStatus;
+
+      if (uiStatus === 'Failed') {
+        setShowErrorModal(true);
+        setShowReceiptModal(false);
+      } else {
+        setShowReceiptModal(true);
+        setShowErrorModal(false);
+      }
+      setSelectedTransaction(updatedTransaction);
+    }
+  }, [transactionDetailsData, selectedTransaction]);
 
   const handleViewAllPress = () => {
     // Navigate to Transactions tab first, then to BillPayments screen
@@ -257,14 +421,29 @@ const BillPaymentMainScreen = () => {
     // The user can then navigate to BillPayments from there
   };
 
+  // Load more transactions
+  const handleLoadMore = () => {
+    if (!isLoadingMore && hasMore && !isLoadingTransactions) {
+      setIsLoadingMore(true);
+      setCurrentPage((prev) => prev + 1);
+    }
+  };
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
     console.log('[BillPaymentMainScreen] Refreshing bill payment data...');
     try {
-      await refetchTransactions();
-      console.log('[BillPaymentMainScreen] Bill payment data refreshed successfully');
+      setIsRefreshing(true);
+      setCurrentPage(0);
+      // Don't clear allTransactions immediately - let the useEffect handle it when new data arrives
+      setHasMore(true);
+      const result = await refetchTransactions();
+      console.log('[BillPaymentMainScreen] Bill payment data refreshed successfully', result);
+      // The useEffect will update allTransactions when new data arrives
     } catch (error) {
       console.error('[BillPaymentMainScreen] Error refreshing bill payment data:', error);
+      setIsRefreshing(false);
+      // On error, don't clear transactions - keep showing existing data
     }
   };
 
@@ -340,7 +519,7 @@ const BillPaymentMainScreen = () => {
             </TouchableOpacity>
           </View>
 
-          {isLoadingTransactions ? (
+          {isLoadingTransactions && currentPage === 0 && !isRefreshing ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color="#A9EF45" />
               <ThemedText style={styles.loadingText}>Loading transactions...</ThemedText>
@@ -359,56 +538,76 @@ const BillPaymentMainScreen = () => {
               </TouchableOpacity>
             </View>
           ) : recentTransactions.length > 0 ? (
-            <View style={styles.transactionsList}>
-              {recentTransactions.map((transaction: RecentTransaction) => (
+            <>
+              <View style={styles.transactionsList}>
+                {recentTransactions.map((transaction: RecentTransaction) => (
+                  <TouchableOpacity
+                    key={transaction.id}
+                    style={styles.transactionItem}
+                    onPress={() => handleTransactionPress(transaction)}
+                  >
+                    <View style={styles.transactionIconContainer}>
+                      <View style={styles.transactionIconCircle}>
+                        {transaction.iconType === 'image' ? (
+                          <Image
+                            source={transaction.icon}
+                            style={styles.transactionIconImage}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <MaterialCommunityIcons
+                            name={transaction.icon as any}
+                            size={20 * SCALE}
+                            color="#A9EF45"
+                          />
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.transactionDetails}>
+                      <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
+                      <View style={styles.transactionStatusRow}>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            { backgroundColor: getStatusColor(transaction.status) },
+                          ]}
+                        />
+                        <ThemedText
+                          style={[
+                            styles.transactionStatus,
+                            { color: getStatusColor(transaction.status) },
+                          ]}
+                        >
+                          {transaction.status}
+                        </ThemedText>
+                      </View>
+                    </View>
+                    <View style={styles.transactionAmountContainer}>
+                      <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
+                      <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              
+              {/* Load More Button */}
+              {hasMore && (
                 <TouchableOpacity
-                  key={transaction.id}
-                  style={styles.transactionItem}
-                  onPress={() => handleTransactionPress(transaction)}
+                  style={styles.loadMoreButton}
+                  onPress={handleLoadMore}
+                  disabled={isLoadingMore || isLoadingTransactions}
                 >
-                  <View style={styles.transactionIconContainer}>
-                    <View style={styles.transactionIconCircle}>
-                      {transaction.iconType === 'image' ? (
-                        <Image
-                          source={transaction.icon}
-                          style={styles.transactionIconImage}
-                          resizeMode="contain"
-                        />
-                      ) : (
-                        <MaterialCommunityIcons
-                          name={transaction.icon as any}
-                          size={20 * SCALE}
-                          color="#A9EF45"
-                        />
-                      )}
-                    </View>
-                  </View>
-                  <View style={styles.transactionDetails}>
-                    <ThemedText style={styles.transactionTitle}>{transaction.title}</ThemedText>
-                    <View style={styles.transactionStatusRow}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: getStatusColor(transaction.status) },
-                        ]}
-                      />
-                      <ThemedText
-                        style={[
-                          styles.transactionStatus,
-                          { color: getStatusColor(transaction.status) },
-                        ]}
-                      >
-                        {transaction.status}
-                      </ThemedText>
-                    </View>
-                  </View>
-                  <View style={styles.transactionAmountContainer}>
-                    <ThemedText style={styles.transactionAmount}>{transaction.amount}</ThemedText>
-                    <ThemedText style={styles.transactionDate}>{transaction.date}</ThemedText>
-                  </View>
+                  {isLoadingMore ? (
+                    <>
+                      <ActivityIndicator size="small" color="#A9EF45" style={{ marginRight: 8 }} />
+                      <ThemedText style={styles.loadMoreButtonText}>Loading...</ThemedText>
+                    </>
+                  ) : (
+                    <ThemedText style={styles.loadMoreButtonText}>Load More</ThemedText>
+                  )}
                 </TouchableOpacity>
-              ))}
-            </View>
+              )}
+            </>
           ) : (
             <View style={styles.emptyContainer}>
               <MaterialCommunityIcons name="receipt-text-outline" size={40 * SCALE} color="rgba(255, 255, 255, 0.5)" />
@@ -421,6 +620,60 @@ const BillPaymentMainScreen = () => {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Transaction Receipt Modal */}
+      {selectedTransaction && (
+        <TransactionReceiptModal
+          visible={showReceiptModal && !isLoadingDetails}
+          transaction={{
+            ...selectedTransaction,
+            transactionType: 'billPayment',
+            status: selectedTransaction.status,
+          }}
+          onClose={() => {
+            setShowReceiptModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Transaction Error Modal */}
+      {selectedTransaction && (
+        <TransactionErrorModal
+          visible={showErrorModal && !isLoadingDetails}
+          transaction={{
+            amountNGN: selectedTransaction.amount,
+            recipientName: selectedTransaction.title,
+            transferAmount: selectedTransaction.amount,
+            transactionType: 'fund',
+          }}
+          onRetry={() => {
+            setShowErrorModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+          onCancel={() => {
+            setShowErrorModal(false);
+            setSelectedTransaction(null);
+            setSelectedTransactionId(null);
+          }}
+        />
+      )}
+
+      {/* Loading overlay when fetching transaction details */}
+      {isLoadingDetails && selectedTransactionId && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+        >
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={styles.loadingOverlayText}>Loading transaction details...</ThemedText>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -637,6 +890,35 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
     paddingHorizontal: 20 * SCALE,
+  },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12 * SCALE,
+  },
+  loadingOverlayText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(169, 239, 69, 0.1)',
+    borderWidth: 1,
+    borderColor: '#A9EF45',
+    borderRadius: 10 * SCALE,
+    paddingVertical: 12 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+    marginTop: 15 * SCALE,
+  },
+  loadMoreButtonText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '400',
+    color: '#A9EF45',
   },
 });
 

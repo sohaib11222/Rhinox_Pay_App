@@ -545,7 +545,10 @@ const FundTransactionsScreen = () => {
       {selectedTransaction && (
         <TransactionReceiptModal
           visible={showReceiptModal}
-          transaction={selectedTransaction}
+          transaction={{
+            ...selectedTransaction,
+            status: selectedTransaction.status,
+          }}
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedTransaction(null);

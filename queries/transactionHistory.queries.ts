@@ -7,6 +7,10 @@ export interface GetTransactionHistoryParams {
   startDate?: string; // YYYY-MM-DD
   endDate?: string; // YYYY-MM-DD
   currency?: string;
+  limit?: number;
+  offset?: number;
+  fiatLimit?: number;
+  cryptoLimit?: number;
 }
 
 export const getTransactionHistory = async (

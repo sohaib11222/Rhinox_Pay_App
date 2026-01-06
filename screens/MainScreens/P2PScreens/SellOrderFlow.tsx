@@ -9,13 +9,13 @@ import {
   StatusBar,
   Modal,
   TextInput,
-  Alert,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -138,7 +138,7 @@ const SellOrderFlow = () => {
 
   const handleSell = () => {
     if (!amount || !selectedPaymentMethod) {
-      Alert.alert('Error', 'Please enter amount and select payment method');
+      showErrorAlert('Error', 'Please enter amount and select payment method');
       return;
     }
     // Navigate to order flow screen
@@ -233,7 +233,7 @@ const SellOrderFlow = () => {
   const handleSendReview = () => {
     // TODO: Implement API call to submit review
     console.log('Review submitted:', { rating: reviewRating, text: reviewText });
-    Alert.alert('Success', 'Review submitted successfully');
+    showSuccessAlert('Success', 'Review submitted successfully');
   };
 
   const formatCountdown = (seconds: number) => {

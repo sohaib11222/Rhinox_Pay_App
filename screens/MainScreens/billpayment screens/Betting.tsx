@@ -11,7 +11,6 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +27,7 @@ import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -317,7 +317,7 @@ const Betting = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[Betting] Error initiating payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to initiate payment');
+      showErrorAlert('Error', error?.message || 'Failed to initiate payment');
     },
   });
 
@@ -378,7 +378,7 @@ const Betting = ({ route }: any) => {
     },
     onError: (error: any) => {
       console.error('[Betting] Error confirming payment:', error);
-      Alert.alert('Error', error?.message || 'Failed to confirm payment');
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment');
     },
   });
 
@@ -545,20 +545,20 @@ const Betting = ({ route }: any) => {
 
   const handleProceed = () => {
     if (!selectedBettingPlatform || !userId || !amount) {
-      Alert.alert('Error', 'Please fill in all required fields');
+      showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     // Validate amount
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount) || numericAmount <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      showErrorAlert('Error', 'Please enter a valid amount');
       return;
     }
 
     // Validate user ID
     if (userId.length < 3) {
-      Alert.alert('Error', 'Please enter a valid user ID');
+      showErrorAlert('Error', 'Please enter a valid user ID');
       return;
     }
 
@@ -574,7 +574,7 @@ const Betting = ({ route }: any) => {
 
   const handleConfirmPayment = async () => {
     if (!pin || pin.length < 5) {
-      Alert.alert('Error', 'Please enter your 5-digit PIN');
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
@@ -584,7 +584,7 @@ const Betting = ({ route }: any) => {
         pin: pin,
       });
     } else {
-      Alert.alert('Error', 'Transaction ID not found. Please try again.');
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
 
@@ -777,7 +777,7 @@ const Betting = ({ route }: any) => {
                 onPress={() => {
                   // Only navigate if a provider is selected
                   if (!selectedBettingPlatform) {
-                    Alert.alert('Provider Required', 'Please select a betting platform first before viewing beneficiaries.');
+                    showWarningAlert('Provider Required', 'Please select a betting platform first before viewing beneficiaries.');
                     return;
                   }
                   
