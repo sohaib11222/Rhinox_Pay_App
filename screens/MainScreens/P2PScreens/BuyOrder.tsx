@@ -283,11 +283,31 @@ const BuyOrder = () => {
       const buyer = order.buyer || {};
       const paymentMethod = order.paymentMethod || {};
       
+      // Get vendor name from various possible fields
+      const vendorName = vendor.name || 
+        (vendor.firstName && vendor.lastName ? `${vendor.firstName} ${vendor.lastName}` : 
+        vendor.firstName || vendor.lastName || 'Vendor');
+      
+      // Get vendor avatar if available
+      const vendorAvatar = vendor.avatar || vendor.profilePicture 
+        ? { uri: vendor.avatar || vendor.profilePicture }
+        : require('../../../assets/login/memoji.png');
+      
+      // Get vendor status from order or ad details
+      const vendorStatus = order.vendor?.isOnline !== undefined 
+        ? (order.vendor.isOnline ? 'Online' : 'Offline')
+        : 'Online'; // Default
+      
+      // Get vendor rating/score if available
+      const vendorScore = order.vendor?.score 
+        ? `${parseFloat(order.vendor.score).toFixed(0)}%`
+        : (order.vendor?.rating ? `${order.vendor.rating}%` : '98%');
+      
       return {
-        vendorName: `${vendor.firstName || ''} ${vendor.lastName || ''}`.trim() || 'Vendor',
-        vendorAvatar: require('../../../assets/login/memoji.png'), // Default avatar
-        vendorStatus: 'Online', // TODO: Get from API if available
-        vendorRating: '98%', // TODO: Get from API if available
+        vendorName: vendorName,
+        vendorAvatar: vendorAvatar,
+        vendorStatus: vendorStatus,
+        vendorRating: vendorScore,
         rate: `${order.fiatCurrency || 'NGN'}${order.price || '0'}`,
         buyerName: `${buyer.firstName || ''} ${buyer.lastName || ''}`.trim() || 'Buyer',
         amountToBePaid: `${order.fiatCurrency || 'NGN'}${order.fiatAmount || '0'}`,
@@ -314,14 +334,30 @@ const BuyOrder = () => {
       ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || 'User'
       : 'User';
 
-    // Fallback to route params or defaults
+    // Fallback to route params or defaults - use ad details for vendor info
+    const vendor = adDetailsData?.data?.vendor || {};
+    const vendorName = vendor.name || 
+      (vendor.firstName && vendor.lastName ? `${vendor.firstName} ${vendor.lastName}` : 
+      vendor.firstName || vendor.lastName || 'Vendor');
+    
+    // Get vendor status from ad (isOnline) or default
+    const vendorStatus = adDetailsData?.data?.isOnline ? 'Online' : 'Offline';
+    
+    // Get vendor rating/score from ad if available
+    const vendorScore = adDetailsData?.data?.score 
+      ? `${parseFloat(adDetailsData.data.score).toFixed(0)}%`
+      : '98%'; // Default fallback
+    
+    // Get vendor avatar if available (from vendor data or default)
+    const vendorAvatar = vendor.avatar || vendor.profilePicture 
+      ? { uri: vendor.avatar || vendor.profilePicture }
+      : require('../../../assets/login/memoji.png');
+    
     return {
-      vendorName: adDetailsData?.data?.vendor ? 
-        `${adDetailsData.data.vendor.firstName || ''} ${adDetailsData.data.vendor.lastName || ''}`.trim() || 'Vendor' :
-        'Vendor',
-      vendorAvatar: require('../../../assets/login/memoji.png'),
-      vendorStatus: 'Online',
-      vendorRating: '98%',
+      vendorName: vendorName,
+      vendorAvatar: vendorAvatar,
+      vendorStatus: vendorStatus,
+      vendorRating: vendorScore,
       rate: adPrice,
       buyerName: currentUserName,
       amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N25,000',
@@ -418,11 +454,13 @@ const BuyOrder = () => {
 
   // Helper to check if amount is valid
   const isValidAmount = useMemo(() => {
-    if (!amount || amount.trim() === '') return false;
-    const numericAmount = amount.replace(/,/g, '').trim();
-    if (!numericAmount) return false;
+    if (!amount || typeof amount !== 'string') return false;
+    const trimmedAmount = amount.trim();
+    if (trimmedAmount === '') return false;
+    const numericAmount = trimmedAmount.replace(/,/g, '').replace(/\s/g, '');
+    if (!numericAmount || numericAmount === '') return false;
     const parsed = parseFloat(numericAmount);
-    return !isNaN(parsed) && parsed > 0;
+    return !isNaN(parsed) && isFinite(parsed) && parsed > 0;
   }, [amount]);
 
   // Helper to check if button should be enabled
@@ -468,16 +506,38 @@ const BuyOrder = () => {
     }
     
     // Validate amount format
-    const numericAmount = amount.replace(/,/g, '');
-    if (!numericAmount || isNaN(parseFloat(numericAmount)) || parseFloat(numericAmount) <= 0) {
-      showErrorAlert('Error', 'Please enter a valid amount');
+    const numericAmount = amount.replace(/,/g, '').replace(/\s/g, '').trim();
+    if (!numericAmount || numericAmount === '') {
+      showErrorAlert('Error', 'Please enter an amount');
       return;
+    }
+    
+    const parsedAmount = parseFloat(numericAmount);
+    if (isNaN(parsedAmount) || !isFinite(parsedAmount) || parsedAmount <= 0) {
+      showErrorAlert('Error', 'Please enter a valid amount greater than 0');
+      return;
+    }
+
+    // Determine crypto amount based on currency type
+    let cryptoAmount: string;
+    
+    if (currencyType === 'Fiat') {
+      // User entered fiat amount, calculate crypto amount from ad price
+      const adPrice = parseFloat(adDetailsData?.data?.price || '0');
+      if (adPrice <= 0) {
+        showErrorAlert('Error', 'Invalid ad price. Please try again.');
+        return;
+      }
+      cryptoAmount = (parsedAmount / adPrice).toFixed(8);
+    } else {
+      // User entered crypto amount directly
+      cryptoAmount = numericAmount;
     }
 
     // Create order via API
     createOrderMutation.mutate({
       adId: adId,
-      cryptoAmount: numericAmount,
+      cryptoAmount: cryptoAmount,
       paymentMethodId: selectedPaymentMethod.id,
     });
   };
@@ -769,12 +829,17 @@ const BuyOrder = () => {
                     style={styles.amountInput}
                     value={amount}
                     onChangeText={(text) => {
-                      const numericValue = text.replace(/,/g, '');
-                      if (numericValue === '' || /^\d+$/.test(numericValue)) {
-                        setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+                      // Remove commas and spaces
+                      const numericValue = text.replace(/,/g, '').replace(/\s/g, '');
+                      // Allow empty, digits, and one decimal point
+                      if (numericValue === '' || /^\d*\.?\d*$/.test(numericValue)) {
+                        // Format with commas for display
+                        const parts = numericValue.split('.');
+                        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                        setAmount(parts.join('.'));
                       }
                     }}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     placeholder="Input amount"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   />
@@ -800,12 +865,17 @@ const BuyOrder = () => {
                     style={styles.amountInput}
                     value={amount}
                     onChangeText={(text) => {
-                      const numericValue = text.replace(/,/g, '');
-                      if (numericValue === '' || /^\d+$/.test(numericValue)) {
-                        setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+                      // Remove commas and spaces
+                      const numericValue = text.replace(/,/g, '').replace(/\s/g, '');
+                      // Allow empty, digits, and one decimal point
+                      if (numericValue === '' || /^\d*\.?\d*$/.test(numericValue)) {
+                        // Format with commas for display
+                        const parts = numericValue.split('.');
+                        parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                        setAmount(parts.join('.'));
                       }
                     }}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     placeholder="Input amount"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   />

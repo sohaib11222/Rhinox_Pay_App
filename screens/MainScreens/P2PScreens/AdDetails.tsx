@@ -16,8 +16,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails, useGetVendorOrders, useGetP2POrderDetails } from '../../../queries/p2p.queries';
-import { useAcceptOrder, useDeclineOrder, useCancelVendorOrder } from '../../../mutations/p2p.mutations';
+import { useAcceptOrder, useDeclineOrder, useCancelVendorOrder, useDeleteP2PAd } from '../../../mutations/p2p.mutations';
 import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -54,6 +55,7 @@ interface Ad {
 const AdDetails = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const queryClient = useQueryClient();
   const routeParams = route.params as { adId?: string } | undefined;
   const [activeTab, setActiveTab] = useState<'Received' | 'Unpaid' | 'Paid' | 'Appeal'>('Received');
 
@@ -236,6 +238,23 @@ const AdDetails = () => {
     },
   });
 
+  // Delete ad mutation
+  const deleteAdMutation = useDeleteP2PAd({
+    onSuccess: (data) => {
+      console.log('[AdDetails] Ad deleted successfully:', data);
+      // Invalidate queries to refresh ad lists
+      queryClient.invalidateQueries({ queryKey: ['p2p', 'ads'] });
+      queryClient.invalidateQueries({ queryKey: ['p2p', 'vendor', 'ads'] });
+      showSuccessAlert('Success', 'Ad deleted successfully');
+      // Navigate back to MyAdsScreen
+      navigation.goBack();
+    },
+    onError: (error: any) => {
+      console.error('[AdDetails] Error deleting ad:', error);
+      showErrorAlert(error?.message || 'Failed to delete ad');
+    },
+  });
+
   const handleAccept = (order: Order) => {
     if (!order.orderId) {
       showErrorAlert('Invalid order ID');
@@ -306,16 +325,67 @@ const AdDetails = () => {
       'Decline All Orders',
       `Are you sure you want to decline ${pendingOrders.length} pending order(s)?`,
       () => {
-            pendingOrders.forEach(order => {
-              if (order.orderId) {
-                declineMutation.mutate(order.orderId);
-              }
-            });
+        pendingOrders.forEach(order => {
+          if (order.orderId) {
+            declineMutation.mutate(order.orderId);
+          }
+        });
       },
       undefined,
       'Decline All',
       'Cancel'
     );
+  };
+
+  // Handle delete ad
+  const handleDeleteAd = () => {
+    if (!adId) {
+      showErrorAlert('Error', 'Ad ID is missing');
+      return;
+    }
+    showConfirmAlert(
+      'Delete Ad',
+      'Are you sure you want to delete this ad? This action cannot be undone.',
+      () => {
+        deleteAdMutation.mutate(adId);
+      },
+      undefined,
+      'Delete',
+      'Cancel'
+    );
+  };
+
+  // Handle edit ad
+  const handleEditAd = () => {
+    if (!adDetailsData?.data || !currentAd) {
+      showErrorAlert('Error', 'Ad details not available');
+      return;
+    }
+    
+    const ad = adDetailsData.data;
+    const editScreen = currentAd.type === 'Buy' ? 'CreateBuyAd' : 'CreateSellAd';
+    
+    // Navigate to edit screen with ad data
+    (navigation as any).navigate('Settings', {
+      screen: editScreen,
+      params: {
+        adId: adId,
+        editMode: true,
+        // Pass ad data for editing
+        adData: {
+          cryptoCurrency: ad.cryptoCurrency || 'USDT',
+          fiatCurrency: ad.fiatCurrency || 'NGN',
+          price: ad.price || '0',
+          volume: ad.volume || '0',
+          minOrder: ad.minOrder || '0',
+          maxOrder: ad.maxOrder || '0',
+          autoAccept: ad.autoAccept || false,
+          paymentMethodIds: ad.paymentMethodIds || [],
+          countryCode: ad.countryCode || 'NG',
+          description: ad.description || '',
+        },
+      },
+    });
   };
 
   // Pull-to-refresh functionality
@@ -538,10 +608,25 @@ const AdDetails = () => {
                 </ThemedText>
               </View>
               <View style={styles.actionButtons}>
-                <TouchableOpacity style={styles.deleteAdButton}>
-                  <ThemedText style={styles.deleteAdButtonText}>Delete Ad</ThemedText>
+                <TouchableOpacity 
+                  style={[
+                    styles.deleteAdButton,
+                    deleteAdMutation.isPending && styles.deleteAdButtonDisabled
+                  ]}
+                  onPress={handleDeleteAd}
+                  disabled={deleteAdMutation.isPending || !adId}
+                >
+                  {deleteAdMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                  ) : (
+                    <ThemedText style={styles.deleteAdButtonText}>Delete Ad</ThemedText>
+                  )}
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.editAdButton}>
+                <TouchableOpacity 
+                  style={styles.editAdButton}
+                  onPress={handleEditAd}
+                  disabled={!adDetailsData?.data || !currentAd}
+                >
                   <ThemedText style={styles.editAdButtonText}>Edit AD</ThemedText>
                 </TouchableOpacity>
               </View>
@@ -1045,6 +1130,11 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     justifyContent: 'center',
     borderColor: '#A9EF45',
+    minWidth: 80 * SCALE,
+    alignItems: 'center',
+  },
+  deleteAdButtonDisabled: {
+    opacity: 0.5,
   },
   deleteAdButtonText: {
     fontSize: 8 * 1,

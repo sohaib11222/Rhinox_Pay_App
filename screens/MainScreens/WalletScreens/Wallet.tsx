@@ -1063,50 +1063,74 @@ const Wallet = () => {
 
                 {/* Overlaid Quick Actions Card */}
                 <View style={styles.cryptoOverlaidActionsCard}>
-                  {cryptoQuickActions.map((action) => (
-                    <TouchableOpacity
-                      key={action.id}
-                      style={styles.cryptoOverlaidActionButton}
-                      onPress={() => {
-                        if (action.id === '1' && action.title === 'Deposit') {
-                          // Navigate to CryptoDeposit screen in Transactions stack
-                          // @ts-ignore - allow parent route name
-                          navigation.navigate('Transactions' as never, {
-                            screen: 'CryptoDeposit' as never,
-                          } as never);
-                        } else if (action.id === '2' && action.title === 'Withdraw') {
-                          // Navigate to CryptoWithdrawals screen in Transactions stack
-                          // @ts-ignore - allow parent route name
-                          navigation.navigate('Transactions' as never, {
-                            screen: 'CryptoWithdrawals' as never,
-                          } as never);
-                        } else if (action.id === '3' && action.title === 'P2P') {
-                          // Navigate to P2PTransactions screen in Transactions stack
-                          // @ts-ignore - allow parent route name
-                          navigation.navigate('Transactions' as never, {
-                            screen: 'P2PTransactions' as never,
-                          } as never);
-                        }
-                      }}
-                    >
-                      {action.id === '2' ? (
-                        <View style={{ transform: [{ rotate: '180deg' }] }}>
-                          <Image
-                            source={action.icon}
-                            style={styles.cryptoOverlaidActionIcon}
-                            resizeMode="contain"
-                          />
-                        </View>
-                      ) : (
-                        <Image
-                          source={action.icon}
-                          style={styles.cryptoOverlaidActionIcon}
-                          resizeMode="contain"
-                        />
-                      )}
-                      <ThemedText style={styles.cryptoOverlaidActionText}>{action.title}</ThemedText>
-                    </TouchableOpacity>
-                  ))}
+                  {cryptoQuickActions.map((action) => {
+                    // Check if data is loaded for this action
+                    const isDataLoading = isLoadingVirtualAccounts || isLoadingBalances;
+                    const hasData = !isDataLoading && (virtualAccountsData?.data || balancesData?.data);
+                    
+                    // Buttons should be enabled when data is loaded, not disabled during loading
+                    const isButtonDisabled = isDataLoading || !hasData;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={action.id}
+                        onPress={() => {
+                          if (action.id === '1' && action.title === 'Deposit') {
+                            // Navigate to CryptoDeposit screen in Transactions stack
+                            // @ts-ignore - allow parent route name
+                            navigation.navigate('Transactions' as never, {
+                              screen: 'CryptoDeposit' as never,
+                            } as never);
+                          } else if (action.id === '2' && action.title === 'Withdraw') {
+                            // Navigate to CryptoWithdrawals screen in Transactions stack
+                            // @ts-ignore - allow parent route name
+                            navigation.navigate('Transactions' as never, {
+                              screen: 'CryptoWithdrawals' as never,
+                            } as never);
+                          } else if (action.id === '3' && action.title === 'P2P') {
+                            // Navigate to P2PFund screen in Settings stack to browse P2P ads and create orders
+                            // @ts-ignore - allow parent route name
+                            navigation.navigate('Settings' as never, {
+                              screen: 'P2PFund' as never,
+                            } as never);
+                          }
+                        }}
+                        disabled={isButtonDisabled}
+                        style={[
+                          styles.cryptoOverlaidActionButton,
+                          isButtonDisabled && styles.cryptoOverlaidActionButtonDisabled
+                        ]}
+                      >
+                        {isDataLoading ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" style={{ marginBottom: 8 * SCALE }} />
+                        ) : (
+                          <>
+                            {action.id === '2' ? (
+                              <View style={{ transform: [{ rotate: '180deg' }] }}>
+                                <Image
+                                  source={action.icon}
+                                  style={styles.cryptoOverlaidActionIcon}
+                                  resizeMode="contain"
+                                />
+                              </View>
+                            ) : (
+                              <Image
+                                source={action.icon}
+                                style={styles.cryptoOverlaidActionIcon}
+                                resizeMode="contain"
+                              />
+                            )}
+                          </>
+                        )}
+                        <ThemedText style={[
+                          styles.cryptoOverlaidActionText,
+                          isButtonDisabled && styles.cryptoOverlaidActionTextDisabled
+                        ]}>
+                          {action.title}
+                        </ThemedText>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </LinearGradient>
             </View>
@@ -2128,6 +2152,12 @@ const styles = StyleSheet.create({
     fontSize: 10 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
+  },
+  cryptoOverlaidActionTextDisabled: {
+    opacity: 0.5,
+  },
+  cryptoOverlaidActionButtonDisabled: {
+    opacity: 0.6,
   },
   allCryptoCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.03)',

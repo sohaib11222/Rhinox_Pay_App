@@ -277,6 +277,31 @@ export const useUpdateP2PAdStatus = (
 };
 
 /**
+ * Delete ad (VENDOR)
+ */
+export const deleteP2PAd = async (adId: string): Promise<ApiResponse> => {
+  try {
+    const route = buildRouteWithParams(`/p2p/ads/{id}`, { id: adId });
+    const response = await apiClient.delete(route);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Mutation hook for deleting ad
+ */
+export const useDeleteP2PAd = (
+  options?: UseMutationOptions<ApiResponse, Error, string>
+) => {
+  return useMutation<ApiResponse, Error, string>({
+    mutationFn: deleteP2PAd,
+    ...options,
+  });
+};
+
+/**
  * Accept order (VENDOR)
  */
 export const acceptOrder = async (orderId: string): Promise<ApiResponse> => {
