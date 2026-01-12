@@ -20,8 +20,26 @@ export const calculateConversion = async (
   params: CalculateConversionParams
 ): Promise<ApiResponse> => {
   try {
-    const url = buildApiUrl(API_ROUTES.CONVERSION.CALCULATE, params as any);
-    const response = await apiClient.get(url);
+    const route = API_ROUTES.CONVERSION.CALCULATE;
+    // Clean params - remove undefined, null, empty string values
+    const cleanParams: any = {};
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanParams[key] = value;
+        }
+      });
+    }
+    
+    // Manually build query string
+    const queryString = Object.entries(cleanParams)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+      .join('&');
+    
+    const urlWithParams = queryString ? `${route}?${queryString}` : route;
+    
+    // Pass only the path to apiClient.get() (not full URL)
+    const response = await apiClient.get(urlWithParams);
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);

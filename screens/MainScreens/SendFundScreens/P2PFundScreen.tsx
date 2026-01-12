@@ -13,11 +13,11 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
-import { useBrowseP2PAds, useGetP2PAdDetails, useGetP2POrderDetails } from '../../../queries/p2p.queries';
+import { useBrowseP2PAds, useBrowseBuyAds, useBrowseSellAds, useGetP2PAdDetails, useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mutations';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetUSDTTokens } from '../../../queries/crypto.queries';
@@ -67,6 +67,9 @@ interface Bank {
 
 const P2PFundScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const routeParams = route?.params as { initialTab?: 'Buy' | 'Sell' } || {};
+  const initialTab = routeParams?.initialTab || 'Buy';
 
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -101,7 +104,14 @@ const P2PFundScreen = () => {
     }, [navigation])
   );
 
-  const [activeTab, setActiveTab] = useState<'Buy' | 'Sell'>('Buy');
+  const [activeTab, setActiveTab] = useState<'Buy' | 'Sell'>(initialTab);
+  
+  // Update active tab when route params change
+  React.useEffect(() => {
+    if (routeParams?.initialTab && routeParams.initialTab !== activeTab) {
+      setActiveTab(routeParams.initialTab);
+    }
+  }, [routeParams?.initialTab]);
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [showAmountModal, setShowAmountModal] = useState(false);
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
@@ -216,40 +226,108 @@ const P2PFundScreen = () => {
   }, [availableAssets]);
 
   // Browse P2P ads based on active tab
-  const browseParams = useMemo(() => ({
-    type: activeTab === 'Buy' ? 'buy' : 'sell',
-    cryptoCurrency: selectedAsset?.symbol || 'USDT',
-    fiatCurrency: fiatCurrency,
-    countryCode: selectedCountryCode,
-    minPrice: minPrice || undefined,
-    maxPrice: maxPrice || undefined,
-    limit: 50,
-  }), [activeTab, selectedAsset, fiatCurrency, selectedCountryCode, minPrice, maxPrice]);
+  // For Buy: Use USER endpoint (auth required) - GET /api/p2p/user/ads/buy
+  // For Sell: Use PUBLIC endpoint - GET /api/p2p/ads/browse with type=sell
+  const browseBuyParams = useMemo(() => {
+    const params: any = {
+      cryptoCurrency: selectedAsset?.symbol || 'USDT',
+      fiatCurrency: fiatCurrency,
+      countryCode: selectedCountryCode,
+      limit: 50,
+    };
+    
+    // Only include minPrice and maxPrice if they have valid values
+    if (minPrice && minPrice !== '') {
+      params.minPrice = minPrice;
+    }
+    if (maxPrice && maxPrice !== '') {
+      params.maxPrice = maxPrice;
+    }
+    
+    return params;
+  }, [selectedAsset, fiatCurrency, selectedCountryCode, minPrice, maxPrice]);
+
+  const browseSellParams = useMemo(() => {
+    const params: any = {
+      cryptoCurrency: selectedAsset?.symbol || 'USDT',
+      fiatCurrency: fiatCurrency,
+      countryCode: selectedCountryCode,
+      limit: 50,
+    };
+    
+    // Only include minPrice and maxPrice if they have valid values
+    if (minPrice && minPrice !== '') {
+      params.minPrice = minPrice;
+    }
+    if (maxPrice && maxPrice !== '') {
+      params.maxPrice = maxPrice;
+    }
+    
+    return params;
+  }, [selectedAsset, fiatCurrency, selectedCountryCode, minPrice, maxPrice]);
+
+  // Use different API endpoints based on active tab
+  const {
+    data: buyAdsData,
+    isLoading: isLoadingBuyAds,
+    isError: isBuyAdsError,
+    error: buyAdsError,
+    refetch: refetchBuyAds,
+  } = useBrowseBuyAds(activeTab === 'Buy' ? browseBuyParams : undefined, {
+    enabled: activeTab === 'Buy',
+  });
 
   const {
-    data: adsData,
-    isLoading: isLoadingAds,
-    isError: isAdsError,
-    error: adsError,
-    refetch: refetchAds,
-  } = useBrowseP2PAds(browseParams);
+    data: sellAdsData,
+    isLoading: isLoadingSellAds,
+    isError: isSellAdsError,
+    error: sellAdsError,
+    refetch: refetchSellAds,
+  } = useBrowseSellAds(activeTab === 'Sell' ? browseSellParams : undefined, {
+    enabled: activeTab === 'Sell',
+  });
+
+  // Combine data based on active tab
+  const adsData = activeTab === 'Buy' ? buyAdsData : sellAdsData;
+  const isLoadingAds = activeTab === 'Buy' ? isLoadingBuyAds : isLoadingSellAds;
+  const isAdsError = activeTab === 'Buy' ? isBuyAdsError : isSellAdsError;
+  const adsError = activeTab === 'Buy' ? buyAdsError : sellAdsError;
+  const refetchAds = activeTab === 'Buy' ? refetchBuyAds : refetchSellAds;
 
   // Transform ads to trading offers
   const tradingOffers = useMemo(() => {
-    if (!adsData?.data || !Array.isArray(adsData.data)) {
+    // Handle different response structures: buyAds returns { ads: [...] }, browse returns { data: [...] }
+    const adsArray = activeTab === 'Buy' 
+      ? (adsData?.data?.ads || adsData?.data || [])
+      : (adsData?.data || []);
+    
+    if (!Array.isArray(adsArray)) {
       return [];
     }
-    return adsData.data.map((ad: any) => ({
+    return adsArray.map((ad: any) => {
+      // Extract vendor name - handle different structures
+      let vendorName = 'Unknown Vendor';
+      if (ad.vendor) {
+        if (ad.vendor.name) {
+          vendorName = ad.vendor.name;
+        } else if (ad.vendor.firstName || ad.vendor.lastName) {
+          vendorName = `${ad.vendor.firstName || ''} ${ad.vendor.lastName || ''}`.trim();
+        }
+      }
+      
+      return {
       id: String(ad.id),
       adId: ad.id,
-      traderName: ad.vendor?.name || 'Unknown Vendor',
+      traderName: vendorName,
       traderAvatar: require('../../../assets/Frame 2398.png'),
       isOnline: ad.isOnline || false,
-      numberOfTrades: ad.ordersReceived || 0,
+      numberOfTrades: ad.ordersReceived || ad.numberOfTrades || 0,
       responseTime: ad.responseTime ? `${ad.responseTime}min` : 'N/A',
       score: parseFloat(ad.score || '0'),
-      availableQuantity: `${ad.volume || '0'} ${ad.cryptoCurrency || 'USDT'}`,
-      limits: `${ad.minOrder || '0'} - ${ad.maxOrder || '0'} ${ad.fiatCurrency || 'NGN'}`,
+      // Handle different field names: availableBalance (buy) vs volume (browse)
+      availableQuantity: `${ad.availableBalance || ad.volume || '0'} ${ad.cryptoCurrency || 'USDT'}`,
+      // Handle different field names: minOrderAmount/maxOrderAmount (buy) vs minOrder/maxOrder (browse)
+      limits: `${ad.minOrderAmount || ad.minOrder || '0'} - ${ad.maxOrderAmount || ad.maxOrder || '0'} ${ad.fiatCurrency || 'NGN'}`,
       paymentMethods: ad.paymentMethods?.map((pm: any) => {
         if (pm.type === 'bank_account') return pm.bankName || 'Bank Transfer';
         if (pm.type === 'mobile_money') return pm.phoneNumber || 'Mobile Money';
@@ -257,8 +335,9 @@ const P2PFundScreen = () => {
       }) || [],
       price: parseFloat(ad.price || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       rawData: ad,
-    }));
-  }, [adsData?.data]);
+      };
+    });
+  }, [adsData?.data, activeTab]);
 
   // Get ad details when an ad is selected
   const {
@@ -413,11 +492,40 @@ const P2PFundScreen = () => {
     // TODO: Apply filters to trading offers
   };
 
-  // Handle buy button press
+  // Handle buy button press - Navigate to BuyOrder screen
   const handleBuyPress = (offer: any) => {
-    setSelectedAd(offer.rawData);
-    setBuyModalToken(selectedAsset);
-    setShowBuyModal(true);
+    // Navigate to BuyOrder screen with ad details
+    (navigation as any).navigate('Settings', {
+      screen: 'BuyOrder',
+      params: {
+        adId: String(offer.adId || offer.id),
+        adData: offer.rawData,
+      },
+    });
+  };
+
+  // Handle sell button press - Navigate to SellOrderFlow screen
+  const handleSellPress = (offer: any) => {
+    // Navigate to SellOrderFlow screen with ad details
+    (navigation as any).navigate('Settings', {
+      screen: 'SellOrderFlow',
+      params: {
+        adId: String(offer.adId || offer.id),
+        adDetails: offer.rawData,
+      },
+    });
+  };
+  
+  // Old handleBuyPress (kept for reference but not used)
+  const handleBuyPressOld = (offer: any) => {
+    // Navigate to BuyOrder screen with ad details
+    (navigation as any).navigate('Settings', {
+      screen: 'BuyOrder',
+      params: {
+        adId: String(offer.adId || offer.id),
+        adData: offer.rawData,
+      },
+    });
   };
 
   // Handle order creation
@@ -640,7 +748,26 @@ const P2PFundScreen = () => {
           <View style={{ alignItems: 'center', paddingVertical: 40 }}>
             <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
             <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
-              {adsError?.message || 'Failed to load ads. Please try again.'}
+              {(() => {
+                const errorMessage = adsError?.message || 'Failed to load ads. Please try again.';
+                // Provide user-friendly error messages
+                if (errorMessage.includes('Invalid ad ID format')) {
+                  return 'Unable to load ads at this time. Please try again later.';
+                }
+                if (errorMessage.includes('404') || errorMessage.includes('Not found')) {
+                  return 'No ads available. Please try adjusting your filters.';
+                }
+                if (errorMessage.includes('400')) {
+                  return 'Invalid search parameters. Please check your filters.';
+                }
+                if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+                  return 'Session expired. Please log in again.';
+                }
+                if (errorMessage.includes('500') || errorMessage.includes('Internal Server Error')) {
+                  return 'Server error. Please try again later.';
+                }
+                return errorMessage;
+              })()}
             </ThemedText>
             <TouchableOpacity
               style={[styles.retryButton, { marginTop: 20 }]}
@@ -704,7 +831,7 @@ const P2PFundScreen = () => {
               </View>
               <TouchableOpacity 
                 style={[styles.buyButton, !isBuyButtonEnabled(offer) && styles.buyButtonDisabled]}
-                onPress={() => handleBuyPress(offer)}
+                onPress={() => activeTab === 'Buy' ? handleBuyPress(offer) : handleSellPress(offer)}
                 disabled={!isBuyButtonEnabled(offer)}
               >
                 <ThemedText style={styles.buyButtonText}>

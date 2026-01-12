@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -12,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,6 +22,13 @@ import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCountries } from '../../../queries/country.queries';
+import { useGetTransferEligibility, useGetTransferReceipt } from '../../../queries/transfer.queries';
+import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
+import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { useQueryClient } from '@tanstack/react-query';
+import { API_BASE_URL } from '../../../utils/apiConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -69,20 +77,16 @@ const SendFundCrypto = () => {
     }, [navigation])
   );
 
-  const [balance, setBalance] = useState('0.0001');
-  const [amount, setAmount] = useState('0.0023');
-  const [walletAddress, setWalletAddress] = useState('');
-  const [selectedNetwork, setSelectedNetwork] = useState<{ id: string; name: string } | null>(null);
-  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>(null);
   const [showAssetModal, setShowAssetModal] = useState(false);
-  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any }>({
-    id: '1',
-    name: 'Bitcoin',
-    balance: '0.0001',
-    icon: require('../../../assets/CurrencyBtc.png'),
-  });
-  const [amountType, setAmountType] = useState<'BTC' | 'USD'>('USD');
+  const [balance, setBalance] = useState('0.00000000');
+  const [amount, setAmount] = useState('');
+  const [recipientUserId, setRecipientUserId] = useState('');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [selectedCountry, setSelectedCountry] = useState('NG');
+  const [showCountryModal, setShowCountryModal] = useState(false);
   const [selectedPercentage, setSelectedPercentage] = useState<string | null>(null);
+  const [assetSearchTerm, setAssetSearchTerm] = useState('');
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -92,40 +96,135 @@ const SendFundCrypto = () => {
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
   const [emailCode, setEmailCode] = useState('');
   const [authenticatorCode, setAuthenticatorCode] = useState('');
+  const [transactionId, setTransactionId] = useState<number | null>(null);
+  const [transferData, setTransferData] = useState<any>(null);
 
-  const recentTransactions: RecentTransaction[] = [
-    { id: '1', name: 'Adebisi Lateefat', walletId: 'BTC12345', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-    { id: '2', name: 'Akor Samuel', walletId: 'ETH12345', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-    { id: '3', name: 'Teslim Olamide', walletId: 'BTC12345', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-  ];
+  const queryClient = useQueryClient();
 
-  const networks = [
-    { id: '1', name: 'Ethereum' },
-    { id: '2', name: 'Arbitrum' },
-    { id: '3', name: 'Polygon' },
-    { id: '4', name: 'Matic' },
-  ];
+  // Fetch wallet balances
+  const {
+    data: balancesData,
+    isLoading: isLoadingBalances,
+    refetch: refetchBalances,
+  } = useGetWalletBalances();
 
-  const assets = [
-    { id: '1', name: 'Bitcoin', balance: '0.0001', icon: require('../../../assets/CurrencyBtc.png') },
-    { id: '2', name: 'Ethereum', balance: '10', icon: require('../../../assets/CurrencyBtc.png') },
-    { id: '3', name: 'Solana', balance: '100', icon: require('../../../assets/CurrencyBtc.png') },
-  ];
+  // Fetch countries
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
 
-  const copyToClipboard = async (text: string) => {
-    await Clipboard.setStringAsync(text);
-  };
+  // Check transfer eligibility
+  const {
+    data: eligibilityData,
+    isLoading: isLoadingEligibility,
+    refetch: refetchEligibility,
+  } = useGetTransferEligibility();
 
-  const quickAmounts = ['20%', '50%', '75%', '100%'];
+  // Fetch transfer receipt
+  const {
+    data: receiptData,
+    isLoading: isLoadingReceipt,
+  } = useGetTransferReceipt(
+    transactionId ? String(transactionId) : '',
+    {
+      enabled: showReceiptModal && transactionId !== null,
+    }
+  );
+
+  // Get crypto wallets from API
+  const cryptoWallets = useMemo(() => {
+    if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
+      return [];
+    }
+    return balancesData.data.crypto.filter((w: any) => w.active !== false);
+  }, [balancesData?.data?.crypto]);
+
+  // Transform countries from API
+  const countries = useMemo(() => {
+    if (!countriesData?.data || !Array.isArray(countriesData.data)) {
+      return [];
+    }
+    return countriesData.data;
+  }, [countriesData?.data]);
+
+  // Initialize selected asset
+  useEffect(() => {
+    if (!selectedAsset && cryptoWallets.length > 0) {
+      const firstWallet = cryptoWallets[0];
+      setSelectedAsset({
+        id: String(firstWallet.id || firstWallet.currency),
+        name: firstWallet.currency || firstWallet.symbol || 'BTC',
+        balance: firstWallet.balance || firstWallet.availableBalance || '0',
+        icon: require('../../../assets/CurrencyBtc.png'),
+      });
+      setBalance(firstWallet.balance || firstWallet.availableBalance || '0');
+    }
+  }, [cryptoWallets, selectedAsset]);
+
+  // Update balance when asset changes
+  useEffect(() => {
+      if (selectedAsset) {
+        const wallet = cryptoWallets.find((w: any) => 
+          w.currency === selectedAsset?.name || 
+          w.symbol === selectedAsset?.name
+        );
+      if (wallet) {
+        setBalance(wallet.balance || wallet.availableBalance || '0');
+      }
+    }
+  }, [selectedAsset, cryptoWallets]);
+
+  // Initiate transfer mutation
+  const initiateTransferMutation = useInitiateTransfer({
+    onSuccess: (data) => {
+      const transactionIdFromResponse = data?.data?.id;
+      if (transactionIdFromResponse) {
+        setTransactionId(transactionIdFromResponse);
+        setTransferData(data?.data);
+        setShowSummaryModal(false);
+        setShowPinModal(true);
+        showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+      } else {
+        showErrorAlert('Error', 'Transaction ID not found in response');
+      }
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to initiate transfer');
+    },
+  });
+
+  // Verify transfer mutation
+  const verifyTransferMutation = useVerifyTransfer({
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['wallets', 'balances'] });
+      queryClient.invalidateQueries({ queryKey: ['home'] });
+      setShowSecurityModal(false);
+      setShowSuccessModal(true);
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to verify transfer');
+    },
+  });
+
+  // Check eligibility on mount
+  useEffect(() => {
+    if (eligibilityData?.data) {
+      const eligible = eligibilityData.data.eligible;
+      if (!eligible) {
+        showErrorAlert('Not Eligible', eligibilityData.data.message || 'You cannot complete your transaction because you are yet to complete your KYC');
+      }
+    }
+  }, [eligibilityData?.data]);
+
+  const quickAmounts = ['25%', '50%', '75%', '100%'];
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing send crypto data...');
-        resolve();
-      }, 1000);
-    });
+    await Promise.all([
+      refetchBalances(),
+      refetchEligibility(),
+    ]);
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -141,15 +240,71 @@ const SendFundCrypto = () => {
     setSelectedPercentage(quickAmount);
   };
 
-  const handleProceed = () => {
-    if (walletAddress && selectedNetwork) {
-      setShowSummaryModal(true);
+  const formatBalanceNoDecimals = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0.00000000';
+    return num.toLocaleString('en-US', { maximumFractionDigits: 8 });
+  };
+
+  // Check if form is valid
+  const isFormValid = useMemo(() => {
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    return amount.trim() !== '' &&
+           !isNaN(numericAmount) &&
+           numericAmount > 0 &&
+           (recipientUserId.trim() !== '' || recipientEmail.trim() !== '') &&
+           selectedAsset !== null;
+  }, [amount, recipientUserId, recipientEmail, selectedAsset]);
+
+  // Filter crypto wallets for asset modal
+  const filteredCryptoWallets = useMemo(() => {
+    if (!assetSearchTerm.trim()) {
+      return cryptoWallets;
     }
+    const query = assetSearchTerm.toLowerCase();
+    return cryptoWallets.filter((w: any) => {
+      const currency = (w.currency || w.symbol || '').toLowerCase();
+      return currency.includes(query);
+    });
+  }, [cryptoWallets, assetSearchTerm]);
+
+  const handleProceed = () => {
+    if (!isFormValid) {
+      showErrorAlert('Validation Error', 'Please fill in all required fields');
+      return;
+    }
+    
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      showErrorAlert('Validation Error', 'Please enter a valid amount');
+      return;
+    }
+
+    const balanceNum = parseFloat(balance.replace(/,/g, ''));
+    if (numericAmount > balanceNum) {
+      showErrorAlert('Insufficient Balance', `Available balance: ${balance} ${selectedAsset?.name || 'BTC'}`);
+      return;
+    }
+
+    setShowSummaryModal(true);
   };
 
   const handleSummaryComplete = () => {
-    setShowSummaryModal(false);
-    setShowPinModal(true);
+    if (!selectedAsset || !amount || (!recipientUserId && !recipientEmail)) {
+      showErrorAlert('Validation Error', 'Please fill in all required fields');
+      return;
+    }
+
+    const numericAmount = parseFloat(amount.replace(/,/g, ''));
+    
+    initiateTransferMutation.mutate({
+      amount: numericAmount.toString(),
+      currency: selectedAsset?.name || 'BTC',
+      countryCode: selectedCountry,
+      channel: 'rhionx_user',
+      recipientUserId: recipientUserId || undefined,
+      recipientEmail: recipientEmail || undefined,
+    });
   };
 
   const handlePinPress = (num: string) => {
@@ -177,11 +332,16 @@ const SendFundCrypto = () => {
   };
 
   const handleSecurityComplete = () => {
-    if (emailCode && authenticatorCode) {
-      // TODO: Verify and complete transaction
-      setShowSecurityModal(false);
-      setShowSuccessModal(true);
+    if (!emailCode || !pin || !transactionId) {
+      showErrorAlert('Validation Error', 'Please fill in all required fields');
+      return;
     }
+
+    verifyTransferMutation.mutate({
+      transactionId: transactionId,
+      emailCode: emailCode,
+      pin: pin,
+    });
   };
 
   const handleViewTransaction = () => {
@@ -199,9 +359,6 @@ const SendFundCrypto = () => {
     navigation.goBack();
   };
 
-  const getSelectedNetworkData = () => {
-    return selectedNetwork || { id: '', name: 'Choose Network' };
-  };
 
   return (
     <KeyboardAvoidingView
@@ -250,26 +407,47 @@ const SendFundCrypto = () => {
             style={styles.balanceCard}
           >
             <View style={styles.balanceCardContent}>
-              <ThemedText style={styles.balanceLabel}>Bitcoin Balance</ThemedText>
-              <View style={styles.balanceRow}>
-                <Image
-                  source={require('../../../assets/Vector (34).png')}
-                  style={styles.walletIcon}
-                  resizeMode="cover"
-                />
-                <ThemedText style={styles.balanceAmount}>{balance} {selectedAsset.name}</ThemedText>
-              </View>
+                <ThemedText style={styles.balanceLabel}>
+                  {selectedAsset?.name || 'Crypto'} Balance
+                </ThemedText>
+                <View style={styles.balanceRow}>
+                  <Image
+                    source={require('../../../assets/Vector (34).png')}
+                    style={styles.walletIcon}
+                    resizeMode="cover"
+                  />
+                  {isLoadingBalances ? (
+                    <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                  ) : (
+                    <ThemedText style={styles.balanceAmount}>
+                      {formatBalanceNoDecimals(balance)} {selectedAsset?.name || 'BTC'}
+                    </ThemedText>
+                  )}
+                </View>
             </View>
             <TouchableOpacity
               style={styles.assetSelector}
               onPress={() => setShowAssetModal(true)}
             >
-              <Image
-                source={selectedAsset.icon}
-                style={styles.assetSelectorIcon}
-                resizeMode="cover"
-              />
-              <ThemedText style={styles.assetSelectorText}>{selectedAsset.name}</ThemedText>
+              {selectedAsset ? (
+                <>
+                  <Image
+                    source={selectedAsset.icon}
+                    style={styles.assetSelectorIcon}
+                    resizeMode="cover"
+                  />
+                  <ThemedText style={styles.assetSelectorText}>{selectedAsset?.name || 'BTC'}</ThemedText>
+                </>
+              ) : (
+                <>
+                  <Image
+                    source={require('../../../assets/CurrencyBtc.png')}
+                    style={styles.assetSelectorIcon}
+                    resizeMode="cover"
+                  />
+                  <ThemedText style={styles.assetSelectorText}>Select Asset</ThemedText>
+                </>
+              )}
               <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
             </TouchableOpacity>
           </LinearGradient>
@@ -278,23 +456,6 @@ const SendFundCrypto = () => {
         {/* Main Card */}
       
         <View style={styles.mainCard}>
-          {/* Amount Type Toggle - Separate Buttons */}
-          <View style={{backgroundColor:'#FFFFFF08', borderRadius:12 * SCALE, borderWidth:0.3, borderColor:'#FFFFFF33', paddingHorizontal:11 * SCALE, paddingVertical:8 * SCALE, marginBottom:20 * SCALE}}>
-          <View style={styles.amountTypeToggleContainer}>
-            <TouchableOpacity
-              style={[styles.amountTypeToggleButton, amountType === 'BTC' && styles.amountTypeToggleButtonActive]}
-              onPress={() => setAmountType('BTC')}
-            >
-              <ThemedText style={[styles.amountTypeToggleText, amountType === 'BTC' && styles.amountTypeToggleTextActive]}>BTC</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.amountTypeToggleButton, amountType === 'USD' && styles.amountTypeToggleButtonActive]}
-              onPress={() => setAmountType('USD')}
-            >
-              <ThemedText style={[styles.amountTypeToggleText, amountType === 'USD' && styles.amountTypeToggleTextActive]}>USD</ThemedText>
-            </TouchableOpacity>
-          </View>
-
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
@@ -303,13 +464,16 @@ const SendFundCrypto = () => {
                 value={amount}
                 onChangeText={(text) => {
                   // Allow decimal input for crypto
-                  setAmount(text);
+                  const cleaned = text.replace(/[^0-9.]/g, '');
+                  setAmount(cleaned);
                 }}
                 keyboardType="decimal-pad"
-                placeholder="0"
+                placeholder="0.00000000"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
               />
-              <ThemedText style={styles.amountCurrencyLabel}>BTC</ThemedText>
+              <ThemedText style={styles.amountCurrencyLabel}>
+                {selectedAsset?.name || 'BTC'}
+              </ThemedText>
             </View>
             <View style={styles.quickAmountsContainer}>
               {quickAmounts.map((quickAmount) => {
@@ -328,30 +492,54 @@ const SendFundCrypto = () => {
               })}
             </View>
           </View>
-          </View>
 
           {/* Form Fields */}
           <View style={styles.formFields}>
-            {/* Choose Network */}
+            {/* Country Selector */}
             <TouchableOpacity
-              style={styles.networkField}
-              onPress={() => setShowNetworkModal(true)}
+              style={styles.countryField}
+              onPress={() => setShowCountryModal(true)}
+              disabled={isLoadingCountries}
             >
-              <ThemedText style={[styles.networkFieldText, !selectedNetwork && styles.placeholder]}>
-                {getSelectedNetworkData().name}
-              </ThemedText>
-              <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+              {isLoadingCountries ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <ThemedText style={[styles.countryFieldText, !selectedCountry && styles.placeholder]}>
+                    {countries.find((c: any) => c.code === selectedCountry)?.name || 'Select Country'}
+                  </ThemedText>
+                  <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
+                </>
+              )}
             </TouchableOpacity>
 
-            {/* Paste wallet address */}
+            {/* Recipient User ID */}
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
-                placeholder="Paste wallet address"
+                placeholder="Recipient User ID (optional)"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={walletAddress}
-                onChangeText={setWalletAddress}
+                value={recipientUserId}
+                onChangeText={setRecipientUserId}
+                keyboardType="number-pad"
               />
+            </View>
+
+            {/* Recipient Email */}
+            <View style={styles.inputField}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Recipient Email (optional)"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={recipientEmail}
+                onChangeText={setRecipientEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <ThemedText style={styles.inputHint}>
+                Provide either User ID or Email
+              </ThemedText>
             </View>
           </View>
         </View>
@@ -364,24 +552,25 @@ const SendFundCrypto = () => {
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
             <ThemedText style={styles.warningText}>
-              Make sure to send tokens in the Ethereum blockchain only            </ThemedText>
+              Transfers are instant to Rhinox users
+            </ThemedText>
           </View>
           <View style={styles.warningRow}>
             <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <ThemedText style={styles.warningText}>Withdrawal take 10-15 mins</ThemedText>
-          </View>
-          <View style={styles.warningRow}>
-            <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-            <ThemedText style={styles.warningText}>Incase of loss of funds contact support</ThemedText>
+            <ThemedText style={styles.warningText}>Ensure recipient User ID or Email is correct</ThemedText>
           </View>
         </View>
         <View style={styles.proceedButtonContainer}>
           <TouchableOpacity
-            style={[styles.proceedButton, (!walletAddress || !selectedNetwork) && styles.proceedButtonDisabled]}
+            style={[styles.proceedButton, (!isFormValid || initiateTransferMutation.isPending) && styles.proceedButtonDisabled]}
             onPress={handleProceed}
-            disabled={!walletAddress || !selectedNetwork}
+            disabled={!isFormValid || initiateTransferMutation.isPending}
           >
-            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            {initiateTransferMutation.isPending ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            )}
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -401,36 +590,70 @@ const SendFundCrypto = () => {
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
+            <View style={styles.searchContainer}>
+              <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                value={assetSearchTerm}
+                onChangeText={setAssetSearchTerm}
+              />
+            </View>
             <ScrollView style={styles.modalList}>
-              {assets.map((asset) => {
-                const isSelected = selectedAsset?.id === asset.id;
-                return (
-                  <TouchableOpacity
-                    key={asset.id}
-                    style={styles.assetItem}
-                    onPress={() => {
-                      setSelectedAsset(asset);
-                      setBalance(asset.balance);
-                      setShowAssetModal(false);
-                    }}
-                  >
-                    <Image
-                      source={asset.icon}
-                      style={styles.assetItemIcon}
-                      resizeMode="cover"
-                    />
-                    <View style={styles.assetItemInfo}>
-                      <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
-                      <ThemedText style={styles.assetItemBalance}>Bal : {asset.balance}</ThemedText>
-                    </View>
-                    <MaterialCommunityIcons
-                      name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-                      size={24}
-                      color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
+              {isLoadingBalances ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                </View>
+              ) : filteredCryptoWallets.length === 0 ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                    {assetSearchTerm.trim() ? 'No assets found' : 'No crypto wallets available'}
+                  </ThemedText>
+                </View>
+              ) : (
+                filteredCryptoWallets.map((wallet: any) => {
+                  let icon = require('../../../assets/CurrencyBtc.png');
+                  const currency = wallet.currency || wallet.symbol || '';
+                  
+                  const asset = {
+                    id: String(wallet.id || currency),
+                    name: currency,
+                    balance: wallet.balance || wallet.availableBalance || '0',
+                    icon: icon,
+                  };
+                  const isSelected = selectedAsset?.id === asset.id;
+                  return (
+                    <TouchableOpacity
+                      key={asset.id}
+                      style={styles.assetItem}
+                      onPress={() => {
+                        setSelectedAsset(asset);
+                        setBalance(asset.balance);
+                        setShowAssetModal(false);
+                        setAssetSearchTerm('');
+                      }}
+                    >
+                      <Image
+                        source={asset.icon}
+                        style={styles.assetItemIcon}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.assetItemInfo}>
+                        <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                        <ThemedText style={styles.assetItemBalance}>
+                          Bal : {formatBalanceNoDecimals(asset.balance)}
+                        </ThemedText>
+                      </View>
+                      <MaterialCommunityIcons
+                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  );
+                })
+              )}
             </ScrollView>
             <TouchableOpacity
               style={styles.applyButton}
@@ -442,46 +665,61 @@ const SendFundCrypto = () => {
         </View>
       </Modal>
 
-      {/* Select Network Modal */}
+      {/* Select Country Modal */}
       <Modal
-        visible={showNetworkModal}
+        visible={showCountryModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowNetworkModal(false)}
+        onRequestClose={() => setShowCountryModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Select Network</ThemedText>
-              <TouchableOpacity onPress={() => setShowNetworkModal(false)}>
+              <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
+              <TouchableOpacity onPress={() => setShowCountryModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
-              {networks.map((network) => {
-                const isSelected = selectedNetwork?.id === network.id;
-                return (
-                  <TouchableOpacity
-                    key={network.id}
-                    style={styles.networkItem}
-                    onPress={() => {
-                      setSelectedNetwork(network);
-                      setShowNetworkModal(false);
-                    }}
-                  >
-                    <ThemedText style={styles.networkItemName}>{network.name}</ThemedText>
-                    <MaterialCommunityIcons
-                      name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-                      size={24}
-                      color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+            {isLoadingCountries ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {countries.map((country: any) => {
+                  const isSelected = selectedCountry === country.code;
+                  return (
+                    <TouchableOpacity
+                      key={country.id || country.code}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedCountry(country.code || 'NG');
+                        setShowCountryModal(false);
+                      }}
+                    >
+                      {country.flag ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${country.flag}` }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlag}>{country.code}</ThemedText>
+                      )}
+                      <ThemedText style={styles.countryName}>{country.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
             <TouchableOpacity
               style={styles.applyButton}
-              onPress={() => setShowNetworkModal(false)}
+              onPress={() => setShowCountryModal(false)}
             >
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
@@ -510,47 +748,39 @@ const SendFundCrypto = () => {
             <ScrollView style={styles.summaryScrollContent} showsVerticalScrollIndicator={false}>
               <View style={styles.summaryDetailsCard}>
                 <View style={[styles.summaryDetailRow, styles.summaryDetailRowFirst]}>
-                  <ThemedText style={styles.summaryDetailLabel}>Crypto Sent</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>{selectedAsset.name}</ThemedText>
-                </View>
-                <View style={styles.summaryDetailRow}>
-                  <ThemedText style={styles.summaryDetailLabel}>Network</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>{selectedNetwork?.name || 'Ethereum'}</ThemedText>
-                </View>
-                <View style={styles.summaryDetailRow}>
-                  <ThemedText style={styles.summaryDetailLabel}>Quantity</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>{amount} {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}</ThemedText>
+                  <ThemedText style={styles.summaryDetailLabel}>Crypto</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{selectedAsset?.name || 'BTC'}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
                   <ThemedText style={styles.summaryDetailLabel}>Amount</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>$2,550.50</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>{amount} {selectedAsset?.name || 'BTC'}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <ThemedText style={styles.summaryDetailLabel}>Fee</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>0.000001 {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'} ($2.50)</ThemedText>
+                  <ThemedText style={styles.summaryDetailLabel}>Country</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>
+                    {countries.find((c: any) => c.code === selectedCountry)?.name || 'Nigeria'}
+                  </ThemedText>
                 </View>
-                <View style={styles.summaryDetailRow}>
-                  <ThemedText style={styles.summaryDetailLabel}>Receiving Address</ThemedText>
-                  <View style={styles.summaryAddressRow}>
-                    <ThemedText style={styles.summaryAddressText} numberOfLines={1} ellipsizeMode="middle">
-                      {walletAddress || '0x123edfgtrwe457kslwltkwflelwlvld'}
-                    </ThemedText>
-                    <TouchableOpacity onPress={() => copyToClipboard(walletAddress || '0x123edfgtrwe457kslwltkwflelwlvld')}>
-                      <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
-                    </TouchableOpacity>
+                {recipientUserId ? (
+                  <View style={styles.summaryDetailRow}>
+                    <ThemedText style={styles.summaryDetailLabel}>Recipient User ID</ThemedText>
+                    <ThemedText style={styles.summaryDetailValue}>{recipientUserId}</ThemedText>
                   </View>
-                </View>
-                <View style={[styles.summaryDetailRow, styles.summaryDetailRowLast]}>
-                  <ThemedText style={styles.summaryDetailLabel}>Sending Address</ThemedText>
-                  <View style={styles.summaryAddressRow}>
-                    <ThemedText style={styles.summaryAddressText} numberOfLines={1} ellipsizeMode="middle">
-                      0x123edfgtrwe457kslwltkwflelwlvld
+                ) : null}
+                {recipientEmail ? (
+                  <View style={[styles.summaryDetailRow, (!recipientUserId && !recipientEmail) && styles.summaryDetailRowLast]}>
+                    <ThemedText style={styles.summaryDetailLabel}>Recipient Email</ThemedText>
+                    <ThemedText style={styles.summaryDetailValue} numberOfLines={1} ellipsizeMode="middle">
+                      {recipientEmail}
                     </ThemedText>
-                    <TouchableOpacity onPress={() => copyToClipboard('0x123edfgtrwe457kslwltkwflelwlvld')}>
-                      <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
-                    </TouchableOpacity>
                   </View>
-                </View>
+                ) : null}
+                {(recipientUserId || recipientEmail) ? (
+                  <View style={[styles.summaryDetailRow, styles.summaryDetailRowLast]}>
+                    <ThemedText style={styles.summaryDetailLabel}>Transfer Type</ThemedText>
+                    <ThemedText style={styles.summaryDetailValue}>Rhinox User Transfer</ThemedText>
+                  </View>
+                ) : null}
               </View>
             </ScrollView>
 
@@ -592,7 +822,7 @@ const SendFundCrypto = () => {
 
             <View style={styles.pinModalTextContainer}>
               <ThemedText style={styles.pinInstruction}>Input Pin to Complete Transaction</ThemedText>
-              <ThemedText style={styles.pinAmount}>{amount} {selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}</ThemedText>
+              <ThemedText style={styles.pinAmount}>{amount} {selectedAsset?.name || 'BTC'}</ThemedText>
             </View>
 
             <View style={styles.pinBar}>
@@ -736,7 +966,11 @@ const SendFundCrypto = () => {
         transparent={true}
         onRequestClose={() => setShowSecurityModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
           <View style={styles.securityModalContentBottom}>
             <View style={styles.securityModalHeader}>
               <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
@@ -745,64 +979,71 @@ const SendFundCrypto = () => {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.securityIconContainer}>
-              <View style={styles.securityIconCircle}>
-                <Image
-                  source={require('../../../assets/Group 49.png')}
-                  style={styles.securityIcon}
-                  resizeMode="contain"
-                />
-              </View>
-            </View>
-
-            <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
-            <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
-
-            <View style={styles.securityInputWrapper}>
-              <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
-              <View style={styles.securityInputField}>
-                <TextInput
-                  style={styles.securityInput}
-                  placeholder="Input Code sent to your email"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={emailCode}
-                  onChangeText={setEmailCode}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <View style={styles.securityInputWrapper}>
-              <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
-              <View style={styles.securityInputField}>
-                <TextInput
-                  style={styles.securityInput}
-                  placeholder="Input Code from your authenticator app"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={authenticatorCode}
-                  onChangeText={setAuthenticatorCode}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[styles.securityProceedButton, (!emailCode || !authenticatorCode) && styles.securityProceedButtonDisabled]}
-              onPress={handleSecurityComplete}
-              disabled={!emailCode || !authenticatorCode}
+            <ScrollView 
+              style={styles.securityModalScrollView}
+              contentContainerStyle={styles.securityModalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
+              <View style={styles.securityIconContainer}>
+                <View style={styles.securityIconCircle}>
+                  <Image
+                    source={require('../../../assets/Group 49.png')}
+                    style={styles.securityIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
+              <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
+              <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
+
+              <View style={styles.securityInputWrapper}>
+                <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
+                <View style={styles.securityInputField}>
+                  <TextInput
+                    style={styles.securityInput}
+                    placeholder="Input Code sent to your email"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={emailCode}
+                    onChangeText={setEmailCode}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.securityInputWrapper}>
+                <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
+                <View style={styles.securityInputField}>
+                  <TextInput
+                    style={styles.securityInput}
+                    placeholder="Input Code from your authenticator app"
+                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                    value={authenticatorCode}
+                    onChangeText={setAuthenticatorCode}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[styles.securityProceedButton, (!emailCode || !authenticatorCode) && styles.securityProceedButtonDisabled]}
+                onPress={handleSecurityComplete}
+                disabled={!emailCode || !authenticatorCode}
+              >
+                <ThemedText style={styles.securityProceedButtonText}>Proceed</ThemedText>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Transaction Success Modal */}
       <TransactionSuccessModal
         visible={showSuccessModal}
         transaction={{
-          amount: `${amount} ${selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}`,
-          fee: `0.000001 ${selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}`,
+          amount: `${amount} ${selectedAsset?.name || 'BTC'}`,
+          fee: transferData?.fee ? `${transferData.fee} ${selectedAsset?.name || 'BTC'}` : `0 ${selectedAsset?.name || 'BTC'}`,
           transactionType: 'send',
         }}
         onViewTransaction={handleViewTransaction}
@@ -810,28 +1051,40 @@ const SendFundCrypto = () => {
       />
 
       {/* Transaction Receipt Modal */}
-      <TransactionReceiptModal
-        visible={showReceiptModal}
-        transaction={{
-          transactionType: 'send',
-          transactionTitle: `Send Crypto - ${selectedAsset.name}`,
-          transferAmount: `${amount} ${selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}`,
-          fee: `0.000001 ${selectedAsset.name === 'Bitcoin' ? 'BTC' : selectedAsset.name === 'Ethereum' ? 'ETH' : 'SOL'}`,
-          paymentAmount: `$2,550.50`,
-          country: selectedNetwork?.name || 'Ethereum',
-          recipientName: walletAddress.substring(0, 10) + '...',
-          transactionId: `SC${Date.now().toString().slice(-10)}`,
-          dateTime: new Date().toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          paymentMethod: 'Wallet Address',
-        }}
-        onClose={handleReceiptClose}
-      />
+      {receiptData?.data && (
+        <TransactionReceiptModal
+          visible={showReceiptModal}
+          transaction={{
+            transactionType: 'send',
+            transactionTitle: `Send Crypto - ${selectedAsset?.name || 'Crypto'}`,
+            transactionId: receiptData.data.reference || `TXN-${transactionId}`,
+            dateTime: receiptData.data.completedAt 
+              ? new Date(receiptData.data.completedAt).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              : new Date().toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+            transferAmount: `${receiptData.data.amount} ${receiptData.data.currency}`,
+            fee: receiptData.data.fee ? `${receiptData.data.fee} ${receiptData.data.currency}` : '0',
+            paymentAmount: `${parseFloat(receiptData.data.amount) + parseFloat(receiptData.data.fee || '0')} ${receiptData.data.currency}`,
+            recipientName: receiptData.data.recipientInfo?.firstName 
+              ? `${receiptData.data.recipientInfo.firstName} ${receiptData.data.recipientInfo.lastName || ''}`.trim()
+              : receiptData.data.recipientInfo?.email || 'Rhinox User',
+            status: receiptData.data.status || 'completed',
+            paymentMethod: 'Rhinox User Transfer',
+          }}
+          onClose={handleReceiptClose}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 };
@@ -1065,6 +1318,73 @@ const styles = StyleSheet.create({
     minHeight: 60 * SCALE,
   },
   networkFieldText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  countryField: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF08',
+    borderRadius: 12 * SCALE,
+    borderWidth: 0.3,
+    borderColor: '#FFFFFF33',
+    paddingHorizontal: 11 * SCALE,
+    minHeight: 60 * SCALE,
+  },
+  countryFieldText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  inputHint: {
+    fontSize: 10 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginTop: 4 * SCALE,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20 * SCALE,
+    marginTop: 10 * SCALE,
+    borderBottomWidth: 0.3,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10 * SCALE,
+  },
+  countryFlag: {
+    fontSize: 20,
+    marginRight: 15,
+  },
+  countryFlagImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginRight: 15,
+  },
+  countryName: {
+    flex: 1,
+    fontSize: 11.2,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 12 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginTop: 15 * SCALE,
+    marginBottom: 15 * SCALE,
+    gap: 10 * SCALE,
+  },
+  searchInput: {
+    flex: 1,
     fontSize: 14 * SCALE,
     fontWeight: '300',
     color: '#FFFFFF',
@@ -1462,8 +1782,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20 * SCALE,
     paddingTop: 20 * SCALE,
     paddingBottom: 30 * SCALE,
-    alignItems: 'center',
     maxHeight: '90%',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  securityModalScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  securityModalScrollContent: {
+    alignItems: 'center',
+    paddingBottom: 20 * SCALE,
   },
   securityModalHeader: {
     flexDirection: 'row',
@@ -1566,6 +1895,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 60 * SCALE,
     width: '100%',
+    marginTop: 10 * SCALE,
+    marginBottom: 10 * SCALE,
   },
   securityProceedButtonDisabled: {
     backgroundColor: 'rgba(169, 239, 69, 0.3)',

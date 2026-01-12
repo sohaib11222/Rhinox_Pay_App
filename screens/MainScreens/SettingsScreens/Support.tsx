@@ -11,6 +11,8 @@ import {
     TextInput,
     RefreshControl,
     ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -413,79 +415,100 @@ const Support = () => {
                 transparent={true}
                 onRequestClose={() => setShowDetailsModal(false)}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        {/* Modal Header */}
-                        <View style={styles.modalHeader}>
-                            <ThemedText style={styles.modalTitle}>Details</ThemedText>
-                            <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
-                                <View style={styles.closeButtonCircle}>
-                                    <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
-                                </View>
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Form Fields */}
-                        <View style={styles.formContainer}>
-                            <View style={styles.formField}>
-                                <ThemedText style={styles.fieldLabel}>Name</ThemedText>
-                                <View style={styles.inputContainer}>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="Qamardeen Abdul Malik"
-                                        placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                                        value={chatName}
-                                        onChangeText={setChatName}
-                                    />
-                                </View>
-                            </View>
-
-                            <View style={styles.formField}>
-                                <ThemedText style={styles.fieldLabel}>Email</ThemedText>
-                                <View style={styles.inputContainer}>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="abcdfgett@gmail.com"
-                                        placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                                        value={chatEmail}
-                                        onChangeText={setChatEmail}
-                                        keyboardType="email-address"
-                                        autoCapitalize="none"
-                                    />
-                                </View>
-                            </View>
-
-                            <View style={styles.formField}>
-                                <ThemedText style={styles.fieldLabel}>Reason</ThemedText>
-                                <TouchableOpacity
-                                    style={styles.inputContainer}
-                                    onPress={handleSelectReason}
-                                >
-                                    <ThemedText style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
-                                        {selectedReason ? reasonOptions.find((r) => r.id === selectedReason)?.label : 'Select reason'}
-                                    </ThemedText>
-                                    <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                    style={styles.modalKeyboardView}
+                >
+                    <TouchableOpacity 
+                        style={styles.modalOverlay}
+                        activeOpacity={1}
+                        onPress={() => setShowDetailsModal(false)}
+                    >
+                        <View 
+                            style={styles.modalContent}
+                            onStartShouldSetResponder={() => true}
+                        >
+                            {/* Modal Header */}
+                            <View style={styles.modalHeader}>
+                                <ThemedText style={styles.modalTitle}>Details</ThemedText>
+                                <TouchableOpacity onPress={() => setShowDetailsModal(false)}>
+                                    <View style={styles.closeButtonCircle}>
+                                        <MaterialCommunityIcons name="close" size={20 * SCALE} color="#000" />
+                                    </View>
                                 </TouchableOpacity>
                             </View>
-                        </View>
 
-                        {/* Save Button */}
-                        <TouchableOpacity
-                            style={[
-                                styles.saveButton, 
-                                (!chatName || !chatEmail || !selectedReason || createChatMutation.isPending) && styles.saveButtonDisabled
-                            ]}
-                            onPress={handleSaveDetails}
-                            disabled={!chatName || !chatEmail || !selectedReason || createChatMutation.isPending}
-                        >
-                            {createChatMutation.isPending ? (
-                                <ActivityIndicator size="small" color="#000000" />
-                            ) : (
-                                <ThemedText style={styles.saveButtonText}>Save</ThemedText>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                </View>
+                            {/* Form Fields */}
+                            <ScrollView
+                                style={styles.modalScrollView}
+                                contentContainerStyle={styles.modalScrollContent}
+                                keyboardShouldPersistTaps="handled"
+                                showsVerticalScrollIndicator={false}
+                                nestedScrollEnabled={true}
+                            >
+                                <View style={styles.formContainer}>
+                                    <View style={styles.formField}>
+                                        <ThemedText style={styles.fieldLabel}>Name</ThemedText>
+                                        <View style={styles.inputContainer}>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="Qamardeen Abdul Malik"
+                                                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                                value={chatName}
+                                                onChangeText={setChatName}
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.formField}>
+                                        <ThemedText style={styles.fieldLabel}>Email</ThemedText>
+                                        <View style={styles.inputContainer}>
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="abcdfgett@gmail.com"
+                                                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                                                value={chatEmail}
+                                                onChangeText={setChatEmail}
+                                                keyboardType="email-address"
+                                                autoCapitalize="none"
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.formField}>
+                                        <ThemedText style={styles.fieldLabel}>Reason</ThemedText>
+                                        <TouchableOpacity
+                                            style={styles.inputContainer}
+                                            onPress={handleSelectReason}
+                                        >
+                                            <ThemedText style={[styles.input, !selectedReason && styles.inputPlaceholder]}>
+                                                {selectedReason ? reasonOptions.find((r) => r.id === selectedReason)?.label : 'Select reason'}
+                                            </ThemedText>
+                                            <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </ScrollView>
+
+                            {/* Save Button */}
+                            <TouchableOpacity
+                                style={[
+                                    styles.saveButton, 
+                                    (!chatName || !chatEmail || !selectedReason || createChatMutation.isPending) && styles.saveButtonDisabled
+                                ]}
+                                onPress={handleSaveDetails}
+                                disabled={!chatName || !chatEmail || !selectedReason || createChatMutation.isPending}
+                            >
+                                {createChatMutation.isPending ? (
+                                    <ActivityIndicator size="small" color="#000000" />
+                                ) : (
+                                    <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </TouchableOpacity>
+                </KeyboardAvoidingView>
             </Modal>
 
             {/* Select Reason Modal */}
@@ -698,6 +721,9 @@ const styles = StyleSheet.create({
         fontWeight: '400',
         color: '#000000',
     },
+    modalKeyboardView: {
+        flex: 1,
+    },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -707,8 +733,16 @@ const styles = StyleSheet.create({
         backgroundColor: '#020c19',
         borderTopLeftRadius: 20 * SCALE,
         borderTopRightRadius: 20 * SCALE,
-        paddingBottom: 40 * SCALE,
+        paddingBottom: Platform.OS === 'ios' ? 40 * SCALE : 20 * SCALE,
         maxHeight: '90%',
+        minHeight: '50%',
+    },
+    modalScrollView: {
+        maxHeight: '60%',
+    },
+    modalScrollContent: {
+        paddingBottom: 20 * SCALE,
+        flexGrow: 1,
     },
     modalHeader: {
         flexDirection: 'row',

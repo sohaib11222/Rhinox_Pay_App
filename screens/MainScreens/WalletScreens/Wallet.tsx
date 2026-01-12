@@ -1072,54 +1072,54 @@ const Wallet = () => {
                     const isButtonDisabled = isDataLoading || !hasData;
                     
                     return (
-                      <TouchableOpacity
-                        key={action.id}
-                        onPress={() => {
-                          if (action.id === '1' && action.title === 'Deposit') {
-                            // Navigate to CryptoDeposit screen in Transactions stack
-                            // @ts-ignore - allow parent route name
-                            navigation.navigate('Transactions' as never, {
-                              screen: 'CryptoDeposit' as never,
-                            } as never);
-                          } else if (action.id === '2' && action.title === 'Withdraw') {
-                            // Navigate to CryptoWithdrawals screen in Transactions stack
-                            // @ts-ignore - allow parent route name
-                            navigation.navigate('Transactions' as never, {
-                              screen: 'CryptoWithdrawals' as never,
-                            } as never);
-                          } else if (action.id === '3' && action.title === 'P2P') {
+                    <TouchableOpacity
+                      key={action.id}
+                      onPress={() => {
+                        if (action.id === '1' && action.title === 'Deposit') {
+                          // Navigate to CryptoDeposit screen in Transactions stack
+                          // @ts-ignore - allow parent route name
+                          navigation.navigate('Transactions' as never, {
+                            screen: 'CryptoDeposit' as never,
+                          } as never);
+                        } else if (action.id === '2' && action.title === 'Withdraw') {
+                          // Navigate to CryptoWithdrawals screen in Transactions stack
+                          // @ts-ignore - allow parent route name
+                          navigation.navigate('Transactions' as never, {
+                            screen: 'CryptoWithdrawals' as never,
+                          } as never);
+                        } else if (action.id === '3' && action.title === 'P2P') {
                             // Navigate to P2PFund screen in Settings stack to browse P2P ads and create orders
-                            // @ts-ignore - allow parent route name
+                          // @ts-ignore - allow parent route name
                             navigation.navigate('Settings' as never, {
                               screen: 'P2PFund' as never,
-                            } as never);
-                          }
-                        }}
+                          } as never);
+                        }
+                      }}
                         disabled={isButtonDisabled}
                         style={[
                           styles.cryptoOverlaidActionButton,
                           isButtonDisabled && styles.cryptoOverlaidActionButtonDisabled
                         ]}
-                      >
+                    >
                         {isDataLoading ? (
                           <ActivityIndicator size="small" color="#FFFFFF" style={{ marginBottom: 8 * SCALE }} />
                         ) : (
                           <>
-                            {action.id === '2' ? (
-                              <View style={{ transform: [{ rotate: '180deg' }] }}>
-                                <Image
-                                  source={action.icon}
-                                  style={styles.cryptoOverlaidActionIcon}
-                                  resizeMode="contain"
-                                />
-                              </View>
-                            ) : (
-                              <Image
-                                source={action.icon}
-                                style={styles.cryptoOverlaidActionIcon}
-                                resizeMode="contain"
-                              />
-                            )}
+                      {action.id === '2' ? (
+                        <View style={{ transform: [{ rotate: '180deg' }] }}>
+                          <Image
+                            source={action.icon}
+                            style={styles.cryptoOverlaidActionIcon}
+                            resizeMode="contain"
+                          />
+                        </View>
+                      ) : (
+                        <Image
+                          source={action.icon}
+                          style={styles.cryptoOverlaidActionIcon}
+                          resizeMode="contain"
+                        />
+                      )}
                           </>
                         )}
                         <ThemedText style={[
@@ -1128,7 +1128,7 @@ const Wallet = () => {
                         ]}>
                           {action.title}
                         </ThemedText>
-                      </TouchableOpacity>
+                    </TouchableOpacity>
                     );
                   })}
                 </View>

@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   ActionSheetIOS,
   Keyboard,
+  Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -45,6 +46,7 @@ const ChatScreen = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
+  const [showImagePickerModal, setShowImagePickerModal] = useState(false);
   // Store image URIs for sent messages (keyed by message text + timestamp)
   const [sentImageMap, setSentImageMap] = useState<Map<string, string>>(new Map());
   const scrollViewRef = useRef<ScrollView>(null);
@@ -264,7 +266,7 @@ const ChatScreen = () => {
         // Scroll to bottom when keyboard appears
         setTimeout(() => {
           scrollViewRef.current?.scrollToEnd({ animated: true });
-        }, 100);
+        }, Platform.OS === 'ios' ? 250 : 300);
       }
     );
 
@@ -298,17 +300,18 @@ const ChatScreen = () => {
         }
       );
     } else {
-      showAlert({
-        title: 'Select Image',
-        message: 'Choose an option',
-        type: 'info',
-        buttons: [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Take Photo', onPress: handleTakePhoto },
-          { text: 'Choose from Library', onPress: handlePickImage },
-        ],
-      });
+      setShowImagePickerModal(true);
     }
+  };
+
+  const handleTakePhotoFromModal = async () => {
+    setShowImagePickerModal(false);
+    await handleTakePhoto();
+  };
+
+  const handlePickImageFromModal = async () => {
+    setShowImagePickerModal(false);
+    await handlePickImage();
   };
 
   const handleTakePhoto = async () => {
@@ -485,11 +488,18 @@ const ChatScreen = () => {
           </TouchableOpacity>
         </View>
       ) : (
-        <View style={styles.chatWrapper}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+          style={styles.chatWrapper}
+        >
           <ScrollView
             ref={scrollViewRef}
             style={styles.chatContainer}
-            contentContainerStyle={styles.chatContent}
+            contentContainerStyle={[
+              styles.chatContent,
+              { paddingBottom: (keyboardHeight > 0 ? keyboardHeight : 0) + 120 * SCALE }
+            ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             refreshControl={
@@ -608,11 +618,7 @@ const ChatScreen = () => {
           )}
 
           {/* Message Input */}
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            style={styles.keyboardAvoidingView}
-          >
+          <View style={styles.inputWrapper}>
             <View style={styles.inputContainer}>
               <TouchableOpacity 
                 style={styles.attachmentButton}
@@ -635,7 +641,7 @@ const ChatScreen = () => {
                   // Scroll to bottom when input is focused
                   setTimeout(() => {
                     scrollViewRef.current?.scrollToEnd({ animated: true });
-                  }, 100);
+                  }, Platform.OS === 'ios' ? 300 : 500);
                 }}
               />
               <TouchableOpacity 
@@ -657,9 +663,62 @@ const ChatScreen = () => {
                 )}
               </TouchableOpacity>
             </View>
-          </KeyboardAvoidingView>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       )}
+
+      {/* Image Picker Modal - Android */}
+      <Modal
+        visible={showImagePickerModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowImagePickerModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowImagePickerModal(false)}
+        >
+          <View style={styles.imagePickerModalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.imagePickerModalHeader}>
+              <ThemedText style={styles.imagePickerModalTitle}>Select Image</ThemedText>
+              <TouchableOpacity
+                onPress={() => setShowImagePickerModal(false)}
+                style={styles.imagePickerModalCloseButton}
+              >
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.imagePickerOption}
+              onPress={handleTakePhotoFromModal}
+            >
+              <MaterialCommunityIcons name="camera-outline" size={24 * SCALE} color="#FFFFFF" style={styles.imagePickerOptionIcon} />
+              <ThemedText style={styles.imagePickerOptionText}>Take Photo</ThemedText>
+              <MaterialCommunityIcons name="chevron-right" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+            </TouchableOpacity>
+
+            <View style={styles.imagePickerOptionDivider} />
+
+            <TouchableOpacity
+              style={styles.imagePickerOption}
+              onPress={handlePickImageFromModal}
+            >
+              <MaterialCommunityIcons name="image-outline" size={24 * SCALE} color="#FFFFFF" style={styles.imagePickerOptionIcon} />
+              <ThemedText style={styles.imagePickerOptionText}>Choose from Library</ThemedText>
+              <MaterialCommunityIcons name="chevron-right" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.imagePickerCancelButton}
+              onPress={() => setShowImagePickerModal(false)}
+            >
+              <ThemedText style={styles.imagePickerCancelButtonText}>Cancel</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -720,10 +779,13 @@ const styles = StyleSheet.create({
   chatContent: {
     paddingHorizontal: 20 * SCALE,
     paddingTop: 20 * SCALE,
-    paddingBottom: 100 * SCALE,
+    flexGrow: 1,
   },
-  keyboardAvoidingView: {
+  inputWrapper: {
     backgroundColor: 'transparent',
+    ...(Platform.OS === 'android' && {
+      position: 'relative',
+    }),
   },
   chatStartIndicator: {
     backgroundColor: '#A9EF451A',
@@ -951,6 +1013,83 @@ const styles = StyleSheet.create({
     height: 200 * SCALE,
     borderRadius: 10 * SCALE,
     marginBottom: 8 * SCALE,
+  },
+  // Image Picker Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  imagePickerModalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingBottom: 30 * SCALE,
+    paddingTop: 20 * SCALE,
+    maxHeight: '50%',
+  },
+  imagePickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20 * SCALE,
+    paddingBottom: 18 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: 10 * SCALE,
+  },
+  imagePickerModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  imagePickerModalCloseButton: {
+    padding: 4 * SCALE,
+  },
+  imagePickerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20 * SCALE,
+    paddingVertical: 18 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 10 * SCALE,
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  imagePickerOptionIcon: {
+    marginRight: 15 * SCALE,
+  },
+  imagePickerOptionText: {
+    flex: 1,
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    textAlign: 'left',
+  },
+  imagePickerOptionDivider: {
+    height: 0.3,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginHorizontal: 20 * SCALE,
+    marginVertical: 5 * SCALE,
+  },
+  imagePickerCancelButton: {
+    marginHorizontal: 20 * SCALE,
+    marginTop: 10 * SCALE,
+    paddingVertical: 16 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePickerCancelButtonText: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
 });
 

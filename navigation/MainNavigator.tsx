@@ -46,6 +46,7 @@ import AdDetails from "../screens/MainScreens/P2PScreens/AdDetails";
 import SendFundsScreen from "../screens/MainScreens/P2PScreens/SendFundsScreen";
 import SendFundsDirectScreen from "../screens/MainScreens/SendFundScreens/SendFundsDirectScreen";
 import SendFundCrypto from "../screens/MainScreens/SendFundScreens/SendFundCrypto";
+import WalletAddressScreen from "../screens/MainScreens/SendFundScreens/WalletAddressScreen";
 import FundWalletScreen from "../screens/MainScreens/SendFundScreens/FundWalletScreen";
 import MobileFundScreen from "../screens/MainScreens/SendFundScreens/MobileFundScreen";
 import Conversion from "../screens/MainScreens/SendFundScreens/Conversion";
@@ -127,6 +128,7 @@ const SettingsStackNavigator = () => {
       <SettingsStack.Screen name="SendFunds" component={SendFundsScreen} />
       <SettingsStack.Screen name="SendFundsDirect" component={SendFundsDirectScreen} />
       <SettingsStack.Screen name="SendFundCrypto" component={SendFundCrypto} />
+      <SettingsStack.Screen name="WalletAddress" component={WalletAddressScreen} />
       <SettingsStack.Screen name="FundWallet" component={FundWalletScreen} />
       <SettingsStack.Screen name="MobileFund" component={MobileFundScreen} />
       <SettingsStack.Screen name="Conversion" component={Conversion} />

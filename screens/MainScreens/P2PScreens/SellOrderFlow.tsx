@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -16,6 +17,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
+import { useCreateP2POrder, useMarkPaymentReceived, useCreateP2PReview } from '../../../mutations/p2p.mutations';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -42,6 +45,10 @@ const SellOrderFlow = () => {
     skipInitialScreen?: boolean;
     orderId?: string;
     paymentMethod?: string;
+    adId?: string;
+    cryptoAmount?: string;
+    paymentMethodId?: string;
+    adDetails?: any;
   } | undefined;
   
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
@@ -65,6 +72,210 @@ const SellOrderFlow = () => {
   // Security verification states
   const [emailCode, setEmailCode] = useState('');
   const [authenticatorCode, setAuthenticatorCode] = useState('');
+
+  // Order ID state - use from route params or create new
+  const orderId = routeParams?.orderId || '';
+
+  // Fetch order details if orderId exists
+  const {
+    data: orderDetailsData,
+    isLoading: isLoadingOrderDetails,
+    refetch: refetchOrderDetails,
+  } = useGetP2POrderDetails(orderId);
+
+  // Poll for order updates if order is in progress
+  useEffect(() => {
+    if (orderId && orderDetailsData?.data) {
+      const status = orderDetailsData.data.status;
+      if (['pending', 'awaiting_payment', 'payment_made'].includes(status)) {
+        const interval = setInterval(() => {
+          refetchOrderDetails();
+        }, 5000);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [orderId, orderDetailsData?.data?.status, refetchOrderDetails]);
+
+  // Create order mutation
+  const createOrderMutation = useCreateP2POrder({
+    onSuccess: (data) => {
+      const createdOrderId = data?.data?.id;
+      if (createdOrderId) {
+        // Navigate to order flow with orderId
+        (navigation as any).replace('SellOrderFlow', {
+          orderId: String(createdOrderId),
+          skipInitialScreen: true,
+        });
+        showSuccessAlert('Success', 'Order created successfully');
+      }
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to create order. Please try again.');
+    },
+  });
+
+  // Mark payment received mutation
+  const markPaymentReceivedMutation = useMarkPaymentReceived({
+    onSuccess: () => {
+      showSuccessAlert('Success', 'Payment confirmed successfully');
+      setShowSecurityModal(false);
+      setShowPinModal(false);
+      setPaymentConfirmed(true);
+      setCurrentStep(3); // Move to Awaiting Coin Release
+      // Refetch order details to get updated status
+      refetchOrderDetails();
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to confirm payment. Please try again.');
+    },
+  });
+
+  // Create review mutation
+  const createReviewMutation = useCreateP2PReview({
+    onSuccess: () => {
+      showSuccessAlert('Success', 'Review submitted successfully');
+      // Optionally navigate away or refresh
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to submit review. Please try again.');
+    },
+  });
+
+  // Map API order status to UI step
+  useEffect(() => {
+    if (orderDetailsData?.data) {
+      const status = orderDetailsData.data.status;
+      switch (status) {
+        case 'pending':
+          setCurrentStep(1);
+          break;
+        case 'awaiting_payment':
+          setCurrentStep(2);
+          break;
+        case 'payment_made':
+          setCurrentStep(3);
+          break;
+        case 'awaiting_coin_release':
+          setCurrentStep(3);
+          break;
+        case 'completed':
+          setCurrentStep(4);
+          break;
+        default:
+          setCurrentStep(1);
+      }
+    }
+  }, [orderDetailsData?.data?.status]);
+
+  // Create order when coming from ad details
+  useEffect(() => {
+    if (routeParams?.adId && routeParams?.cryptoAmount && routeParams?.paymentMethodId && !orderId) {
+      createOrderMutation.mutate({
+        adId: String(routeParams.adId),
+        cryptoAmount: routeParams.cryptoAmount,
+        paymentMethodId: String(routeParams.paymentMethodId),
+      });
+    }
+  }, [routeParams?.adId, routeParams?.cryptoAmount, routeParams?.paymentMethodId]);
+
+  // Transform API order data to UI format
+  const orderData = useMemo(() => {
+    if (orderDetailsData?.data) {
+      const order = orderDetailsData.data;
+      const vendor = order.vendor || order.buyer || {};
+      const paymentMethod = order.paymentMethod || {};
+      
+      // Format vendor name
+      const vendorName = vendor.firstName && vendor.lastName
+        ? `${vendor.firstName} ${vendor.lastName}`.trim()
+        : vendor.firstName || vendor.lastName || 'Vendor';
+      
+      // Format amount
+      const fiatAmount = order.fiatAmount ? parseFloat(order.fiatAmount).toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }) : '0.00';
+      
+      const cryptoAmount = order.cryptoAmount ? parseFloat(order.cryptoAmount).toFixed(2) : '0.00';
+      
+      // Format order time
+      let orderTime = 'N/A';
+      if (order.createdAt) {
+        try {
+          const date = new Date(order.createdAt);
+          orderTime = date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        } catch {
+          orderTime = 'N/A';
+        }
+      }
+
+      // Get payment account details
+      let bankName = 'N/A';
+      let accountNumber = 'N/A';
+      let accountName = 'N/A';
+      
+      if (paymentMethod.type === 'rhinoxpay' || paymentMethod.name === 'RhinoxPay ID') {
+        bankName = 'RhinoxPay ID';
+        accountNumber = paymentMethod.accountNumber || 'N/A';
+        accountName = vendorName;
+      } else if (paymentMethod.type === 'bank_account' || paymentMethod.bankName) {
+        bankName = paymentMethod.bankName || 'N/A';
+        accountNumber = paymentMethod.accountNumber || 'N/A';
+        accountName = paymentMethod.accountName || vendorName;
+      }
+
+      return {
+        vendorName,
+        vendorAvatar: require('../../../assets/login/memoji.png'), // Default avatar
+        vendorStatus: 'Online', // TODO: Get from vendor data if available
+        vendorRating: '98%', // TODO: Get from vendor data if available
+        rate: order.price ? `N${parseFloat(order.price).toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}` : 'N0.00',
+        buyerName: vendorName,
+        amountToBePaid: `N${fiatAmount}`,
+        paymentAccount: paymentMethod.name || 'Bank Transfer',
+        price: `N${parseFloat(order.price || '0').toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
+        txId: order.id || 'N/A',
+        orderTime,
+        amountToPay: `N${fiatAmount}`,
+        bankName,
+        accountNumber,
+        accountName,
+        usdtAmount: `${cryptoAmount} USDT`,
+      };
+    }
+    
+    // Default/fallback data
+    return {
+      vendorName: routeParams?.adDetails?.vendor?.firstName || 'Vendor',
+      vendorAvatar: require('../../../assets/login/memoji.png'),
+      vendorStatus: 'Online',
+      vendorRating: '98%',
+      rate: 'N1,520',
+      buyerName: 'Lawal Afeez',
+      amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N25,000',
+      paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
+      price: '1,500 NGN',
+      txId: '128DJ2I3I1DJKQKCM',
+      orderTime: 'Oct 16, 2025 - 07:22AM',
+      amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
+      bankName: 'Opay',
+      accountNumber: '1234567890',
+      accountName: 'Qamardeen Abdul Malik',
+      usdtAmount: routeParams?.assetAmount || '15 USDT',
+    };
+  }, [orderDetailsData?.data, routeParams]);
 
   // Countdown timer for Step 1
   useEffect(() => {
@@ -115,26 +326,6 @@ const SellOrderFlow = () => {
     }
   }, [routeParams?.skipInitialScreen, routeParams?.paymentMethod]);
 
-  // Mock order data - TODO: Replace with API call
-  // Use route params if available (from AdDetails), otherwise use default values
-  const orderData = {
-    vendorName: 'Qamar Malik',
-    vendorAvatar: require('../../../assets/login/memoji.png'),
-    vendorStatus: 'Online',
-    vendorRating: '98%',
-    rate: 'N1,520',
-    buyerName: 'Lawal Afeez',
-    amountToBePaid: '25,000',
-    paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
-    price: '1,500 NGN',
-    txId: '128DJ2I3I1DJKQKCM',
-    orderTime: 'Oct 16, 2025 - 07:22AM',
-    amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
-    bankName: 'Opay',
-    accountNumber: '1234567890',
-    accountName: 'Qamardeen Abdul Malik',
-    usdtAmount: routeParams?.assetAmount || '15 USDT',
-  };
 
   const handleSell = () => {
     if (!amount || !selectedPaymentMethod) {
@@ -209,11 +400,20 @@ const SellOrderFlow = () => {
   };
 
   const handleSecurityProceed = () => {
-    if (emailCode && authenticatorCode) {
+    if (emailCode && authenticatorCode && orderId) {
+      // Mark payment as received via API
+      markPaymentReceivedMutation.mutate({
+        orderId: String(orderId),
+        confirmed: true,
+      });
+      // Clear codes
+      setEmailCode('');
+      setAuthenticatorCode('');
+    } else if (emailCode && authenticatorCode) {
+      // Fallback for mock flow
       setShowSecurityModal(false);
       setPaymentConfirmed(true);
-      setCurrentStep(3); // Move to Awaiting Coin Release
-      // After some time, move to step 4
+      setCurrentStep(3);
       setTimeout(() => {
         setCurrentStep(4);
       }, 2000);
@@ -231,9 +431,16 @@ const SellOrderFlow = () => {
   };
 
   const handleSendReview = () => {
-    // TODO: Implement API call to submit review
-    console.log('Review submitted:', { rating: reviewRating, text: reviewText });
-    showSuccessAlert('Success', 'Review submitted successfully');
+    if (!reviewRating || !orderId) {
+      showErrorAlert('Error', 'Please select a rating');
+      return;
+    }
+    
+    createReviewMutation.mutate({
+      orderId: String(orderId),
+      type: reviewRating,
+      comment: reviewText.trim() || undefined,
+    });
   };
 
   const formatCountdown = (seconds: number) => {
@@ -499,6 +706,19 @@ const SellOrderFlow = () => {
             </View>
           </View>
         </Modal>
+      </View>
+    );
+  }
+
+  // Show loading while creating order or loading order details
+  if (createOrderMutation.isPending || (orderId && isLoadingOrderDetails)) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#020c19" />
+        <ActivityIndicator size="large" color="#A9EF45" />
+        <ThemedText style={{ marginTop: 20 * SCALE, color: '#FFFFFF' }}>
+          {createOrderMutation.isPending ? 'Creating order...' : 'Loading order details...'}
+        </ThemedText>
       </View>
     );
   }

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Image,
   Dimensions,
   StatusBar,
@@ -51,6 +52,8 @@ const P2PProfile = () => {
   const [showCountryModal, setShowCountryModal] = useState(false);
   const [selectedCountryId, setSelectedCountryId] = useState<number | null>(1);
   const [showAdTypeModal, setShowAdTypeModal] = useState(false);
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'All' | 'Active' | 'Completed' | 'Cancelled'>('All');
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
   // Fetch countries from API
   const {
@@ -232,11 +235,20 @@ const P2PProfile = () => {
     };
 
     const filteredOrders = useMemo(() => {
-        if (selectedTab === 'All') {
-            return orders;
+        let filtered = orders;
+        
+        // Filter by type (All, Buy, Sell)
+        if (selectedTab !== 'All') {
+            filtered = filtered.filter(order => order.type === selectedTab);
         }
-        return orders.filter(order => order.type === selectedTab);
-    }, [orders, selectedTab]);
+        
+        // Filter by status (All, Active, Completed, Cancelled)
+        if (selectedStatusFilter !== 'All') {
+            filtered = filtered.filter(order => order.status === selectedStatusFilter);
+        }
+        
+        return filtered;
+    }, [orders, selectedTab, selectedStatusFilter]);
 
     // Pull-to-refresh functionality
     const handleRefresh = async () => {
@@ -333,7 +345,8 @@ const P2PProfile = () => {
                         style={[styles.toggleButton, styles.toggleButtonLeft]}
                         onPress={() => {
                             (navigation as any).navigate('Settings', {
-                                screen: 'BuyOrder',
+                                screen: 'P2PFund',
+                                params: { initialTab: 'Buy' },
                             });
                         }}
                     >
@@ -347,8 +360,14 @@ const P2PProfile = () => {
                     <TouchableOpacity
                         style={[styles.toggleButton, styles.toggleButtonRight]}
                         onPress={() => {
-                            (navigation as any).navigate('Settings', {
-                                screen: 'SellOrder',
+                            (navigation as any).navigate('Tabs', {
+                                screen: 'SendFund',
+                                params: {
+                                    screen: 'P2PFund',
+                                    params: {
+                                        initialTab: 'Sell',
+                                    },
+                                },
                             });
                         }}
                     >
@@ -491,20 +510,56 @@ const P2PProfile = () => {
                 </View>
 
                 {/* Filter Dropdown */}
-                <View style={styles.filterDropdownContainer}>
-                    <TouchableOpacity style={styles.filterDropdown}>
-                        <ThemedText style={styles.filterDropdownText}>All</ThemedText>
-                        <MaterialCommunityIcons
-                            name="chevron-down"
-                            size={14 * SCALE}
-                            color="#FFFFFF"
-                        />
-                        <Image
-                            source={require('../../../assets/Vector (35).png')}
-                            style={{width: 14 * SCALE, height: 13 * SCALE, alignItems: 'flex-end', alignSelf:'flex-end', marginLeft: 290 }}
-                            resizeMode="cover"
-                        />
-                    </TouchableOpacity>
+                <View style={styles.filterDropdownWrapper}>
+                    <View style={styles.filterDropdownContainer}>
+                        <TouchableOpacity 
+                            style={styles.filterDropdown}
+                            onPress={() => setShowStatusDropdown(!showStatusDropdown)}
+                            activeOpacity={0.7}
+                        >
+                            <ThemedText style={styles.filterDropdownText}>{selectedStatusFilter}</ThemedText>
+                            <View style={styles.filterDropdownIcons}>
+                                <Image
+                                    source={require('../../../assets/Vector (35).png')}
+                                    style={styles.filterIcon}
+                                    resizeMode="cover"
+                                />
+                                <MaterialCommunityIcons
+                                    name={showStatusDropdown ? "chevron-up" : "chevron-down"}
+                                    size={14 * SCALE}
+                                    color="#FFFFFF"
+                                />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+                    
+                    {/* Dropdown Menu */}
+                    {showStatusDropdown && (
+                        <View style={styles.dropdownMenu}>
+                            {['All', 'Active', 'Completed', 'Cancelled'].map((status) => (
+                                <TouchableOpacity
+                                    key={status}
+                                    style={[
+                                        styles.dropdownMenuItem,
+                                        selectedStatusFilter === status && styles.dropdownMenuItemActive
+                                    ]}
+                                    onPress={() => {
+                                        setSelectedStatusFilter(status as 'All' | 'Active' | 'Completed' | 'Cancelled');
+                                        setShowStatusDropdown(false);
+                                    }}
+                                >
+                                    <ThemedText
+                                        style={[
+                                            styles.dropdownMenuItemText,
+                                            selectedStatusFilter === status && styles.dropdownMenuItemTextActive
+                                        ]}
+                                    >
+                                        {status}
+                                    </ThemedText>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
                 </View>
 
                 {/* Orders List - Scrollable inside main card */}
@@ -957,8 +1012,19 @@ const styles = StyleSheet.create({
     filterTabTextActive: {
         color: '#000000',
     },
-    filterDropdownContainer: {
+    filterDropdownWrapper: {
+        position: 'relative',
         marginBottom: 3 * SCALE,
+        zIndex: 10,
+    },
+    dropdownMenuOverlay: {
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        marginTop: 8 * SCALE,
+    },
+    filterDropdownContainer: {
         backgroundColor: '#FFFFFF0D',
         borderWidth: 0.3,
         borderColor: 'rgba(255, 255, 255, 0.2)',
@@ -969,13 +1035,58 @@ const styles = StyleSheet.create({
     filterDropdown: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8 * SCALE,
-        alignSelf: 'flex-start',
+        justifyContent: 'space-between',
+        width: '100%',
     },
     filterDropdownText: {
         fontSize: 12 * SCALE,
         fontWeight: '300',
         color: '#FFFFFF',
+        flex: 1,
+    },
+    filterDropdownIcons: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8 * SCALE,
+    },
+    filterIcon: {
+        width: 14 * SCALE,
+        height: 13 * SCALE,
+    },
+    dropdownMenu: {
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        marginTop: 8 * SCALE,
+        backgroundColor: '#1a2332',
+        borderWidth: 0.3,
+        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: 10 * SCALE,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    dropdownMenuItem: {
+        paddingHorizontal: 15 * SCALE,
+        paddingVertical: 12 * SCALE,
+        borderBottomWidth: 0.3,
+        borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    dropdownMenuItemActive: {
+        backgroundColor: 'rgba(169, 239, 69, 0.1)',
+    },
+    dropdownMenuItemText: {
+        fontSize: 12 * SCALE,
+        fontWeight: '300',
+        color: 'rgba(255, 255, 255, 0.8)',
+    },
+    dropdownMenuItemTextActive: {
+        color: '#A9EF45',
+        fontWeight: '500',
     },
     ordersScrollView: {
         flex: 1,

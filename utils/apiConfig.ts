@@ -19,7 +19,7 @@ const getApiBaseUrl = (): string => {
     // For Android emulator, use 10.0.2.2
     // For physical device, replace with your computer's IP address
     // Example: return 'http://192.168.1.100:3000/api';
-    return 'http://10.118.170.151:3000/api';
+    return 'http://10.14.151.151:3000/api';
   }
   
   // For iOS simulator, localhost works
@@ -256,14 +256,29 @@ export const API_ROUTES = {
 /**
  * Helper function to build full API URL
  */
-export const buildApiUrl = (route: string, params?: Record<string, string | number>): string => {
-  let url = `${API_BASE_URL}${route}`;
+export const buildApiUrl = (route: string, params?: Record<string, string | number | undefined>): string => {
+  // Ensure route starts with / if it doesn't already
+  const cleanRoute = route.startsWith('/') ? route : `/${route}`;
+  
+  // Remove trailing /api from API_BASE_URL if route already includes it, or handle correctly
+  let baseUrl = API_BASE_URL;
+  if (baseUrl.endsWith('/api') && cleanRoute.startsWith('/api')) {
+    baseUrl = baseUrl.replace(/\/api$/, '');
+  }
+  
+  let url = `${baseUrl}${cleanRoute}`;
   
   if (params) {
-    const queryString = Object.entries(params)
-      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-      .join('&');
-    url += `?${queryString}`;
+    // Filter out undefined, null, and empty string values
+    const validParams = Object.entries(params)
+      .filter(([_, value]) => value !== undefined && value !== null && value !== '');
+    
+    if (validParams.length > 0) {
+      const queryString = validParams
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+        .join('&');
+      url += `?${queryString}`;
+    }
   }
   
   return url;

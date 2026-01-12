@@ -315,13 +315,19 @@ const MyAdsScreen = () => {
             </View>
           ) : filteredAds.length > 0 ? (
             filteredAds.map((ad) => (
-              <LinearGradient
-                key={ad.id}
-                colors={['#FFFFFF0D', '#FFFFFF0D']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.adCard}
-              >
+              <View key={ad.id} style={styles.adCardWrapper}>
+                <LinearGradient
+                  colors={['rgba(48, 65, 149, 0.1)', 'rgba(95, 131, 187, 0.1)', 'rgba(160, 163, 237, 0.05)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.adCardGradient}
+                >
+                  <LinearGradient
+                    colors={['#FFFFFF0D', '#1E3A5F1A', '#FFFFFF0D']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.adCard}
+                  >
                 {/* Ad Header */}
                 <View style={styles.adHeader}>
                   <View style={styles.adHeaderLeft}>
@@ -377,15 +383,15 @@ const MyAdsScreen = () => {
 
                 {/* Ad Specifications */}
                 <View style={styles.adSpecs}>
-                  <View style={[styles.specRow, { borderTopRightRadius: 7 * SCALE, borderTopLeftRadius: 7, borderWidth: 0.5 }]}>
-                    <ThemedText style={styles.specLabel}>Quantity to buy</ThemedText>
+                  <View style={[styles.specRow, styles.specRowFirst]}>
+                    <ThemedText style={styles.specLabel}>Available Quantity</ThemedText>
                     <ThemedText style={styles.specValue}>{ad.quantity}</ThemedText>
                   </View>
                   <View style={styles.specRow}>
                     <ThemedText style={styles.specLabel}>Limits</ThemedText>
                     <ThemedText style={styles.specValue}>{ad.limits}</ThemedText>
                   </View>
-                  <View style={[styles.specRow, { borderBottomRightRadius: 7 * SCALE, borderBottomLeftRadius: 7, borderWidth: 0.5 }]}>
+                  <View style={[styles.specRow, styles.specRowLast]}>
                     <ThemedText style={styles.specLabel}>Payment Methods</ThemedText>
                     <ThemedText style={styles.specValue}>
                       {ad.paymentMethods.join(', ')}
@@ -418,7 +424,9 @@ const MyAdsScreen = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
-              </LinearGradient>
+                  </LinearGradient>
+                </LinearGradient>
+              </View>
             ))
           ) : (
             <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: SCREEN_WIDTH * 0.047 }}>
@@ -647,15 +655,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
-  adCard: {
-    borderWidth: 0.3,
-    borderColor: '#E8E8E8',
-    borderTopColor:'#A9EF45',
-    borderRightColor:'#A9EF45',
-    borderRadius: 15 * SCALE,
-    padding: 15 * SCALE,
+  adCardWrapper: {
     marginHorizontal: SCREEN_WIDTH * 0.047,
     marginBottom: 15 * SCALE,
+    borderRadius: 15 * SCALE,
+    overflow: 'hidden',
+    shadowColor: '#A9EF45',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  adCardGradient: {
+    borderRadius: 15 * SCALE,
+    padding: 2,
+  },
+  adCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(169, 239, 69, 0.3)',
+    borderRadius: 13 * SCALE,
+    padding: 15 * SCALE,
+    backgroundColor: 'rgba(2, 12, 25, 0.95)',
     overflow: 'hidden',
   },
   adHeader: {
@@ -685,9 +705,9 @@ const styles = StyleSheet.create({
     marginBottom: 4 * SCALE,
   },
   adStatus: {
-    fontSize: 8 * 1,
-    fontWeight: '400',
-    color: '#4CAF50',
+    fontSize: 10 * 1,
+    fontWeight: '500',
+    color: '#A9EF45',
   },
   adStateTag: {
     flexDirection: 'row',
@@ -719,14 +739,18 @@ const styles = StyleSheet.create({
     gap: 8 * SCALE,
   },
   metricText: {
-    fontSize: 8 * 1,
+    fontSize: 9 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
   },
   adSpecs: {
     marginBottom: 15 * SCALE,
-    paddingTop: 30* SCALE,
-    gap: 0,
+    marginTop: 15 * SCALE,
+    borderRadius: 7 * SCALE,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(169, 239, 69, 0.2)',
   },
   specRow: {
     flexDirection: 'row',
@@ -734,19 +758,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 12 * SCALE,
     paddingTop: 12 * SCALE,
-    borderWidth: 0.3,
-    backgroundColor: '#FFFFFF08',
-    paddingHorizontal: 10 * SCALE,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 12 * SCALE,
+    backgroundColor: 'rgba(30, 58, 95, 0.15)',
+    borderBottomWidth: 0.5,
+    borderBottomColor: 'rgba(169, 239, 69, 0.15)',
+  },
+  specRowFirst: {
+    borderTopLeftRadius: 7 * SCALE,
+    borderTopRightRadius: 7 * SCALE,
+  },
+  specRowLast: {
+    borderBottomWidth: 0,
+    borderBottomLeftRadius: 7 * SCALE,
+    borderBottomRightRadius: 7 * SCALE,
   },
   specLabel: {
-    fontSize: 10 * 1,
+    fontSize: 11 * 1,
     fontWeight: '400',
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   specValue: {
-    fontSize: 10 * 1,
-    fontWeight: '400',
+    fontSize: 11 * 1,
+    fontWeight: '500',
     color: '#FFFFFF',
     flex: 1,
     textAlign: 'right',
@@ -770,7 +803,7 @@ const styles = StyleSheet.create({
   priceValue: {
     fontSize: 20 * 1,
     fontWeight: '600',
-    color: '#8BC34A',
+    color: '#A9EF45',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -795,7 +828,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 17 * SCALE,
     paddingVertical: 12 * SCALE,
     borderRadius: 20 * SCALE,
-    backgroundColor: '#8BC34A',
+    backgroundColor: '#A9EF45',
     justifyContent:'center',
   },
   openAdButtonText: {

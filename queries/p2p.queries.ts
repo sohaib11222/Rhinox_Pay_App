@@ -23,10 +23,43 @@ export interface BrowseAdsParams {
 
 export const browseP2PAds = async (params?: BrowseAdsParams): Promise<ApiResponse> => {
   try {
-    const url = buildApiUrl(API_ROUTES.P2P_PUBLIC.BROWSE_ADS, params as any);
-    const response = await apiClient.get(url);
+    // apiClient already has baseURL configured, so just pass the route path
+    const route = API_ROUTES.P2P_PUBLIC.BROWSE_ADS;
+    
+    // Filter out undefined, null, and empty values from params
+    const cleanParams: Record<string, string | number> = {};
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          // Ensure all values are strings or numbers (axios will handle conversion)
+          cleanParams[key] = typeof value === 'string' || typeof value === 'number' ? value : String(value);
+        }
+      });
+    }
+    
+    // Debug logging
+    console.log('[browseP2PAds] Route:', route);
+    console.log('[browseP2PAds] Clean params:', JSON.stringify(cleanParams));
+    console.log('[browseP2PAds] Params count:', Object.keys(cleanParams).length);
+    
+    // Build query string manually to ensure it's included in the URL
+    const queryString = Object.entries(cleanParams)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+      .join('&');
+    
+    const urlWithParams = queryString ? `${route}?${queryString}` : route;
+    console.log('[browseP2PAds] Full URL path:', urlWithParams);
+    
+    const response = await apiClient.get(urlWithParams);
     return response.data;
   } catch (error: any) {
+    console.error('[browseP2PAds] Error:', error);
+    // Check if it's a 404 with "Invalid ad ID format" - this suggests routing issue
+    if (error?.response?.status === 404 && error?.response?.data?.message?.includes('Invalid ad ID format')) {
+      const enhancedError = new Error('Failed to load ads. Please check your filters and try again.');
+      enhancedError.name = 'BrowseAdsError';
+      throw enhancedError;
+    }
     throw handleApiError(error);
   }
 };
@@ -93,8 +126,20 @@ export interface BrowseBuyAdsParams {
 
 export const browseBuyAds = async (params?: BrowseBuyAdsParams): Promise<ApiResponse> => {
   try {
-    const url = buildApiUrl(API_ROUTES.P2P_USER.BROWSE_BUY_ADS, params as any);
-    const response = await apiClient.get(url);
+    // apiClient already has baseURL configured, so just pass the route path
+    const route = API_ROUTES.P2P_USER.BROWSE_BUY_ADS;
+    
+    // Filter out undefined, null, and empty values from params
+    const cleanParams: any = {};
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanParams[key] = value;
+        }
+      });
+    }
+    
+    const response = await apiClient.get(route, { params: cleanParams });
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);
@@ -130,8 +175,20 @@ export interface BrowseSellAdsParams {
 
 export const browseSellAds = async (params?: BrowseSellAdsParams): Promise<ApiResponse> => {
   try {
-    const url = buildApiUrl(API_ROUTES.P2P_USER.BROWSE_SELL_ADS, params as any);
-    const response = await apiClient.get(url);
+    // apiClient already has baseURL configured, so just pass the route path
+    const route = API_ROUTES.P2P_USER.BROWSE_SELL_ADS;
+    
+    // Filter out undefined, null, and empty values from params
+    const cleanParams: any = {};
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanParams[key] = value;
+        }
+      });
+    }
+    
+    const response = await apiClient.get(route, { params: cleanParams });
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);

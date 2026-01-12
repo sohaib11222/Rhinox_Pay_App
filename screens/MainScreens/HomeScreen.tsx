@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -20,7 +20,9 @@ import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../components/TransactionReceiptModal';
-import { useGetHomeData, useGetWalletBalances, useGetHomeTransactions } from '../../queries/home.queries';
+import { useGetHomeData, useGetHomeTransactions } from '../../queries/home.queries';
+import { useGetWalletBalances } from '../../queries/wallet.queries';
+import { useGetVirtualAccounts } from '../../queries/crypto.queries';
 import { useGetCountries } from '../../queries/country.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
 
@@ -120,13 +122,16 @@ const HomeScreen = () => {
   // Extract data from API responses
   const homeDataResponse = homeData?.data;
   const user = homeDataResponse?.user;
-  const fiatWalletsFromAPI = homeDataResponse?.wallets || [];
-  const cryptoWalletsFromAPI = homeDataResponse?.cryptoWallets || [];
+  
+  // Get wallets from /wallets/balances endpoint (preferred) or fallback to homeData
+  const walletsBalancesData = walletsData?.data;
+  const fiatWalletsFromAPI = walletsBalancesData?.fiat || homeDataResponse?.wallets || [];
+  const cryptoWalletsFromAPI = walletsBalancesData?.crypto || homeDataResponse?.cryptoWallets || [];
+  
   // Combine wallets from both sources - use active wallets only
   const allFiatWallets = fiatWalletsFromAPI.filter((w: any) => w.isActive !== false);
   const allCryptoWallets = cryptoWalletsFromAPI.filter((w: any) => w.active !== false);
   const allWallets = [...allFiatWallets, ...allCryptoWallets];
-  const wallets = walletsData?.data || allWallets;
 
   // Filter wallets based on selected country
   const filteredWallets = useMemo(() => {
@@ -203,20 +208,38 @@ const HomeScreen = () => {
     }
   }, [user?.country]);
 
-  // Initialize selectedAsset from first available crypto wallet
+  // Track if we've initialized selectedAsset to prevent infinite loops
+  const hasInitializedAsset = useRef(false);
+  const lastWalletDataHash = useRef<string>('');
+  
+  // Initialize selectedAsset from first available crypto wallet - only once
   useEffect(() => {
-    if (cryptoWallets && cryptoWallets.length > 0 && !selectedAsset) {
-      const firstWallet = cryptoWallets[0];
-      if (firstWallet) {
+    // Create a stable hash of wallet data to detect actual changes
+    const walletHash = JSON.stringify(cryptoWalletsFromAPI.map((w: any) => ({
+      id: w.id,
+      currency: w.currency,
+      balance: w.balance,
+    })).slice(0, 1)); // Only hash the first wallet for comparison
+    
+    // Only initialize once when wallets finish loading and data actually changes
+    if (!isLoadingWallets && cryptoWalletsFromAPI.length > 0 && walletHash !== lastWalletDataHash.current) {
+      const firstActiveWallet = cryptoWalletsFromAPI.find((w: any) => w.active !== false);
+      if (firstActiveWallet && (!hasInitializedAsset.current || walletHash !== lastWalletDataHash.current)) {
+        const walletId = String(firstActiveWallet.id || firstActiveWallet.currency || '1');
+        const walletName = firstActiveWallet.currency || firstActiveWallet.symbol || 'BTC';
+        const walletBalance = firstActiveWallet.balance || firstActiveWallet.availableBalance || '0';
+        
         setSelectedAsset({
-          id: String(firstWallet.id || firstWallet.currency || '1'),
-          name: firstWallet.currency || firstWallet.symbol || 'BTC',
-          balance: firstWallet.balance || '0',
+          id: walletId,
+          name: walletName,
+          balance: walletBalance,
           icon: require('../../assets/CurrencyBtc.png'),
         });
+        hasInitializedAsset.current = true;
+        lastWalletDataHash.current = walletHash;
       }
     }
-  }, [cryptoWallets]);
+  }, [isLoadingWallets, walletsBalancesData?.crypto]); // Depend on the actual API data, not derived arrays
 
   // Reset search terms when modals close
   useEffect(() => {
@@ -285,7 +308,7 @@ const HomeScreen = () => {
   // Get balance for selected crypto asset (for Fund Wallet Crypto)
   const fundWalletCryptoBalance = useMemo(() => {
     if (isLoadingWallets || !selectedAsset) return null;
-    const wallet = cryptoWallets.find((w: any) => 
+    const wallet = allCryptoWallets.find((w: any) => 
       w.currency === selectedAsset.name || 
       w.symbol === selectedAsset.name ||
       w.currency?.toUpperCase() === selectedAsset.name.toUpperCase()
@@ -293,8 +316,8 @@ const HomeScreen = () => {
     if (wallet) {
       return {
         currency: wallet.currency || selectedAsset.name,
-        balance: wallet.balance || '0',
-        formatted: `${formatBalanceNoDecimals(wallet.balance || '0')} ${wallet.currency || selectedAsset.name}`,
+        balance: wallet.balance || wallet.availableBalance || '0',
+        formatted: `${formatBalanceNoDecimals(wallet.balance || wallet.availableBalance || '0')} ${wallet.currency || selectedAsset.name}`,
       };
     }
     return {
@@ -302,7 +325,7 @@ const HomeScreen = () => {
       balance: selectedAsset.balance || '0',
       formatted: `${selectedAsset.balance || '0'} ${selectedAsset.name}`,
     };
-  }, [cryptoWallets, selectedAsset, isLoadingWallets]);
+  }, [allCryptoWallets, selectedAsset?.id, isLoadingWallets]); // Use stable dependencies - only id, not the whole object
 
   // Balance data for Fiat and Crypto (from API or fallback)
   const fiatBalance = {
@@ -1320,25 +1343,13 @@ const HomeScreen = () => {
                           ) : (
                             <ThemedText style={styles.sendFundsBalanceAmount}>
                               {(() => {
-                                if (!selectedAsset) {
-                                  // Default to first crypto wallet or BTC
-                                  const firstCrypto = cryptoWallets[0];
-                                  if (firstCrypto) {
-                                    return `${formatBalanceNoDecimals(firstCrypto.balance || '0')} ${firstCrypto.currency || 'BTC'}`;
-                                  }
-                                  return '0.00000 BTC';
+                                // Always show the first crypto wallet's balance from the list
+                                const firstCrypto = cryptoWallets[0];
+                                if (firstCrypto) {
+                                  return `${formatBalanceNoDecimals(firstCrypto.balance || firstCrypto.availableBalance || '0')} ${firstCrypto.currency || firstCrypto.symbol || 'BTC'}`;
                                 }
-                                // Find the actual wallet balance from API
-                                const wallet = cryptoWallets.find((w: any) => 
-                                  w.currency === selectedAsset.name || 
-                                  w.symbol === selectedAsset.name ||
-                                  w.currency?.toUpperCase() === selectedAsset.name.toUpperCase()
-                                );
-                                if (wallet) {
-                                  return `${formatBalanceNoDecimals(wallet.balance || '0')} ${wallet.currency || selectedAsset.name}`;
-                                }
-                                // Fallback to selectedAsset balance if wallet not found
-                                return `${selectedAsset.balance} ${selectedAsset.name}`;
+                                // If no wallets available, show default
+                                return '0.00000 BTC';
                               })()}
                             </ThemedText>
                           )}
@@ -1409,7 +1420,9 @@ const HomeScreen = () => {
                       <TouchableOpacity
                         onPress={() => {
                           setShowSendFundsModal(false);
-                          // TODO: Navigate to Wallet Address screen
+                          (navigation as any).navigate('Settings', {
+                            screen: 'WalletAddress',
+                          });
                         }}
                       >
                         <LinearGradient

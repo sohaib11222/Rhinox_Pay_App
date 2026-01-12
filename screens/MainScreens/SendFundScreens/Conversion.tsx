@@ -274,33 +274,77 @@ const Conversion = () => {
         if (calculateData?.data && !calculateError) {
             const data = calculateData.data;
             // Use receivedAmount (final amount after fee) for display
-            if (data.receivedAmount) {
-                setReceiveAmount(formatNumber(data.receivedAmount));
+            // If receivedAmount is negative (fee > toAmount), show toAmount instead
+            // Always show the actual decimal values, even if small
+            let finalReceiveAmount = '0.00';
+            if (data.receivedAmount !== undefined && data.receivedAmount !== null) {
+                const receivedAmountNum = parseFloat(String(data.receivedAmount));
+                // If receivedAmount is negative (fee exceeds toAmount), use toAmount for display
+                if (receivedAmountNum < 0 && data.toAmount) {
+                    const toAmountNum = parseFloat(String(data.toAmount));
+                    finalReceiveAmount = formatNumber(String(toAmountNum));
+                } else if (receivedAmountNum > 0) {
+                    // Show positive receivedAmount with proper decimal formatting
+                    finalReceiveAmount = formatNumber(String(receivedAmountNum));
+                } else {
+                    // If receivedAmount is 0 or invalid, try toAmount
+                    if (data.toAmount) {
+                        const toAmountNum = parseFloat(String(data.toAmount));
+                        finalReceiveAmount = formatNumber(String(toAmountNum));
+                    }
+                }
             } else if (data.toAmount) {
                 // Fallback to toAmount if receivedAmount not available
-                setReceiveAmount(formatNumber(data.toAmount));
+                const toAmountNum = parseFloat(String(data.toAmount));
+                finalReceiveAmount = formatNumber(String(toAmountNum));
             }
+            setReceiveAmount(finalReceiveAmount);
+            
+            // Handle exchange rate - ensure it's positive
             if (data.exchangeRate) {
                 setExchangeRate(data.exchangeRate);
                 // Calculate display rate (1 fromCurrency = ? toCurrency)
-                const rate = parseFloat(data.exchangeRate);
+                const rate = parseFloat(String(data.exchangeRate));
                 if (!isNaN(rate) && rate > 0) {
-                    setExchangeRateDisplay(rate.toFixed(2));
-                    setExchangeRateSummary(rate.toFixed(0));
+                    // Ensure rate is always positive
+                    const displayRate = Math.abs(rate);
+                    setExchangeRateDisplay(displayRate.toFixed(2));
+                    setExchangeRateSummary(displayRate.toFixed(0));
+                } else {
+                    // Reset to default if invalid
+                    setExchangeRateDisplay('0.00');
+                    setExchangeRateSummary('0');
                 }
+            } else {
+                // Reset if no exchange rate
+                setExchangeRateDisplay('0.00');
+                setExchangeRateSummary('0');
             }
-            if (data.fee) {
-                setFee(data.fee);
+            
+            // Handle fee - ensure it's positive or zero
+            if (data.fee !== undefined && data.fee !== null) {
+                const feeNum = parseFloat(String(data.fee));
+                setFee(feeNum >= 0 ? String(Math.abs(feeNum)) : '0');
             }
+            
             if (data.feeCurrency) {
                 setFeeCurrency(data.feeCurrency);
             }
         } else if (calculateError) {
-            // Reset receive amount on error
+            // Reset all values on error
             setReceiveAmount('0.00');
+            setExchangeRate('0');
+            setExchangeRateDisplay('0.00');
+            setExchangeRateSummary('0');
+            setFee('0');
             console.error('[Conversion] Calculation error:', calculateError);
+        } else if (!shouldCalculate) {
+            // Reset when calculation shouldn't happen (no amount, same currencies, etc.)
+            setReceiveAmount('0.00');
+            setExchangeRateDisplay('0.00');
+            setExchangeRateSummary('0');
         }
-    }, [calculateData, calculateError]);
+    }, [calculateData, calculateError, shouldCalculate]);
 
     // Initiate conversion mutation
     // API Response: { conversionReference, debitTransaction, creditTransaction, exchangeRate, fee }
@@ -562,15 +606,48 @@ const Conversion = () => {
         if (!value || value.trim() === '') {
             return '';
         }
+        // Parse the number to handle negatives and decimals properly
+        const numValue = parseFloat(value);
+        if (isNaN(numValue)) {
+            return '0.00';
+        }
+        
+        // Handle negative numbers by showing absolute value (we handle negatives in display logic)
+        const absValue = Math.abs(numValue);
+        
         // If value ends with '.', don't format decimals yet
         if (value.endsWith('.')) {
-            const integerPart = value.slice(0, -1).replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            const integerPart = String(absValue).split('.')[0].replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             return integerPart + '.';
         }
-        const parts = value.split('.');
+        
+        // Format with proper decimal places (up to 3 decimal places for small amounts)
+        const parts = String(absValue).split('.');
         const integerPart = parts[0].replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-        const decimalPart = parts[1] ? (parts[1].length > 2 ? parts[1].substring(0, 2) : parts[1]) : '';
-        return decimalPart ? `${integerPart}.${decimalPart}` : integerPart;
+        const decimalPart = parts[1] ? parts[1] : '';
+        
+        // For small amounts (< 1), show up to 3 decimal places, otherwise 2
+        let maxDecimals = 2;
+        if (absValue < 1 && absValue > 0) {
+            maxDecimals = 3;
+        }
+        
+        const formattedDecimal = decimalPart.length > maxDecimals 
+            ? decimalPart.substring(0, maxDecimals) 
+            : decimalPart;
+        
+        // Always show at least 2 decimal places for currency (unless it's a whole number)
+        if (formattedDecimal.length < 2 && absValue > 0 && integerPart !== '0') {
+            const paddedDecimal = formattedDecimal.padEnd(2, '0');
+            return `${integerPart}.${paddedDecimal}`;
+        }
+        
+        // For very small amounts (< 1), show the actual decimals without padding
+        if (absValue > 0 && absValue < 1) {
+            return formattedDecimal ? `0.${formattedDecimal}` : '0.00';
+        }
+        
+        return formattedDecimal ? `${integerPart}.${formattedDecimal}` : `${integerPart}.00`;
     };
 
     const handleSwap = () => {
@@ -611,15 +688,24 @@ const Conversion = () => {
         }, 200);
     }, []);
 
-    const handlePinBackspace = () => {
+    const handlePinBackspace = React.useCallback(() => {
         setPin((currentPin) => {
+            const currentPinValue = currentPin || '';
             // Remove last digit if PIN has any digits
-            if (currentPin.length > 0) {
-                return currentPin.slice(0, -1);
+            if (currentPinValue.length > 0) {
+                const newPin = currentPinValue.slice(0, -1);
+                console.log('[Conversion] PIN backspace - Previous:', currentPinValue, 'New:', newPin);
+                return newPin;
             }
-            return currentPin;
+            console.log('[Conversion] PIN backspace - No digits to remove');
+            return currentPinValue;
         });
-    };
+        // Add visual feedback
+        setLastPressedButton('backspace');
+        setTimeout(() => {
+            setLastPressedButton(null);
+        }, 200);
+    }, []);
 
     const handleSecurityComplete = () => {
         if (emailCode && authenticatorCode) {
@@ -741,7 +827,11 @@ const Conversion = () => {
                         </ThemedText>
                     ) : (
                         <ThemedText style={styles.exchangeRateValue}>
-                            {sendCountryData?.currencySymbol}1 = {receiveCountryData?.currencySymbol.toLowerCase()}{exchangeRateDisplay}
+                            {sendCountryData?.currencySymbol}1 = {receiveCountryData?.currencySymbol?.toLowerCase() || ''}
+                            {(() => {
+                                const rateValue = parseFloat(exchangeRateDisplay || '0');
+                                return rateValue >= 0 ? exchangeRateDisplay : '0.00';
+                            })()}
                         </ThemedText>
                     )}
                 </View>
@@ -828,7 +918,13 @@ const Conversion = () => {
                                 )}
                             <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
-                        <ThemedText style={styles.amountText}>{receiveCountryData?.currencySymbol}{receiveAmount}</ThemedText>
+                        <ThemedText style={styles.amountText}>
+                            {receiveCountryData?.currencySymbol}
+                            {(() => {
+                                const amountValue = parseFloat(receiveAmount.replace(/,/g, '') || '0');
+                                return amountValue >= 0 ? receiveAmount : '0.00';
+                            })()}
+                        </ThemedText>
                     </View>
                     <View style={styles.balanceRow}>
                         <Image
@@ -1462,9 +1558,18 @@ const Conversion = () => {
                                 <TouchableOpacity
                                     style={styles.numpadButton}
                                     onPress={handlePinBackspace}
+                                    disabled={confirmMutation.isPending}
+                                    activeOpacity={0.7}
                                 >
-                                    <View style={styles.backspaceSquare}>
-                                        <MaterialCommunityIcons name="backspace-outline" size={18 * SCALE} color="#FFFFFF" />
+                                    <View style={[
+                                        styles.backspaceSquare,
+                                        lastPressedButton === 'backspace' && styles.numpadCirclePressed
+                                    ]}>
+                                        <MaterialCommunityIcons 
+                                            name="backspace-outline" 
+                                            size={18 * SCALE} 
+                                            color={lastPressedButton === 'backspace' ? "#000000" : "#FFFFFF"} 
+                                        />
                                     </View>
                                 </TouchableOpacity>
                             </View>
