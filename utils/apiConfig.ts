@@ -19,7 +19,7 @@ const getApiBaseUrl = (): string => {
     // For Android emulator, use 10.0.2.2
     // For physical device, replace with your computer's IP address
     // Example: return 'http://192.168.1.100:3000/api';
-    return 'http://10.14.151.151:3000/api';
+    return 'http://192.168.1.16:3000/api';
   }
   
   // For iOS simulator, localhost works
