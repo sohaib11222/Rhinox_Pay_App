@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { useSubmitKYC } from '../../mutations/kyc.mutations';
 import { useGetCountries } from '../../queries/country.queries';
+import { useGetKYCStatus } from '../../queries/kyc.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../utils/customAlert';
 
@@ -56,6 +57,17 @@ const KYC = () => {
   });
 
   const countries: Country[] = countriesData?.data || [];
+
+  // Fetch KYC status to check if already verified
+  const { data: kycStatusData, isLoading: isLoadingKYCStatus } = useGetKYCStatus();
+
+  // Determine KYC status from API
+  const kycStatus = kycStatusData?.data?.status || kycStatusData?.data?.kycStatus || 'not_done';
+  const kycStatusLower = (kycStatus as string).toLowerCase();
+  
+  // Check if KYC is already verified/approved
+  const isKYCVerified = kycStatusLower === 'approved' || kycStatusLower === 'verified' || kycStatusLower === 'complete';
+  const isKYCPending = kycStatusLower === 'pending' || kycStatusLower === 'under_review' || kycStatusLower === 'submitted';
   
   const [day, setDay] = useState('DD');
   const [month, setMonth] = useState('MM');
@@ -133,6 +145,24 @@ const KYC = () => {
   };
 
   const handleProceed = () => {
+    // Prevent submission if already verified
+    if (isKYCVerified) {
+      showWarningAlert(
+        'KYC Already Verified',
+        'Your KYC has already been verified. You cannot submit it again.'
+      );
+      return;
+    }
+
+    // Prevent submission if pending
+    if (isKYCPending) {
+      showWarningAlert(
+        'KYC Under Review',
+        'Your KYC submission is currently under review. Please wait for approval before submitting again.'
+      );
+      return;
+    }
+
     if (!isFormValid()) {
       showWarningAlert('Validation Error', 'Please fill in all required fields.');
       return;
@@ -232,7 +262,12 @@ const KYC = () => {
         {/* Title */}
         <ThemedText style={styles.title}>Complete KYC Registration</ThemedText>
         <ThemedText style={styles.subtitle}>
-          Complete your KYC registration to unlock full access
+          {isKYCVerified 
+            ? 'Your KYC has been verified. You have full access to all features.'
+            : isKYCPending
+            ? 'Your KYC submission is under review. Please wait for approval.'
+            : 'Complete your KYC registration to unlock full access'
+          }
         </ThemedText>
 
         {/* Progress Bar */}
@@ -248,26 +283,30 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Country</ThemedText>
               <TouchableOpacity
-                style={styles.inputWrapper}
-                onPress={() => setShowCountryModal(true)}
+                style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}
+                onPress={() => !isKYCVerified && !isKYCPending && setShowCountryModal(true)}
+                disabled={isKYCVerified || isKYCPending}
               >
                 <ThemedText style={[styles.input, !country && styles.placeholderStyle]}>
                   {country || 'Select your country'}
                 </ThemedText>
-                <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                {!isKYCVerified && !isKYCPending && (
+                  <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                )}
               </TouchableOpacity>
             </View>
 
             {/* First Name */}
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>First Name</ThemedText>
-              <View style={styles.inputWrapper}>
+              <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
                 <TextInput
                   style={styles.input}
                   placeholder="Input your first name"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={firstName}
                   onChangeText={setFirstName}
+                  editable={!isKYCVerified && !isKYCPending}
                 />
               </View>
             </View>
@@ -275,13 +314,14 @@ const KYC = () => {
             {/* Last Name */}
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Last Name</ThemedText>
-              <View style={styles.inputWrapper}>
+              <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
                 <TextInput
                   style={styles.input}
                   placeholder="Input your last name"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={lastName}
                   onChangeText={setLastName}
+                  editable={!isKYCVerified && !isKYCPending}
                 />
               </View>
             </View>
@@ -289,13 +329,14 @@ const KYC = () => {
             {/* Middle Name */}
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Middle Name</ThemedText>
-              <View style={styles.inputWrapper}>
+              <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
                 <TextInput
                   style={styles.input}
                   placeholder="Input your Middle name (optional)"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={middleName}
                   onChangeText={setMiddleName}
+                  editable={!isKYCVerified && !isKYCPending}
                 />
               </View>
             </View>
@@ -304,10 +345,11 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Date of birth</ThemedText>
               <TouchableOpacity
-                style={styles.inputWrapper}
-                onPress={() => setShowDOBModal(true)}
+                style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}
+                onPress={() => !isKYCVerified && !isKYCPending && setShowDOBModal(true)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+                disabled={isKYCVerified || isKYCPending}
               >
                 <ThemedText 
                   style={[styles.input, !dob && styles.placeholderStyle]}
@@ -315,9 +357,11 @@ const KYC = () => {
                 >
                   {dob || 'Enter your date of birth'}
                 </ThemedText>
-                <View pointerEvents="none">
-                  <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
-                </View>
+                {!isKYCVerified && !isKYCPending && (
+                  <View pointerEvents="none">
+                    <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -325,26 +369,30 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>ID Type</ThemedText>
               <TouchableOpacity
-                style={styles.inputWrapper}
-                onPress={() => setShowIDTypeModal(true)}
+                style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}
+                onPress={() => !isKYCVerified && !isKYCPending && setShowIDTypeModal(true)}
+                disabled={isKYCVerified || isKYCPending}
               >
                 <ThemedText style={[styles.input, !idType && styles.placeholderStyle]}>
                   {idType || 'Select id type'}
                 </ThemedText>
-                <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                {!isKYCVerified && !isKYCPending && (
+                  <MaterialCommunityIcons name="chevron-down" size={24} color="rgba(255, 255, 255, 0.5)" />
+                )}
               </TouchableOpacity>
             </View>
 
             {/* ID Number */}
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>ID Number</ThemedText>
-              <View style={styles.inputWrapper}>
+              <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
                 <TextInput
                   style={styles.input}
                   placeholder="Input id Number"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={idNumber}
                   onChangeText={setIdNumber}
+                  editable={!isKYCVerified && !isKYCPending}
                 />
               </View>
             </View>
@@ -357,25 +405,29 @@ const KYC = () => {
         <TouchableOpacity
           style={[
             styles.proceedButton,
-            (!isFormValid() || submitKYCMutation.isPending) && styles.proceedButtonDisabled,
+            (!isFormValid() || submitKYCMutation.isPending || isKYCVerified || isKYCPending || isLoadingKYCStatus) && styles.proceedButtonDisabled,
           ]}
           onPress={handleProceed}
-          disabled={!isFormValid() || submitKYCMutation.isPending}
+          disabled={!isFormValid() || submitKYCMutation.isPending || isKYCVerified || isKYCPending || isLoadingKYCStatus}
         >
           {submitKYCMutation.isPending ? (
             <ActivityIndicator size="small" color="#000000" />
           ) : (
-            <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+            <ThemedText style={styles.proceedButtonText}>
+              {isKYCVerified ? 'Already Verified' : isKYCPending ? 'Under Review' : 'Proceed'}
+            </ThemedText>
           )}
         </TouchableOpacity>
         
-        <TouchableOpacity
-          style={styles.continueButton}
-          onPress={handleContinueLater}
-          disabled={submitKYCMutation.isPending}
-        >
-          <ThemedText style={styles.continueButtonText}>Continue Later</ThemedText>
-        </TouchableOpacity>
+        {!isKYCVerified && (
+          <TouchableOpacity
+            style={styles.continueButton}
+            onPress={handleContinueLater}
+            disabled={submitKYCMutation.isPending || isKYCPending}
+          >
+            <ThemedText style={styles.continueButtonText}>Continue Later</ThemedText>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Country Modal */}
@@ -783,6 +835,9 @@ const styles = StyleSheet.create({
   },
   placeholderStyle: {
     color: 'rgba(255, 255, 255, 0.5)',
+  },
+  inputDisabled: {
+    opacity: 0.5,
   },
   buttonContainer: {
     paddingHorizontal: 20,

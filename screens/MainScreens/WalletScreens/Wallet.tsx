@@ -329,13 +329,18 @@ const Wallet = () => {
     };
   }, [cryptoWallets, selectedAsset, isLoadingBalances]);
 
-  // Get wallet ID from first fiat wallet
+  // Get wallet ID - should be user's email, not numeric wallet ID
   const walletId = useMemo(() => {
+    // Use user's email if available
+    if (user?.email) {
+      return user.email;
+    }
+    // Fallback to first fiat wallet ID if email not available
     if (fiatWallets.length > 0) {
       return fiatWallets[0].id;
     }
     return 'NGN1234';
-  }, [fiatWallets]);
+  }, [fiatWallets, user?.email]);
 
   // Transform API virtual accounts to UI format
   const cryptoAssets: CryptoAsset[] = useMemo(() => {

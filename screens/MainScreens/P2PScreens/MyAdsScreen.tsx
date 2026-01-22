@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
-import { useGetMyP2PAds } from '../../../queries/p2p.queries';
+import { useGetMyP2PAds, useGetVendorOrders } from '../../../queries/p2p.queries';
 import { useUpdateP2PAdStatus } from '../../../mutations/p2p.mutations';
 import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
@@ -54,6 +54,16 @@ const MyAdsScreen = () => {
     refetch: refetchAds,
   } = useGetMyP2PAds({
     type: activeTab === 'Buy' ? 'buy' : 'sell',
+  });
+
+  // Fetch vendor orders to calculate real completion rate
+  const {
+    data: vendorOrdersData,
+    isLoading: isLoadingOrders,
+    refetch: refetchOrders,
+  } = useGetVendorOrders({
+    limit: 1000, // Get all orders to calculate stats
+    offset: 0,
   });
 
   // Transform ads data to UI format
@@ -105,11 +115,29 @@ const MyAdsScreen = () => {
 
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
+    // Total orders received across all ads
     const totalOrders = ads.reduce((sum, ad) => sum + ad.ordersReceived, 0);
-    // Calculate completion rate (assuming all completed orders = total orders for now)
-    // In real scenario, you'd need to fetch completed orders count
-    const completedOrders = totalOrders; // Placeholder
-    const completionRate = totalOrders > 0 ? Math.round((completedOrders / totalOrders) * 100) : 100;
+    
+    // Calculate completed and cancelled orders from vendor orders data
+    let completedOrders = 0;
+    let cancelledOrders = 0;
+    let totalOrdersFromAPI = 0;
+    
+    if (vendorOrdersData?.data && Array.isArray(vendorOrdersData.data)) {
+      totalOrdersFromAPI = vendorOrdersData.data.length;
+      completedOrders = vendorOrdersData.data.filter((order: any) => order.status === 'completed').length;
+      cancelledOrders = vendorOrdersData.data.filter((order: any) => order.status === 'cancelled').length;
+    }
+    
+    // Use total orders from API if available, otherwise use ordersReceived sum
+    const actualTotalOrders = totalOrdersFromAPI > 0 ? totalOrdersFromAPI : totalOrders;
+    
+    // Calculate completion rate: (completed / total) * 100
+    // Exclude cancelled orders from the calculation
+    const nonCancelledOrders = actualTotalOrders - cancelledOrders;
+    const completionRate = nonCancelledOrders > 0 
+      ? Math.round((completedOrders / nonCancelledOrders) * 100) 
+      : (actualTotalOrders > 0 ? 0 : 100);
     
     // Calculate total value (sum of all ad volumes * prices)
     const totalValue = ads.reduce((sum, ad) => {
@@ -119,12 +147,12 @@ const MyAdsScreen = () => {
     }, 0);
     
     return {
-      totalOrders,
+      totalOrders: actualTotalOrders,
       completionRate,
       totalValue,
       completedOrdersCount: completedOrders,
     };
-  }, [ads]);
+  }, [ads, vendorOrdersData?.data]);
 
   // Update ad status mutation
   const updateAdStatusMutation = useUpdateP2PAdStatus({
@@ -140,7 +168,7 @@ const MyAdsScreen = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    await refetchAds();
+    await Promise.all([refetchAds(), refetchOrders()]);
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -210,7 +238,7 @@ const MyAdsScreen = () => {
               </View>
             </View>
             <ThemedText style={styles.summaryUSD}>
-              {isLoadingAds ? '...' : `${summaryStats.totalOrders} Orders`}
+              {isLoadingAds || isLoadingOrders ? '...' : `${summaryStats.totalOrders} Orders`}
             </ThemedText>
           </LinearGradient>
 
@@ -229,13 +257,13 @@ const MyAdsScreen = () => {
             <View style={styles.summaryAmountContainer}>
               <View style={styles.summaryAmountRow}>
                 <ThemedText style={styles.summaryAmountMainWhite}>
-                  {isLoadingAds ? '...' : summaryStats.completionRate}
+                  {isLoadingAds || isLoadingOrders ? '...' : summaryStats.completionRate}
                 </ThemedText>
                 <ThemedText style={styles.summaryAmountCurrencyWhite}>%</ThemedText>
               </View>
             </View>
             <ThemedText style={styles.summaryUSDWhite}>
-              {isLoadingAds ? '...' : `${summaryStats.completedOrdersCount} Orders`}
+              {isLoadingAds || isLoadingOrders ? '...' : `${summaryStats.completedOrdersCount} Orders`}
             </ThemedText>
           </View>
         </View>

@@ -118,8 +118,20 @@ const SellOrder = () => {
       };
     }
     const vendor = adData.vendor;
+    // Check for vendor name in multiple possible fields
+    let vendorName = 'Unknown Vendor';
+    if (vendor.name) {
+      vendorName = vendor.name;
+    } else if (vendor.firstName || vendor.lastName) {
+      vendorName = `${vendor.firstName || ''} ${vendor.lastName || ''}`.trim();
+    } else if (vendor.firstName) {
+      vendorName = vendor.firstName;
+    } else if (vendor.lastName) {
+      vendorName = vendor.lastName;
+    }
+    
     return {
-      name: `${vendor.firstName || ''} ${vendor.lastName || ''}`.trim() || 'Unknown Vendor',
+      name: vendorName,
       avatar: require('../../../assets/login/memoji.png'), // Default avatar
       status: adData.isOnline ? 'Online' : 'Offline',
       rating: vendor.score ? `${(parseFloat(vendor.score) * 20).toFixed(0)}%` : '0%',
@@ -150,10 +162,32 @@ const SellOrder = () => {
     }
     const cryptoCurrency = adData?.cryptoCurrency || 'USDT';
     const wallet = balancesData.data.crypto.find(
-      (w: any) => w.currency === cryptoCurrency
+      (w: any) => w.currency === cryptoCurrency || w.currency?.toUpperCase() === cryptoCurrency.toUpperCase()
     );
     return wallet?.balance || '0';
   }, [balancesData?.data?.crypto, adData?.cryptoCurrency]);
+
+  // Check if user has sufficient balance
+  const hasBalance = useMemo(() => {
+    const balance = parseFloat(cryptoBalance || '0');
+    return balance > 0;
+  }, [cryptoBalance]);
+
+  // Check if entered amount exceeds balance
+  const exceedsBalance = useMemo(() => {
+    if (!amount || !hasBalance) return false;
+    const enteredAmount = parseFloat(amount.replace(/,/g, ''));
+    if (isNaN(enteredAmount)) return false;
+    const balance = parseFloat(cryptoBalance || '0');
+    
+    if (currencyType === 'Crypto') {
+      return enteredAmount > balance;
+    } else {
+      // For Fiat, calculate crypto amount and compare
+      const cryptoAmount = enteredAmount / parseFloat(adData?.price || '1');
+      return cryptoAmount > balance;
+    }
+  }, [amount, cryptoBalance, currencyType, adData?.price, hasBalance]);
 
   // Get fiat balance
   const fiatBalance = useMemo(() => {
@@ -167,9 +201,10 @@ const SellOrder = () => {
     return wallet?.balance || '0';
   }, [balancesData?.data?.fiat, adData?.fiatCurrency]);
 
-  // Calculate fiat amount from crypto amount
+  // Calculate fiat amount - when Crypto is selected, user enters crypto, so calculate fiat
   const fiatAmount = useMemo(() => {
     if (!amount || !adData?.price) return '0.00';
+    if (currencyType !== 'Crypto') return '0.00'; // Only calculate when Crypto is selected
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount)) return '0.00';
     const calculated = numericAmount * parseFloat(adData.price);
@@ -177,11 +212,12 @@ const SellOrder = () => {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
-  }, [amount, adData?.price]);
+  }, [amount, adData?.price, currencyType]);
 
-  // Calculate crypto amount from fiat amount
+  // Calculate crypto amount - when Fiat is selected, user enters fiat, so calculate crypto
   const cryptoAmountFromFiat = useMemo(() => {
     if (!amount || !adData?.price) return '0.00';
+    if (currencyType !== 'Fiat') return '0.00'; // Only calculate when Fiat is selected
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
     if (isNaN(numericAmount)) return '0.00';
     const calculated = numericAmount / parseFloat(adData.price);
@@ -189,7 +225,7 @@ const SellOrder = () => {
       minimumFractionDigits: 8,
       maximumFractionDigits: 8,
     });
-  }, [amount, adData?.price]);
+  }, [amount, adData?.price, currencyType]);
 
   // Create order mutation
   const createOrderMutation = useCreateP2POrder({
@@ -268,6 +304,9 @@ const SellOrder = () => {
 
   // Check if form is valid
   const isFormValid = useMemo(() => {
+    // First check if user has any balance
+    if (!hasBalance) return false;
+    
     if (!amount || !selectedPaymentMethod || !adId || !adData) return false;
     
     let cryptoAmount: number;
@@ -287,7 +326,7 @@ const SellOrder = () => {
     const availableBalance = parseFloat(cryptoBalance);
     if (cryptoAmount > availableBalance) return false;
     return true;
-  }, [amount, selectedPaymentMethod, adId, adData, currencyType, minOrder, maxOrder, cryptoBalance]);
+  }, [amount, selectedPaymentMethod, adId, adData, currencyType, minOrder, maxOrder, cryptoBalance, hasBalance]);
 
   const handlePaymentMethodSelect = (method: PaymentMethod) => {
     setTempSelectedPaymentMethod(method);
@@ -455,7 +494,10 @@ const SellOrder = () => {
               <View style={styles.amountSection}>
                 <ThemedText style={styles.amountLabel}>Amount to sell ({adData?.fiatCurrency || 'NGN'})</ThemedText>
                 <TextInput
-                  style={styles.amountInput}
+                  style={[
+                    styles.amountInput,
+                    (!hasBalance || exceedsBalance) && styles.amountInputError
+                  ]}
                   value={amount}
                   onChangeText={(text) => {
                     const numericValue = text.replace(/,/g, '');
@@ -464,19 +506,39 @@ const SellOrder = () => {
                     }
                   }}
                   keyboardType="decimal-pad"
-                  placeholder="Input amount"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  placeholder={!hasBalance ? "Insufficient balance" : "Input amount"}
+                  placeholderTextColor={!hasBalance ? "#ff0000" : "rgba(255, 255, 255, 0.5)"}
+                  editable={hasBalance}
                 />
                 <View style={styles.balanceRow}>
                   <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
                   {isLoadingBalances ? (
                     <ActivityIndicator size="small" color="#A9EF45" />
                   ) : (
-                    <ThemedText style={styles.balanceValue}>
-                      {adData?.fiatCurrency || 'NGN'} {parseFloat(fiatBalance || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <ThemedText style={[
+                      styles.balanceValue,
+                      !hasBalance && styles.balanceValueError
+                    ]}>
+                      {adData?.cryptoCurrency || 'USDT'} {parseFloat(cryptoBalance).toFixed(8)}
                     </ThemedText>
                   )}
                 </View>
+                {!hasBalance && (
+                  <View style={styles.errorMessageContainer}>
+                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
+                    <ThemedText style={styles.errorMessage}>
+                      You don't have any {adData?.cryptoCurrency || 'USDT'} balance. Please deposit first.
+                    </ThemedText>
+                  </View>
+                )}
+                {hasBalance && exceedsBalance && (
+                  <View style={styles.errorMessageContainer}>
+                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
+                    <ThemedText style={styles.errorMessage}>
+                      Amount exceeds your balance of {parseFloat(cryptoBalance).toFixed(8)} {adData?.cryptoCurrency || 'USDT'}
+                    </ThemedText>
+                  </View>
+                )}
               </View>
 
               {/* You will Receive */}
@@ -494,7 +556,10 @@ const SellOrder = () => {
               <View style={styles.amountSection}>
                 <ThemedText style={styles.amountLabel}>Enter {adData?.cryptoCurrency || 'USDT'} Amount</ThemedText>
                 <TextInput
-                  style={styles.amountInput}
+                  style={[
+                    styles.amountInput,
+                    (!hasBalance || exceedsBalance) && styles.amountInputError
+                  ]}
                   value={amount}
                   onChangeText={(text) => {
                     const numericValue = text.replace(/,/g, '');
@@ -503,26 +568,46 @@ const SellOrder = () => {
                     }
                   }}
                   keyboardType="decimal-pad"
-                  placeholder="Input amount"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  placeholder={!hasBalance ? "Insufficient balance" : "Input amount"}
+                  placeholderTextColor={!hasBalance ? "#ff0000" : "rgba(255, 255, 255, 0.5)"}
+                  editable={hasBalance}
                 />
                 <View style={styles.balanceRow}>
                   <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
                   {isLoadingBalances ? (
                     <ActivityIndicator size="small" color="#A9EF45" />
                   ) : (
-                    <ThemedText style={styles.balanceValue}>
+                    <ThemedText style={[
+                      styles.balanceValue,
+                      !hasBalance && styles.balanceValueError
+                    ]}>
                       {adData?.cryptoCurrency || 'USDT'} {parseFloat(cryptoBalance).toFixed(8)}
                     </ThemedText>
                   )}
                 </View>
+                {!hasBalance && (
+                  <View style={styles.errorMessageContainer}>
+                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
+                    <ThemedText style={styles.errorMessage}>
+                      You don't have any {adData?.cryptoCurrency || 'USDT'} balance. Please deposit first.
+                    </ThemedText>
+                  </View>
+                )}
+                {hasBalance && exceedsBalance && (
+                  <View style={styles.errorMessageContainer}>
+                    <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
+                    <ThemedText style={styles.errorMessage}>
+                      Amount exceeds your balance of {parseFloat(cryptoBalance).toFixed(8)} {adData?.cryptoCurrency || 'USDT'}
+                    </ThemedText>
+                  </View>
+                )}
               </View>
 
-              {/* You will Receive */}
+              {/* You will Receive - Show Fiat when Crypto is selected */}
               <View style={styles.receiveSection}>
                 <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
                 <ThemedText style={styles.payValue}>
-                  {adData?.fiatCurrency || 'NGN'} {fiatAmount}
+                  {amount && adData?.price ? `${adData?.fiatCurrency || 'NGN'} ${fiatAmount}` : `${adData?.fiatCurrency || 'NGN'} 0.00`}
                 </ThemedText>
               </View>
             </>
@@ -555,12 +640,14 @@ const SellOrder = () => {
 
       {/* Sell Button */}
       <TouchableOpacity
-        style={[styles.sellButton, (!isFormValid || createOrderMutation.isPending) && styles.sellButtonDisabled]}
+        style={[styles.sellButton, (!isFormValid || createOrderMutation.isPending || !hasBalance) && styles.sellButtonDisabled]}
         onPress={handleSell}
-        disabled={!isFormValid || createOrderMutation.isPending}
+        disabled={!isFormValid || createOrderMutation.isPending || !hasBalance}
       >
         {createOrderMutation.isPending ? (
           <ActivityIndicator size="small" color="#000000" />
+        ) : !hasBalance ? (
+          <ThemedText style={styles.sellButtonText}>Insufficient Balance</ThemedText>
         ) : (
           <ThemedText style={styles.sellButtonText}>Sell</ThemedText>
         )}
@@ -995,5 +1082,30 @@ const styles = StyleSheet.create({
     fontSize: 14 * SCALE,
     fontWeight: '300',
     color: '#000000',
+  },
+  amountInputError: {
+    borderColor: '#ff0000',
+    borderWidth: 1,
+  },
+  balanceValueError: {
+    color: '#ff0000',
+  },
+  errorMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+    marginTop: 10 * SCALE,
+    paddingHorizontal: 10 * SCALE,
+    paddingVertical: 8 * SCALE,
+    backgroundColor: '#ff00001A',
+    borderRadius: 8 * SCALE,
+    borderWidth: 0.5,
+    borderColor: '#ff000033',
+  },
+  errorMessage: {
+    fontSize: 11 * SCALE,
+    fontWeight: '400',
+    color: '#ff0000',
+    flex: 1,
   },
 });

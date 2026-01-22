@@ -52,7 +52,7 @@ const Support = () => {
         isLoading: isLoadingUser,
     } = useGetCurrentUser();
 
-    // Set user data when available
+    // Set user data when available - always update to ensure latest user data is used
     React.useEffect(() => {
         if (userData?.data?.user) {
             const user = userData.data.user;
@@ -61,14 +61,34 @@ const Support = () => {
                 : user.firstName || user.lastName || user.name || '';
             const userEmail = user.email || '';
             
-            if (fullName && !chatName) {
+            // Always set from user data to ensure it's pre-filled
+            if (fullName) {
                 setChatName(fullName);
             }
-            if (userEmail && !chatEmail) {
+            if (userEmail) {
                 setChatEmail(userEmail);
             }
         }
     }, [userData?.data?.user]);
+
+    // When modal opens, ensure fields are pre-filled with user data
+    React.useEffect(() => {
+        if (showDetailsModal && userData?.data?.user) {
+            const user = userData.data.user;
+            const fullName = user.firstName && user.lastName 
+                ? `${user.firstName} ${user.lastName}`.trim()
+                : user.firstName || user.lastName || user.name || '';
+            const userEmail = user.email || '';
+            
+            // Pre-fill when modal opens
+            if (fullName) {
+                setChatName(fullName);
+            }
+            if (userEmail) {
+                setChatEmail(userEmail);
+            }
+        }
+    }, [showDetailsModal, userData?.data?.user]);
     const [reasonOptions] = useState([
         { id: 'Payment Issue', label: 'Payment Issue' },
         { id: 'Account issue', label: 'Account issue' },
@@ -219,19 +239,23 @@ const Support = () => {
     });
 
     const handleNewChat = () => {
-        // Pre-fill with user data if available
+        // Always pre-fill with latest user data if available
         if (userData?.data?.user) {
             const user = userData.data.user;
             const fullName = user.firstName && user.lastName 
                 ? `${user.firstName} ${user.lastName}`.trim()
                 : user.firstName || user.lastName || user.name || '';
             const userEmail = user.email || '';
-            setChatName(fullName);
-            setChatEmail(userEmail);
+            // Always set from user data to ensure fields are pre-filled
+            setChatName(fullName || '');
+            setChatEmail(userEmail || '');
         } else {
-            // Clear if no user data
-            setChatName('');
-            setChatEmail('');
+            // Only clear if user data is not available
+            // If user data is loading, keep existing values
+            if (!isLoadingUser) {
+                setChatName('');
+                setChatEmail('');
+            }
         }
         setSelectedReason('');
         setShowDetailsModal(true);
@@ -576,7 +600,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: 20 * SCALE,
-        paddingTop: 30* 1,
+        paddingTop: 30 * SCALE,
         paddingBottom: 20 * SCALE,
     },
     backButton: {

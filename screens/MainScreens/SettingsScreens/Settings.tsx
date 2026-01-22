@@ -12,6 +12,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
@@ -45,6 +46,7 @@ interface SettingsSection {
 const Settings = () => {
   const navigation = useNavigation();
   const { logout: authLogout } = useAuth();
+  const insets = useSafeAreaInsets();
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [showDeleteWarningModal, setShowDeleteWarningModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -391,7 +393,7 @@ const Settings = () => {
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: Math.max(insets.top, 30 * SCALE) }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -684,7 +686,7 @@ const styles = StyleSheet.create({
     borderColor: '#A9EF45',
     borderRadius: 20 * SCALE,
     marginHorizontal: SCREEN_WIDTH * 0.047,
-    marginTop: 20 * SCALE,
+    marginTop: 0,
     marginBottom: 20 * SCALE,
     paddingVertical: 21 * SCALE,
   },

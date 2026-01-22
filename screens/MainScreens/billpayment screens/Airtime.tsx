@@ -120,6 +120,7 @@ const Airtime = ({ route }: any) => {
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
+  const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
   const [transactionDetails, setTransactionDetails] = useState({
@@ -565,6 +566,27 @@ const Airtime = ({ route }: any) => {
       amount: numericAmount.toString(),
       accountNumber: mobileNumber,
     });
+  };
+
+  const handlePinPress = (num: string) => {
+    setLastPressedButton(num);
+    setTimeout(() => {
+      setLastPressedButton(null);
+    }, 200);
+
+    // Only allow numeric digits for PIN
+    if (num === '.' || !/^\d$/.test(num)) {
+      return;
+    }
+
+    if (pin.length < 5) {
+      const newPin = pin + num;
+      setPin(newPin);
+    }
+  };
+
+  const handlePinBackspace = () => {
+    setPin(pin.slice(0, -1));
   };
 
   const handleConfirmPayment = async () => {
@@ -1151,62 +1173,191 @@ const Airtime = ({ route }: any) => {
           setPin('');
         }}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          <View style={styles.pinModalContent}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.pinModalScrollContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.modalHeader}>
-                <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowPinModal(false);
-                    setPin('');
-                  }}
-                >
-                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.pinInputContainer}>
-                <ThemedText style={styles.pinLabel}>Enter your PIN to confirm payment</ThemedText>
-                {pendingTransactionData && (
-                  <View style={styles.paymentSummaryContainer}>
-                    <View style={styles.paymentSummaryRow}>
-                      <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
-                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.amount || amount}</ThemedText>
-                    </View>
-                    <View style={styles.paymentSummaryRow}>
-                      <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
-                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.fee || '0'}</ThemedText>
-                    </View>
-                    <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
-                      <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
-                      <ThemedText style={styles.paymentSummaryValue}>N{pendingTransactionData.totalAmount || amount}</ThemedText>
-                    </View>
-                  </View>
-                )}
-                <TextInput
-                  style={styles.pinInput}
-                  value={pin}
-                  onChangeText={setPin}
-                  keyboardType="numeric"
-                  secureTextEntry
-                  maxLength={5}
-                  placeholder="Enter PIN"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  autoFocus
+        <View style={styles.modalOverlay}>
+          <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
+            <View style={styles.pinModalHeader}>
+              <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
+              <TouchableOpacity onPress={() => {
+                setShowPinModal(false);
+                setPin('');
+              }}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pinIconContainer}>
+              <View style={styles.pinIconCircle}>
+                <Image
+                  source={require('../../../assets/Group 49.png')}
+                  style={styles.pinIcon}
+                  resizeMode="contain"
                 />
               </View>
+            </View>
+
+            <View style={styles.pinModalTextContainer}>
+              <ThemedText style={styles.pinInstruction}>Input Pin to Confirm Payment</ThemedText>
+              {pendingTransactionData && (
+                <ThemedText style={styles.pinAmount}>
+                  ₦{pendingTransactionData.totalAmount || pendingTransactionData.amount || amount}
+                </ThemedText>
+              )}
+            </View>
+
+            <View style={styles.pinBar}>
+              <View style={styles.pinBarInner}>
+                {[0, 1, 2, 3, 4].map((index) => {
+                  const hasValue = index < pin.length;
+                  const digit = hasValue ? pin[index] : null;
+                  return (
+                    <View key={index} style={styles.pinSlot}>
+                      {hasValue ? (
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
+                      ) : (
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+              <TouchableOpacity style={styles.fingerprintButton}>
+                <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.numpad}>
+              <View style={styles.numpadRow}>
+                {[1, 2, 3].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                {[4, 5, 6].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                {[7, 8, 9].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={() => handlePinPress('.')}
+                >
+                  <View
+                    style={[
+                      styles.numpadCircle,
+                      lastPressedButton === '.' && styles.numpadCirclePressed,
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.numpadText,
+                        lastPressedButton === '.' && styles.numpadTextPressed,
+                      ]}
+                    >
+                      .
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={() => handlePinPress('0')}
+                >
+                  <View
+                    style={[
+                      styles.numpadCircle,
+                      lastPressedButton === '0' && styles.numpadCirclePressed,
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.numpadText,
+                        lastPressedButton === '0' && styles.numpadTextPressed,
+                      ]}
+                    >
+                      0
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={handlePinBackspace}
+                >
+                  <View style={styles.backspaceSquare}>
+                    <MaterialCommunityIcons name="backspace-outline" size={18 * SCALE} color="#FFFFFF" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {pin.length === 5 && (
               <TouchableOpacity
-                style={[styles.confirmButton, (!pin || pin.length < 5 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
+                style={[styles.confirmButton, confirmMutation.isPending && styles.confirmButtonDisabled]}
                 onPress={handleConfirmPayment}
-                disabled={!pin || pin.length < 5 || confirmMutation.isPending}
+                disabled={confirmMutation.isPending}
               >
                 {confirmMutation.isPending ? (
                   <ActivityIndicator size="small" color="#000000" />
@@ -1214,9 +1365,9 @@ const Airtime = ({ route }: any) => {
                   <ThemedText style={styles.confirmButtonText}>Confirm Payment</ThemedText>
                 )}
               </TouchableOpacity>
-            </ScrollView>
+            )}
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Transaction Receipt Modal */}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -13,14 +13,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
-import { useCreateSellAd } from '../../../mutations/p2p.mutations';
+import { useCreateSellAd, useUpdateP2PAd } from '../../../mutations/p2p.mutations';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
@@ -52,7 +52,18 @@ interface Country {
 
 const CreateSellAd = () => {
   const navigation = useNavigation();
+  const route = useRoute();
   const queryClient = useQueryClient();
+  const routeParams = route.params as { 
+    editMode?: boolean; 
+    adId?: string; 
+    adData?: any;
+  } | undefined;
+  
+  const isEditMode = routeParams?.editMode || false;
+  const adId = routeParams?.adId || '';
+  const editAdData = routeParams?.adData;
+  
   const [selectedCrypto, setSelectedCrypto] = useState('USDT');
   const [selectedCryptoSymbol, setSelectedCryptoSymbol] = useState('USDT');
   const [selectedCurrency, setSelectedCurrency] = useState('Nigeria');
@@ -216,11 +227,27 @@ const CreateSellAd = () => {
     onSuccess: (data) => {
       showSuccessAlert('Success', 'Sell ad created successfully', () => {
         queryClient.invalidateQueries({ queryKey: ['p2p', 'vendor', 'ads'] });
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'ads'] });
         setShowSuccessModal(true);
       });
     },
     onError: (error: any) => {
       showErrorAlert('Error', error?.message || 'Failed to create sell ad');
+    },
+  });
+
+  // Update ad mutation
+  const updateAdMutation = useUpdateP2PAd({
+    onSuccess: (data) => {
+      showSuccessAlert('Success', 'Ad updated successfully', () => {
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'vendor', 'ads'] });
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'ads'] });
+        queryClient.invalidateQueries({ queryKey: ['p2p', 'ads', adId] });
+        navigation.goBack();
+      });
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to update ad');
     },
   });
 
@@ -233,6 +260,72 @@ const CreateSellAd = () => {
   const handleRemovePaymentMethod = (methodId: string) => {
     setSelectedPaymentMethods(selectedPaymentMethods.filter(m => m.id !== methodId));
   };
+
+  // Populate form fields when in edit mode
+  useEffect(() => {
+    if (isEditMode && editAdData && !isLoadingPaymentMethods && availablePaymentMethods.length > 0) {
+      console.log('[CreateSellAd] Populating form fields for edit mode:', editAdData);
+      
+      // Set crypto
+      if (editAdData.cryptoCurrency) {
+        setSelectedCryptoSymbol(editAdData.cryptoCurrency);
+        const crypto = cryptos.find(c => c.symbol === editAdData.cryptoCurrency);
+        if (crypto) {
+          setSelectedCrypto(crypto.name);
+        }
+      }
+      
+      // Set fiat currency and country
+      if (editAdData.fiatCurrency) {
+        setSelectedFiatCurrency(editAdData.fiatCurrency);
+      }
+      if (editAdData.countryCode) {
+        setSelectedCountryCode(editAdData.countryCode);
+        const country = currencies.find(c => c.code === editAdData.countryCode);
+        if (country) {
+          setSelectedCurrency(country.name);
+        }
+      }
+      
+      // Set form values
+      if (editAdData.price) setSellPrice(String(editAdData.price));
+      if (editAdData.volume) setVolume(String(editAdData.volume));
+      if (editAdData.minOrder) setMinOrder(String(editAdData.minOrder));
+      if (editAdData.maxOrder) setMaxOrder(String(editAdData.maxOrder));
+      if (editAdData.autoAccept !== undefined) setAutoAccept(editAdData.autoAccept);
+      
+      // Set payment methods - wait for payment methods to load
+      if (editAdData.paymentMethods && Array.isArray(editAdData.paymentMethods) && editAdData.paymentMethods.length > 0) {
+        // Map payment methods from ad data to available payment methods
+        const matchedPaymentMethods: PaymentMethod[] = [];
+        editAdData.paymentMethods.forEach((adPm: any) => {
+          const pmId = String(adPm.id || adPm.paymentMethodId || '');
+          const matched = availablePaymentMethods.find(apm => String(apm.id) === pmId);
+          if (matched) {
+            matchedPaymentMethods.push(matched);
+          } else {
+            console.log('[CreateSellAd] Payment method not found:', pmId, 'Available:', availablePaymentMethods.map(pm => pm.id));
+          }
+        });
+        console.log('[CreateSellAd] Matched payment methods:', matchedPaymentMethods);
+        setSelectedPaymentMethods(matchedPaymentMethods);
+      } else if (editAdData.paymentMethodIds && Array.isArray(editAdData.paymentMethodIds) && editAdData.paymentMethodIds.length > 0) {
+        // Fallback: use payment method IDs
+        const matchedPaymentMethods: PaymentMethod[] = [];
+        editAdData.paymentMethodIds.forEach((pmId: string | number) => {
+          const pmIdStr = String(pmId);
+          const matched = availablePaymentMethods.find(apm => String(apm.id) === pmIdStr);
+          if (matched) {
+            matchedPaymentMethods.push(matched);
+          } else {
+            console.log('[CreateSellAd] Payment method ID not found:', pmIdStr, 'Available:', availablePaymentMethods.map(pm => pm.id));
+          }
+        });
+        console.log('[CreateSellAd] Matched payment methods from IDs:', matchedPaymentMethods);
+        setSelectedPaymentMethods(matchedPaymentMethods);
+      }
+    }
+  }, [isEditMode, editAdData, cryptos, currencies, availablePaymentMethods, isLoadingPaymentMethods]);
 
   const handleCreateOrder = () => {
     // Validation
@@ -257,19 +350,34 @@ const CreateSellAd = () => {
       return;
     }
 
-    // Create sell ad
-    createSellAdMutation.mutate({
-      cryptoCurrency: selectedCryptoSymbol,
-      fiatCurrency: selectedFiatCurrency,
-      price: sellPrice,
-      volume: volume,
-      minOrder: minOrder,
-      maxOrder: maxOrder,
-      autoAccept: autoAccept,
-      paymentMethodIds: selectedPaymentMethods.map(m => m.id),
-      countryCode: selectedCountryCode,
-      description: `Sell ${selectedCryptoSymbol} at best rates`,
-    });
+    if (isEditMode && adId) {
+      // Update existing ad
+      updateAdMutation.mutate({
+        adId: adId,
+        price: sellPrice,
+        volume: volume,
+        minOrder: minOrder,
+        maxOrder: maxOrder,
+        autoAccept: autoAccept,
+        paymentMethodIds: selectedPaymentMethods.map(m => m.id),
+        countryCode: selectedCountryCode,
+        description: `Sell ${selectedCryptoSymbol} at best rates`,
+      });
+    } else {
+      // Create new sell ad
+      createSellAdMutation.mutate({
+        cryptoCurrency: selectedCryptoSymbol,
+        fiatCurrency: selectedFiatCurrency,
+        price: sellPrice,
+        volume: volume,
+        minOrder: minOrder,
+        maxOrder: maxOrder,
+        autoAccept: autoAccept,
+        paymentMethodIds: selectedPaymentMethods.map(m => m.id),
+        countryCode: selectedCountryCode,
+        description: `Sell ${selectedCryptoSymbol} at best rates`,
+      });
+    }
   };
 
   const selectedCryptoData = cryptos.find(c => c.symbol === selectedCryptoSymbol) || cryptos[0];
@@ -305,7 +413,7 @@ const CreateSellAd = () => {
             <MaterialCommunityIcons name="chevron-left" size={20 * SCALE} color="#FFFFFF" />
           </View>
         </TouchableOpacity>
-        <ThemedText style={styles.headerTitle}>Create Sell Ad</ThemedText>
+        <ThemedText style={styles.headerTitle}>{isEditMode ? 'Edit Sell Ad' : 'Create Sell Ad'}</ThemedText>
         <TouchableOpacity 
           style={styles.supportButton}
           onPress={() => {
@@ -542,9 +650,13 @@ const CreateSellAd = () => {
             <View style={styles.successIconCircle}>
               <MaterialCommunityIcons name="check" size={40 * SCALE} color="#FFFFFF" />
             </View>
-            <ThemedText style={styles.successModalTitle}>Sell Ad Created</ThemedText>
+            <ThemedText style={styles.successModalTitle}>
+              {isEditMode ? 'Sell Ad Updated' : 'Sell Ad Created'}
+            </ThemedText>
             <ThemedText style={styles.successModalMessage}>
-              Congratulations, your sell ad has been created successfully
+              {isEditMode 
+                ? 'Congratulations, your sell ad has been updated successfully'
+                : 'Congratulations, your sell ad has been created successfully'}
             </ThemedText>
             <View style={styles.successModalButtons}>
               <TouchableOpacity

@@ -391,48 +391,7 @@ const P2PFundScreen = () => {
     }
   }, [orderDetailsData, selectedOrder]);
 
-  // Mock data - TODO: Replace with API call
-  const oldTradingOffers: TradingOffer[] = [
-    {
-      id: '1',
-      traderName: 'Qamardeen Abdul Malik',
-      traderAvatar: require('../../../assets/Frame 2398.png'),
-      isOnline: true,
-      numberOfTrades: 1200,
-      responseTime: '15min',
-      score: 98,
-      availableQuantity: '50 USDT',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank', 'Chipper Cash'],
-      price: '1,550.70',
-    },
-    {
-      id: '2',
-      traderName: 'Qamardeen Abdul Malik',
-      traderAvatar: require('../../../assets/Frame 2398.png'),
-      isOnline: true,
-      numberOfTrades: 1200,
-      responseTime: '15min',
-      score: 98,
-      availableQuantity: '50 USDT',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank', 'Chipper Cash'],
-      price: '1,550.70',
-    },
-    {
-      id: '3',
-      traderName: 'Qamardeen Abdul Malik',
-      traderAvatar: require('../../../assets/Frame 2398.png'),
-      isOnline: true,
-      numberOfTrades: 1200,
-      responseTime: '15min',
-      score: 98,
-      availableQuantity: '50 USDT',
-      limits: '1,600 - 75,000 NGN',
-      paymentMethods: ['Opay', 'Palmpay', 'Moniepoint', 'Kudabank', 'Chipper Cash'],
-      price: '1,550.70',
-    },
-  ];
+  // Removed mock data - using real API data from tradingOffers
 
   const assets: Asset[] = [
     { id: '1', name: 'USDT', balance: '0.00001', icon: require('../../../assets/CurrencyBtc.png') },
@@ -499,14 +458,13 @@ const P2PFundScreen = () => {
     });
   };
 
-  // Handle sell button press - Navigate to SellOrderFlow screen
+  // Handle sell button press - Navigate to SellOrder screen
   const handleSellPress = (offer: any) => {
-    // Navigate to SellOrderFlow screen with ad details
+    // Navigate to SellOrder screen with ad details (this is the order creation screen)
     (navigation as any).navigate('Settings', {
-      screen: 'SellOrderFlow',
+      screen: 'SellOrder',
       params: {
         adId: String(offer.adId || offer.id),
-        adDetails: offer.rawData,
       },
     });
   };

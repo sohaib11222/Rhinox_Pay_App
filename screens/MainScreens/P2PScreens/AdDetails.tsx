@@ -43,6 +43,7 @@ interface Order {
   buyer?: any;
   vendor?: any;
   rawData?: any;
+  adId?: string;
 }
 
 // Types for API integration
@@ -75,6 +76,19 @@ const AdDetails = () => {
   const currentAd = useMemo(() => {
     if (!adDetailsData?.data) return null;
     const ad = adDetailsData.data;
+    
+    // Extract payment method names from paymentMethods array
+    const paymentMethodNames = ad.paymentMethods?.map((pm: any) => {
+      if (pm.type === 'bank_account') {
+        return pm.bankName || 'Bank Transfer';
+      } else if (pm.type === 'mobile_money') {
+        return pm.providerName || 'Mobile Money';
+      } else if (pm.type === 'rhinoxpay_id') {
+        return 'RhinoxPay ID';
+      }
+      return pm.name || pm.type || 'Unknown';
+    }) || [];
+    
     return {
       id: String(ad.id),
       type: ad.type === 'buy' ? 'Buy' : 'Sell' as 'Buy' | 'Sell',
@@ -92,6 +106,8 @@ const AdDetails = () => {
       description: ad.description || '',
       autoAccept: ad.autoAccept || false,
       paymentMethodIds: ad.paymentMethodIds || [],
+      paymentMethods: paymentMethodNames, // Store payment method names for display
+      paymentMethodsData: ad.paymentMethods || [], // Store full payment methods data
       createdAt: ad.createdAt || '',
       updatedAt: ad.updatedAt || '',
     };
@@ -138,7 +154,10 @@ const AdDetails = () => {
     return vendorOrdersData.data
       .filter((order: any) => {
         // Filter orders for this specific ad if adId is available
-        // Note: API might not return adId in order, so we show all vendor orders
+        if (adId && order.adId) {
+          return String(order.adId) === String(adId);
+        }
+        // If adId is not in order, include it (might be all vendor orders)
         return true;
       })
       .map((order: any) => {
@@ -192,9 +211,20 @@ const AdDetails = () => {
           buyer: buyer,
           vendor: order.vendor,
           rawData: order,
+          adId: order.adId ? String(order.adId) : undefined, // Store adId if available
         };
       });
-  }, [vendorOrdersData?.data, activeTab]);
+  }, [vendorOrdersData?.data, activeTab, adId]);
+
+  // Calculate completed and cancelled orders count from orders array
+  const orderStats = useMemo(() => {
+    const completedCount = orders.filter(order => order.uiStatus === 'Completed').length;
+    const cancelledCount = orders.filter(order => order.uiStatus === 'Cancelled').length;
+    return {
+      completed: completedCount,
+      cancelled: cancelledCount,
+    };
+  }, [orders]);
 
   // Accept order mutation
   const acceptMutation = useAcceptOrder({
@@ -380,7 +410,8 @@ const AdDetails = () => {
           minOrder: ad.minOrder || '0',
           maxOrder: ad.maxOrder || '0',
           autoAccept: ad.autoAccept || false,
-          paymentMethodIds: ad.paymentMethodIds || [],
+          paymentMethodIds: ad.paymentMethodIds || ad.paymentMethods?.map((pm: any) => pm.id) || [],
+          paymentMethods: ad.paymentMethods || [], // Pass full payment methods array
           countryCode: ad.countryCode || 'NG',
           description: ad.description || '',
         },
@@ -575,11 +606,11 @@ const AdDetails = () => {
             <View style={styles.adConfig}>
               <View style={[styles.configRow, { borderTopRightRadius: 7 * SCALE, borderTopLeftRadius: 7, borderWidth: 0.5 }]}>
                 <ThemedText style={styles.configLabel}>Completed Orders</ThemedText>
-                <ThemedText style={styles.configValue}>200</ThemedText>
+                <ThemedText style={styles.configValue}>{orderStats.completed}</ThemedText>
               </View>
               <View style={styles.configRow}>
                 <ThemedText style={styles.configLabel}>Cancelled Orders</ThemedText>
-                <ThemedText style={styles.configValue}>200</ThemedText>
+                <ThemedText style={styles.configValue}>{orderStats.cancelled}</ThemedText>
               </View>
               <View style={styles.configRow}>
                 <ThemedText style={styles.configLabel}>Available Quantity</ThemedText>
@@ -594,7 +625,9 @@ const AdDetails = () => {
               <View style={[styles.configRow, { borderBottomRightRadius: 7 * SCALE, borderBottomLeftRadius: 7, borderWidth: 0.5 }]}>
                 <ThemedText style={styles.configLabel}>Payment Methods</ThemedText>
                 <ThemedText style={styles.configValue}>
-                  Opay , Palmpay , Moniepoint ,Kudabank , Chipper Cash
+                  {currentAd.paymentMethods && currentAd.paymentMethods.length > 0 
+                    ? currentAd.paymentMethods.join(' , ')
+                    : 'No payment methods'}
                 </ThemedText>
               </View>
             </View>

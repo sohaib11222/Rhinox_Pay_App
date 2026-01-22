@@ -265,24 +265,26 @@ const SellOrderFlow = () => {
       };
     }
     
-    // Default/fallback data
+    // Default/fallback data - use route params or empty values
     return {
-      vendorName: routeParams?.adDetails?.vendor?.firstName || 'Vendor',
+      vendorName: routeParams?.adDetails?.vendor?.firstName || routeParams?.adDetails?.vendor?.name || 'Vendor',
       vendorAvatar: require('../../../assets/login/memoji.png'),
-      vendorStatus: 'Online',
-      vendorRating: '98%',
-      rate: 'N1,520',
-      buyerName: 'Lawal Afeez',
-      amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N25,000',
-      paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
-      price: '1,500 NGN',
-      txId: '128DJ2I3I1DJKQKCM',
-      orderTime: 'Oct 16, 2025 - 07:22AM',
-      amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
-      bankName: 'Opay',
-      accountNumber: '1234567890',
-      accountName: 'Qamardeen Abdul Malik',
-      usdtAmount: routeParams?.assetAmount || '15 USDT',
+      vendorStatus: routeParams?.adDetails?.isOnline ? 'Online' : 'Offline',
+      vendorRating: routeParams?.adDetails?.vendor?.score ? `${(parseFloat(routeParams.adDetails.vendor.score) * 20).toFixed(0)}%` : '0%',
+      rate: routeParams?.adDetails?.price ? `N${parseFloat(routeParams.adDetails.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N0.00',
+      buyerName: 'Buyer',
+      amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N0.00',
+      paymentAccount: routeParams?.paymentMethod || 'Not Selected',
+      price: routeParams?.adDetails?.price ? `N${parseFloat(routeParams.adDetails.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N0.00',
+      txId: routeParams?.orderId || 'N/A',
+      orderTime: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N0.00',
+      bankName: 'N/A',
+      accountNumber: 'N/A',
+      accountName: 'N/A',
+      usdtAmount: routeParams?.assetAmount || orderDetailsData?.data?.cryptoAmount 
+        ? `${orderDetailsData.data.cryptoAmount} ${orderDetailsData.data.cryptoCurrency || 'USDT'}`
+        : '0 USDT',
     };
   }, [orderDetailsData?.data, routeParams]);
 
