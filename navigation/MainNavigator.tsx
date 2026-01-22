@@ -46,6 +46,7 @@ import AdDetails from "../screens/MainScreens/P2PScreens/AdDetails";
 import SendFundsScreen from "../screens/MainScreens/P2PScreens/SendFundsScreen";
 import SendFundsDirectScreen from "../screens/MainScreens/SendFundScreens/SendFundsDirectScreen";
 import SendFundCrypto from "../screens/MainScreens/SendFundScreens/SendFundCrypto";
+import SendToRhinoxPayUser from "../screens/MainScreens/SendFundScreens/SendToRhinoxPayUser";
 import WalletAddressScreen from "../screens/MainScreens/SendFundScreens/WalletAddressScreen";
 import FundWalletScreen from "../screens/MainScreens/SendFundScreens/FundWalletScreen";
 import MobileFundScreen from "../screens/MainScreens/SendFundScreens/MobileFundScreen";
@@ -128,6 +129,7 @@ const SettingsStackNavigator = () => {
       <SettingsStack.Screen name="SendFunds" component={SendFundsScreen} />
       <SettingsStack.Screen name="SendFundsDirect" component={SendFundsDirectScreen} />
       <SettingsStack.Screen name="SendFundCrypto" component={SendFundCrypto} />
+      <SettingsStack.Screen name="SendToRhinoxPayUser" component={SendToRhinoxPayUser} />
       <SettingsStack.Screen name="WalletAddress" component={WalletAddressScreen} />
       <SettingsStack.Screen name="FundWallet" component={FundWalletScreen} />
       <SettingsStack.Screen name="MobileFund" component={MobileFundScreen} />
@@ -191,7 +193,7 @@ const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }
 // Custom Tab Bar Component that checks navigation state
 const CustomTabBar = (props: any) => {
   // Screens that should hide the tab bar
-  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings', 'Rewards', 'RewardsHistory', 'ClaimReward', 'NotificationSettings', 'DevicesAndSessions', 'Beneficiaries'];
+  const screensToHideTabBar = ['BuyOrder', 'SellOrder', 'SellOrderFlow', 'ChatScreen', 'P2PProfile', 'MyAdsScreen', 'CreateBuyAd', 'CreateSellAd', 'AdDetails', 'SendFunds', 'SendFundsDirect', 'SendFundCrypto', 'SendToRhinoxPayUser', 'FundWallet', 'MobileFund', 'Conversion', 'Assets', 'P2PFund', 'PaymentSettings', 'Rewards', 'RewardsHistory', 'ClaimReward', 'NotificationSettings', 'DevicesAndSessions', 'Beneficiaries'];
   
   // Get the current navigation state
   const navigationState = useNavigationState((state) => state);

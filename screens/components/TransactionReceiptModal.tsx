@@ -446,7 +446,21 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                   <View style={styles.detailRow}>
                     <ThemedText style={styles.detailLabel}>Credited Amount</ThemedText>
-                    <ThemedText style={styles.detailValue}>{amount}</ThemedText>
+                    <ThemedText style={styles.detailValue}>
+                      {(() => {
+                        // Calculate credited amount: deposit amount - fee
+                        const depositAmount = parseFloat(amount.replace(/[^\d.]/g, '')) || 0;
+                        const feeAmount = parseFloat((transaction.fee || '0').replace(/[^\d.]/g, '')) || 0;
+                        const creditedAmount = depositAmount - feeAmount;
+                        // Extract currency symbol from amount
+                        const currencyMatch = amount.match(/[^\d.,]/g);
+                        const currencySymbol = currencyMatch ? currencyMatch.join('') : '';
+                        // Format the credited amount with currency
+                        return creditedAmount > 0 
+                          ? `${creditedAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${currencySymbol}`
+                          : amount;
+                      })()}
+                    </ThemedText>
                   </View>
                 </>
               )}

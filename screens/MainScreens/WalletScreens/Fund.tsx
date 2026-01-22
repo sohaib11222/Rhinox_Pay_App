@@ -25,9 +25,10 @@ import { useGetMobileMoneyProviders, useGetBankDetails } from '../../../queries/
 import { useInitiateDeposit, useConfirmDeposit } from '../../../mutations/deposit.mutations';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import * as Clipboard from 'expo-clipboard';
-import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -94,9 +95,21 @@ const Fund = () => {
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
+  const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
-  const [showBankDetailsModal, setShowBankDetailsModal] = useState(false);
+  const [successTransactionData, setSuccessTransactionData] = useState<{
+    amount: string;
+    fee: string;
+    currency: string;
+    currencySymbol: string;
+    country: string;
+    provider?: string;
+    mobileNumber?: string;
+    accountName?: string;
+    transactionId?: string;
+    paymentMethod: string;
+  } | null>(null);
   
   // Mobile Money specific state
   const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
@@ -107,7 +120,6 @@ const Fund = () => {
   
   // Bank Transfer specific state
   const [bankDetails, setBankDetails] = useState<any>(null);
-  const [hasMadeTransfer, setHasMadeTransfer] = useState(false);
 
   // Get currency from country code
   const currency = useMemo(() => getCurrencyFromCountryCode(selectedCountry), [selectedCountry]);
@@ -129,6 +141,31 @@ const Fund = () => {
     isLoading: isLoadingBalance,
     refetch: refetchBalances,
   } = useGetWalletBalances();
+
+  // Fetch current user to check PIN setup status
+  const {
+    data: userData,
+    isLoading: isLoadingUser,
+  } = useGetCurrentUser();
+
+  // Check if PIN is set up
+  const hasPinSetup = useMemo(() => {
+    // Check various possible fields for PIN status
+    const user = userData?.data;
+    if (!user) return false;
+    
+    // Check common field names for PIN status
+    return !!(
+      user.hasPin ||
+      user.pinSetup ||
+      user.isPinSetup ||
+      user.pinSet ||
+      user.hasTransactionPin ||
+      // If user object exists and doesn't explicitly say PIN is not set, assume it might be set
+      // We'll rely on API error message for actual validation
+      true
+    );
+  }, [userData]);
 
   // Get balance for selected currency
   const balance = useMemo(() => {
@@ -199,9 +236,12 @@ const Fund = () => {
   // Update bank details when data is fetched
   useEffect(() => {
     if (bankDetailsData?.data && selectedChannel === 'bank_transfer') {
+      console.log('[Fund] Bank details loaded for', selectedCountry, currency);
       setBankDetails(bankDetailsData.data);
+    } else if (isBankDetailsError && selectedChannel === 'bank_transfer') {
+      console.error('[Fund] Bank details error:', bankDetailsError);
     }
-  }, [bankDetailsData, selectedChannel]);
+  }, [bankDetailsData, selectedChannel, isBankDetailsError, bankDetailsError, selectedCountry, currency]);
 
   // Fetch mobile money providers based on country and currency
   const {
@@ -218,11 +258,23 @@ const Fund = () => {
     enabled: selectedChannel === 'mobile_money' && !!selectedCountry && !!currency,
   } as any);
 
+  // Log provider fetch results
+  useEffect(() => {
+    if (providersData?.data && selectedChannel === 'mobile_money') {
+      console.log('[Fund] Mobile money providers fetched successfully:', providersData.data.length || 0, 'providers for', selectedCountry, currency);
+    } else if (isProvidersError && selectedChannel === 'mobile_money') {
+      console.error('[Fund] Error fetching mobile money providers:', providersError);
+    }
+  }, [providersData, isProvidersError, providersError, selectedChannel, selectedCountry, currency]);
+
   // Transform providers to UI format
   const providers = useMemo(() => {
     if (!providersData?.data || !Array.isArray(providersData.data)) {
+      console.log('[Fund] No mobile money providers available for', selectedCountry, currency);
       return [];
     }
+    
+    console.log('[Fund] Mobile money providers loaded:', providersData.data.length, 'providers for', selectedCountry, currency);
     
     return providersData.data.map((provider: any) => {
       // Default icon mapping
@@ -260,9 +312,21 @@ const Fund = () => {
       
       setPendingTransactionData(data?.data);
       
+      // Set transaction ID for both channels
+      if (transactionId) {
+        const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
+        if (!isNaN(id)) {
+          setPendingTransactionId(id);
+        } else {
+          showErrorAlert('Error', 'Invalid transaction ID received');
+          return;
+        }
+      } else {
+        showErrorAlert('Error', 'Transaction ID not found in response');
+        return;
+      }
+      
       if (selectedChannel === 'bank_transfer') {
-        // For bank transfer, close bank details modal and show instructions
-        setShowBankDetailsModal(false);
         // Update bank details with reference from response
         if (data?.data?.reference) {
           setBankDetails((prev: any) => ({
@@ -270,43 +334,42 @@ const Fund = () => {
             reference: data.data.reference,
           }));
         }
-        // Show success message with instructions
-        showInfoAlert(
-          'Deposit Initiated',
-          'Please make the bank transfer using the provided details. Include the reference in the transfer narration.',
-          () => {
-            setHasMadeTransfer(true);
-            if (transactionId) {
-              const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
-              if (!isNaN(id)) {
-                setPendingTransactionId(id);
-                setShowPinModal(true);
-              }
-            }
-            setShowBankDetailsModal(true);
-          }
-        );
+        // For bank transfer, show PIN modal after user clicks "I've Made the Transfer"
+        // Don't show PIN modal yet - wait for user to confirm they've made the transfer
       } else {
         // For mobile money, show PIN modal directly
-        if (transactionId) {
-          const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
-          if (!isNaN(id)) {
-            setPendingTransactionId(id);
-            setShowPinModal(true);
-          } else {
-            showErrorAlert('Error', 'Invalid transaction ID received');
-          }
-        } else {
-          showErrorAlert('Error', 'Transaction ID not found in response');
-        }
+        setShowPinModal(true);
       }
     },
     onError: (error: any) => {
       console.error('[Fund] Error initiating deposit:', error);
-      showErrorAlert('Error', error?.message || 'Failed to initiate deposit');
-      if (selectedChannel === 'bank_transfer') {
-        setShowBankDetailsModal(false);
+      const errorMessage = error?.message || 'Failed to initiate deposit';
+      
+      // Check if error is related to PIN not being set up
+      const isPinError = 
+        errorMessage.toLowerCase().includes('pin') && 
+        (errorMessage.toLowerCase().includes('not') || errorMessage.toLowerCase().includes('setup') || errorMessage.toLowerCase().includes('set'));
+      
+      if (isPinError) {
+        // Show helpful error with navigation option to setup PIN
+        showConfirmAlert(
+          'PIN Not Set Up',
+          'You need to set up a transaction PIN before you can make deposits. Would you like to set up your PIN now?',
+          () => {
+            // Navigate to Account Security screen to setup PIN
+            (navigation as any).navigate('Settings', {
+              screen: 'AccountSecurity',
+            });
+          },
+          undefined,
+          'Setup PIN',
+          'Cancel'
+        );
+      } else {
+        showErrorAlert('Error', errorMessage);
       }
+      
+      // Error handling is done in the alert above
     },
   });
 
@@ -314,6 +377,72 @@ const Fund = () => {
   const confirmMutation = useConfirmDeposit({
     onSuccess: (data) => {
       console.log('[Fund] Deposit confirmed successfully:', data);
+      
+      // Store transaction data before resetting form
+      // Try to get transaction ID from confirm response first, then from pendingTransactionData, then from pendingTransactionId
+      const transactionId = data?.data?.id || 
+        data?.data?.transactionId ||
+        (data as any)?.id ||
+        (data as any)?.transactionId ||
+        pendingTransactionData?.id ||
+        pendingTransactionData?.transactionId ||
+        pendingTransactionId;
+      
+      // Get amount and fee from API response if available, otherwise use form values
+      const apiAmount = data?.data?.amount || data?.data?.depositAmount || data?.data?.transactionAmount;
+      const apiFee = data?.data?.fee || data?.data?.transactionFee;
+      
+      // Use API amount if available, otherwise use form amount, fallback to pendingTransactionData
+      let transactionAmount = '';
+      if (apiAmount) {
+        transactionAmount = String(apiAmount).replace(/,/g, '');
+      } else if (amount && amount.trim()) {
+        transactionAmount = amount.replace(/,/g, '');
+      } else if (pendingTransactionData?.amount) {
+        transactionAmount = String(pendingTransactionData.amount).replace(/,/g, '');
+      }
+      
+      // Validate amount
+      if (!transactionAmount || isNaN(parseFloat(transactionAmount))) {
+        console.error('[Fund] Invalid transaction amount:', { apiAmount, amount, pendingTransactionData });
+        showErrorAlert('Error', 'Invalid transaction amount. Please try again.');
+        return;
+      }
+      
+      const transactionFee = apiFee 
+        ? String(apiFee).replace(/,/g, '')
+        : (pendingTransactionData?.fee ? String(pendingTransactionData.fee).replace(/,/g, '') : '20');
+      
+      const providerName = selectedChannel === 'mobile_money' 
+        ? providers.find((p) => p.id === selectedProvider)?.name || ''
+        : '';
+      
+      // Format amount with currency symbol for display
+      const amountNum = parseFloat(transactionAmount);
+      const feeNum = parseFloat(transactionFee) || 0;
+      
+      const formattedAmount = amountNum.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const formattedFee = feeNum.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      
+      setSuccessTransactionData({
+        amount: formattedAmount,
+        fee: formattedFee,
+        currency: currency,
+        currencySymbol: currencySymbol,
+        country: selectedCountryName,
+        provider: providerName,
+        mobileNumber: selectedChannel === 'mobile_money' ? momoNumber : undefined,
+        accountName: selectedChannel === 'mobile_money' ? accountName : undefined,
+        transactionId: transactionId ? String(transactionId) : undefined,
+        paymentMethod: selectedChannel === 'bank_transfer' ? 'Bank Transfer' : 'Mobile Money',
+      });
+      
       setShowPinModal(false);
       setPin('');
       setPendingTransactionId(null);
@@ -351,13 +480,22 @@ const Fund = () => {
     }
 
     if (selectedChannel === 'bank_transfer') {
-      // For bank transfer, show bank details modal first
+      // If reference exists, user has made transfer - show PIN modal
+      if (pendingTransactionData?.reference) {
+        if (pendingTransactionId) {
+          setShowPinModal(true);
+        } else {
+          showErrorAlert('Error', 'Transaction ID not found. Please initiate deposit again.');
+        }
+        return;
+      }
+      // For bank transfer, initiate deposit to get reference
       if (!bankDetails) {
         showErrorAlert('Error', 'Bank details not available. Please try again.');
         refetchBankDetails();
         return;
       }
-      setShowBankDetailsModal(true);
+      handleBankTransferInitiate();
     } else if (selectedChannel === 'mobile_money') {
       // Validate mobile money fields
       if (!selectedProvider || !momoNumber) {
@@ -402,18 +540,66 @@ const Fund = () => {
     showSuccessAlert('Copied', 'Text copied to clipboard');
   };
 
-  const handleConfirmDeposit = async () => {
-    if (!pin || pin.length < 5) {
+  const handlePinPress = (num: string) => {
+    setLastPressedButton(num);
+    setTimeout(() => {
+      setLastPressedButton(null);
+    }, 200);
+
+    // Only allow numeric digits for PIN
+    if (num === '.' || !/^\d$/.test(num)) {
+      return;
+    }
+
+    // Use functional setState to ensure we have the latest PIN value
+    setPin((currentPin) => {
+      if (currentPin.length < 5) {
+        const newPin = currentPin + num;
+        
+        // If PIN reaches 5 digits, auto proceed after state update
+        if (newPin.length === 5) {
+          // Use setTimeout to ensure state is updated before calling handleConfirmDeposit
+          setTimeout(() => {
+            handleConfirmDeposit(newPin);
+          }, 100);
+        }
+        
+        return newPin;
+      }
+      return currentPin;
+    });
+  };
+
+  const handlePinBackspace = () => {
+    setPin(pin.slice(0, -1));
+  };
+
+  const handleConfirmDeposit = async (pinToUse?: string) => {
+    // Use the provided pinToUse, or get the current pin state
+    const pinValue = pinToUse || pin;
+    
+    // Validate PIN length - must be exactly 5 digits
+    if (!pinValue || typeof pinValue !== 'string' || pinValue.length !== 5) {
+      console.log('[Fund] PIN validation failed:', { pinValue, length: pinValue?.length, type: typeof pinValue });
       showErrorAlert('Error', 'Please enter your 5-digit PIN');
       return;
     }
 
+    // Validate that PIN contains only digits
+    if (!/^\d{5}$/.test(pinValue)) {
+      console.log('[Fund] PIN contains non-digits:', pinValue);
+      showErrorAlert('Error', 'PIN must contain only numbers');
+      return;
+    }
+
     if (pendingTransactionId !== null && pendingTransactionId !== undefined) {
+      console.log('[Fund] Confirming deposit with transaction ID:', pendingTransactionId);
       confirmMutation.mutate({
         transactionId: pendingTransactionId,
-        pin: pin,
+        pin: pinValue,
       });
     } else {
+      console.log('[Fund] Transaction ID not found:', pendingTransactionId);
       showErrorAlert('Error', 'Transaction ID not found. Please try again.');
     }
   };
@@ -597,8 +783,6 @@ const Fund = () => {
               ]}
               onPress={() => {
                 setSelectedChannel('mobile_money');
-                setHasMadeTransfer(false);
-                setShowBankDetailsModal(false);
               }}
             >
               <MaterialCommunityIcons 
@@ -619,7 +803,7 @@ const Fund = () => {
           <View style={styles.amountSection}>
             <TextInput
               style={styles.amountInput}
-              value={`${amount}${currencySymbol}`}
+              value={amount ? `${amount}${currencySymbol}` : ''}
               onChangeText={(text) => {
                 // Remove currency symbols and commas
                 const numericValue = text.replace(/[KshNGHCZAR,]/g, '').replace(/\s/g, '');
@@ -638,7 +822,7 @@ const Fund = () => {
           <View style={styles.formFields}>
             {selectedChannel === 'bank_transfer' ? (
               <>
-                {/* Bank Transfer Info */}
+                {/* Bank Transfer Info - Show as Card */}
                 {isLoadingBankDetails ? (
                   <View style={[styles.inputField, { justifyContent: 'center', alignItems: 'center', paddingVertical: 30 }]}>
                     <ActivityIndicator size="small" color="#A9EF45" />
@@ -660,33 +844,49 @@ const Fund = () => {
                     </TouchableOpacity>
                   </View>
                 ) : bankDetails ? (
-                  <>
-                    <TouchableOpacity
-                      style={styles.inputField}
-                      onPress={() => setShowBankDetailsModal(true)}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <ThemedText style={styles.inputLabel}>Bank Details</ThemedText>
-                        <ThemedText style={[styles.inputLabel, { fontSize: 12 * SCALE, marginTop: 4, color: 'rgba(255, 255, 255, 0.7)' }]}>
-                          {bankDetails.bankName} - {bankDetails.accountNumber}
-                        </ThemedText>
-                      </View>
-                      <MaterialCommunityIcons name="chevron-right" size={24 * SCALE} color="#FFFFFF" />
-                    </TouchableOpacity>
-                    {pendingTransactionData?.reference && (
-                      <View style={styles.inputField}>
-                        <View style={{ flex: 1 }}>
-                          <ThemedText style={styles.inputLabel}>Reference</ThemedText>
-                          <ThemedText style={[styles.inputLabel, { fontSize: 12 * SCALE, marginTop: 4, color: '#A9EF45' }]}>
-                            {pendingTransactionData.reference}
-                          </ThemedText>
-                        </View>
-                        <TouchableOpacity onPress={() => copyToClipboard(pendingTransactionData.reference)}>
-                          <MaterialCommunityIcons name="content-copy" size={20 * SCALE} color="#A9EF45" />
+                  <View style={styles.bankDetailsCardInline}>
+                    <View style={[styles.bankDetailRowInline, { borderTopRightRadius: 10 * SCALE, borderTopLeftRadius: 10 * SCALE }]}>
+                      <ThemedText style={styles.bankDetailLabelInline}>Bank Name</ThemedText>
+                      <View style={styles.bankDetailValueRowInline}>
+                        <ThemedText style={styles.bankDetailValueInline}>{bankDetails.bankName || 'N/A'}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.bankName || '')}>
+                          <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
                       </View>
+                    </View>
+                    <View style={styles.bankDetailRowInline}>
+                      <ThemedText style={styles.bankDetailLabelInline}>Account Number</ThemedText>
+                      <View style={styles.bankDetailValueRowInline}>
+                        <ThemedText style={styles.bankDetailValueInline}>{bankDetails.accountNumber || 'N/A'}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountNumber || '')}>
+                          <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <View style={styles.bankDetailRowInline}>
+                      <ThemedText style={styles.bankDetailLabelInline}>Account Name</ThemedText>
+                      <View style={styles.bankDetailValueRowInline}>
+                        <ThemedText style={styles.bankDetailValueInline}>{bankDetails.accountName || 'N/A'}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountName || '')}>
+                          <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    {pendingTransactionData?.reference && (
+                      <View style={[styles.bankDetailRowInline, { borderBottomRightRadius: 10 * SCALE, borderBottomLeftRadius: 10 * SCALE }]}>
+                        <ThemedText style={styles.bankDetailLabelInline}>Reference</ThemedText>
+                        <View style={styles.bankDetailValueRowInline}>
+                          <ThemedText style={[styles.bankDetailValueInline, { color: '#A9EF45' }]}>{pendingTransactionData.reference}</ThemedText>
+                          <TouchableOpacity onPress={() => copyToClipboard(pendingTransactionData.reference)}>
+                            <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#A9EF45" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                     )}
-                  </>
+                    {!pendingTransactionData?.reference && (
+                      <View style={[styles.bankDetailRowInline, { borderBottomRightRadius: 10 * SCALE, borderBottomLeftRadius: 10 * SCALE }]} />
+                    )}
+                  </View>
                 ) : null}
               </>
             ) : (
@@ -797,157 +997,14 @@ const Fund = () => {
             <ActivityIndicator size="small" color="#000000" />
           ) : (
             <ThemedText style={styles.proceedButtonText}>
-              {selectedChannel === 'bank_transfer' ? 'Get Bank Details' : 'Proceed'}
+              {selectedChannel === 'bank_transfer' 
+                ? (pendingTransactionData?.reference ? "I've Made the Transfer" : 'Initiate Deposit')
+                : 'Proceed'}
             </ThemedText>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Bank Details Modal */}
-      <Modal
-        visible={showBankDetailsModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowBankDetailsModal(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          <View style={styles.bankDetailsModalContent}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.bankDetailsModalScrollContent}
-            >
-              <View style={styles.modalHeader}>
-                <ThemedText style={styles.modalTitle}>Bank Transfer Details</ThemedText>
-                <TouchableOpacity onPress={() => setShowBankDetailsModal(false)}>
-                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-
-              {isLoadingBankDetails ? (
-                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                  <ActivityIndicator size="small" color="#A9EF45" />
-                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
-                    Loading bank details...
-                  </ThemedText>
-                </View>
-              ) : bankDetails ? (
-                <>
-                  <View style={styles.bankDetailsCard}>
-                    <View style={styles.bankDetailRow}>
-                      <ThemedText style={styles.bankDetailLabel}>Bank Name</ThemedText>
-                      <View style={styles.bankDetailValueContainer}>
-                        <ThemedText style={styles.bankDetailValue}>{bankDetails.bankName || 'N/A'}</ThemedText>
-                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.bankName || '')}>
-                          <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    <View style={styles.bankDetailRow}>
-                      <ThemedText style={styles.bankDetailLabel}>Account Number</ThemedText>
-                      <View style={styles.bankDetailValueContainer}>
-                        <ThemedText style={styles.bankDetailValue}>{bankDetails.accountNumber || 'N/A'}</ThemedText>
-                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountNumber || '')}>
-                          <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    <View style={styles.bankDetailRow}>
-                      <ThemedText style={styles.bankDetailLabel}>Account Name</ThemedText>
-                      <View style={styles.bankDetailValueContainer}>
-                        <ThemedText style={styles.bankDetailValue}>{bankDetails.accountName || 'N/A'}</ThemedText>
-                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountName || '')}>
-                          <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    {pendingTransactionData?.reference && (
-                      <View style={styles.bankDetailRow}>
-                        <ThemedText style={styles.bankDetailLabel}>Reference</ThemedText>
-                        <View style={styles.bankDetailValueContainer}>
-                          <ThemedText style={[styles.bankDetailValue, { color: '#A9EF45' }]}>
-                            {pendingTransactionData.reference}
-                          </ThemedText>
-                          <TouchableOpacity onPress={() => copyToClipboard(pendingTransactionData.reference)}>
-                            <MaterialCommunityIcons name="content-copy" size={18 * SCALE} color="#A9EF45" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={styles.bankDetailsInstructions}>
-                    <ThemedText style={styles.instructionsTitle}>Instructions</ThemedText>
-                    <View style={styles.instructionItem}>
-                      <MaterialCommunityIcons name="circle-small" size={16 * SCALE} color="#A9EF45" />
-                      <ThemedText style={styles.instructionText}>
-                        Transfer the exact amount: {currencySymbol}{amount}
-                      </ThemedText>
-                    </View>
-                    <View style={styles.instructionItem}>
-                      <MaterialCommunityIcons name="circle-small" size={16 * SCALE} color="#A9EF45" />
-                      <ThemedText style={styles.instructionText}>
-                        Include the reference number in the transfer narration
-                      </ThemedText>
-                    </View>
-                    <View style={styles.instructionItem}>
-                      <MaterialCommunityIcons name="circle-small" size={16 * SCALE} color="#A9EF45" />
-                      <ThemedText style={styles.instructionText}>
-                        After making the transfer, click "I've Made the Transfer" below
-                      </ThemedText>
-                    </View>
-                  </View>
-
-                  {!hasMadeTransfer ? (
-                    <TouchableOpacity
-                      style={styles.initiateButton}
-                      onPress={handleBankTransferInitiate}
-                      disabled={initiateMutation.isPending}
-                    >
-                      {initiateMutation.isPending ? (
-                        <ActivityIndicator size="small" color="#000000" />
-                      ) : (
-                        <ThemedText style={styles.initiateButtonText}>Initiate Deposit</ThemedText>
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.confirmTransferButton}
-                      onPress={() => {
-                        setShowBankDetailsModal(false);
-                        if (pendingTransactionId) {
-                          setShowPinModal(true);
-                        }
-                      }}
-                    >
-                      <ThemedText style={styles.confirmTransferButtonText}>I've Made the Transfer</ThemedText>
-                    </TouchableOpacity>
-                  )}
-                </>
-              ) : (
-                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
-                  <MaterialCommunityIcons name="alert-circle" size={40 * SCALE} color="#ff0000" />
-                  <ThemedText style={{ color: '#ff0000', fontSize: 12 * SCALE, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
-                    {bankDetailsError?.message || 'Failed to load bank details. Please try again.'}
-                  </ThemedText>
-                  <TouchableOpacity
-                    style={[styles.retryButton, { marginTop: 20 }]}
-                    onPress={() => refetchBankDetails()}
-                  >
-                    <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
 
       {/* Select Provider Modal */}
       <Modal
@@ -1037,7 +1094,7 @@ const Fund = () => {
         </View>
       </Modal>
 
-      {/* PIN Confirmation Modal */}
+      {/* PIN Verification Modal with Keypad */}
       <Modal
         visible={showPinModal}
         animationType="slide"
@@ -1046,82 +1103,200 @@ const Fund = () => {
           setShowPinModal(false);
           setPin('');
         }}
+        onShow={() => {
+          // Reset PIN when modal is shown to ensure clean state
+          setPin('');
+        }}
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          <View style={styles.pinModalContent}>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.pinModalScrollContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.modalHeader}>
-                <ThemedText style={styles.modalTitle}>Enter PIN</ThemedText>
-                <TouchableOpacity
-                  onPress={() => {
-                    setShowPinModal(false);
-                    setPin('');
-                  }}
-                >
-                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.pinInputContainer}>
-                <ThemedText style={styles.pinLabel}>Enter your PIN to confirm deposit</ThemedText>
-                {pendingTransactionData && (
-                  <View style={styles.paymentSummaryContainer}>
-                    <View style={styles.paymentSummaryRow}>
-                      <ThemedText style={styles.paymentSummaryLabel}>Amount:</ThemedText>
-                      <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
-                    </View>
-                    <View style={styles.paymentSummaryRow}>
-                      <ThemedText style={styles.paymentSummaryLabel}>Fee:</ThemedText>
-                      <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.fee || '0'}</ThemedText>
-                    </View>
-                    <View style={[styles.paymentSummaryRow, styles.paymentSummaryTotal]}>
-                      <ThemedText style={styles.paymentSummaryLabel}>Total:</ThemedText>
-                      <ThemedText style={styles.paymentSummaryValue}>{currencySymbol}{pendingTransactionData.totalAmount || pendingTransactionData.amount || amount.replace(/,/g, '') || '0'}</ThemedText>
-                    </View>
-                  </View>
-                )}
-                <TextInput
-                  style={styles.pinInput}
-                  value={pin}
-                  onChangeText={setPin}
-                  keyboardType="numeric"
-                  secureTextEntry
-                  maxLength={5}
-                  placeholder="Enter PIN"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  autoFocus
+        <View style={styles.modalOverlay}>
+          <View style={[styles.pinModalContent, styles.pinModalContentFull]}>
+            <View style={styles.pinModalHeader}>
+              <ThemedText style={styles.pinModalTitle}>Verification</ThemedText>
+              <TouchableOpacity onPress={() => {
+                setShowPinModal(false);
+                setPin('');
+              }}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pinIconContainer}>
+              <View style={styles.pinIconCircle}>
+                <Image
+                  source={require('../../../assets/Group 49.png')}
+                  style={styles.pinIcon}
+                  resizeMode="contain"
                 />
               </View>
-              <TouchableOpacity
-                style={[styles.confirmButton, (!pin || pin.length < 5 || confirmMutation.isPending) && styles.confirmButtonDisabled]}
-                onPress={handleConfirmDeposit}
-                disabled={!pin || pin.length < 5 || confirmMutation.isPending}
-              >
-                {confirmMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#000000" />
-                ) : (
-                  <ThemedText style={styles.confirmButtonText}>Confirm Deposit</ThemedText>
-                )}
+            </View>
+
+            <View style={styles.pinModalTextContainer}>
+              <ThemedText style={styles.pinInstruction}>Input Pin to Fund</ThemedText>
+              <ThemedText style={styles.pinAmount}>{currencySymbol}{amount.replace(/,/g, '') || '0'}</ThemedText>
+            </View>
+
+            <View style={styles.pinBar}>
+              <View style={styles.pinBarInner}>
+                {[0, 1, 2, 3, 4].map((index) => {
+                  const hasValue = index < pin.length;
+                  const digit = hasValue ? pin[index] : null;
+                  return (
+                    <View key={index} style={styles.pinSlot}>
+                      {hasValue ? (
+                        <ThemedText style={styles.pinSlotText}>{digit}</ThemedText>
+                      ) : (
+                        <ThemedText style={styles.pinSlotAsterisk}>*</ThemedText>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+              <TouchableOpacity style={styles.fingerprintButton}>
+                <MaterialCommunityIcons name="fingerprint" size={24 * SCALE} color="#A9EF45" />
               </TouchableOpacity>
-            </ScrollView>
+            </View>
+
+            <View style={styles.numpad}>
+              <View style={styles.numpadRow}>
+                {[1, 2, 3].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                {[4, 5, 6].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                {[7, 8, 9].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    style={styles.numpadButton}
+                    onPress={() => handlePinPress(num.toString())}
+                  >
+                    <View
+                      style={[
+                        styles.numpadCircle,
+                        lastPressedButton === num.toString() && styles.numpadCirclePressed,
+                      ]}
+                    >
+                      <ThemedText
+                        style={[
+                          styles.numpadText,
+                          lastPressedButton === num.toString() && styles.numpadTextPressed,
+                        ]}
+                      >
+                        {num}
+                      </ThemedText>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.numpadRow}>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={() => handlePinPress('.')}
+                >
+                  <View
+                    style={[
+                      styles.numpadCircle,
+                      lastPressedButton === '.' && styles.numpadCirclePressed,
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.numpadText,
+                        lastPressedButton === '.' && styles.numpadTextPressed,
+                      ]}
+                    >
+                      .
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={() => handlePinPress('0')}
+                >
+                  <View
+                    style={[
+                      styles.numpadCircle,
+                      lastPressedButton === '0' && styles.numpadCirclePressed,
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.numpadText,
+                        lastPressedButton === '0' && styles.numpadTextPressed,
+                      ]}
+                    >
+                      0
+                    </ThemedText>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.numpadButton}
+                  onPress={handlePinBackspace}
+                >
+                  <View style={styles.backspaceSquare}>
+                    <MaterialCommunityIcons name="backspace-outline" size={18 * SCALE} color="#FFFFFF" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Transaction Success Modal */}
       <TransactionSuccessModal
         visible={showSuccessModal}
         transaction={{
-          amount: `${amount}${currencySymbol}`,
-          fee: `20${currencySymbol}`,
-          transactionType: 'billPayment',
+          amount: successTransactionData ? `${successTransactionData.amount}${successTransactionData.currencySymbol}` : `${amount}${currencySymbol}`,
+          fee: successTransactionData ? `${successTransactionData.fee}${successTransactionData.currencySymbol}` : `20${currencySymbol}`,
+          transactionType: 'deposit',
+          networkProvider: successTransactionData?.provider,
+          mobileNumber: successTransactionData?.mobileNumber,
+          country: successTransactionData?.country,
         }}
         onViewTransaction={() => {
           setShowSuccessModal(false);
@@ -1129,6 +1304,7 @@ const Fund = () => {
         }}
         onCancel={() => {
           setShowSuccessModal(false);
+          setSuccessTransactionData(null);
         }}
       />
 
@@ -1137,15 +1313,23 @@ const Fund = () => {
         visible={showReceiptModal}
         transaction={{
           transactionType: 'deposit',
-          transactionTitle: `${amount}${currencySymbol} Withdrawn`,
-          transferAmount: `${amount}${currencySymbol}`,
-          amountNGN: `${amount}${currencySymbol}`,
-          fee: `20${currencySymbol}`,
-          mobileNumber: momoNumber,
-          provider: providers.find((p) => p.id === selectedProvider)?.name || '',
-          accountName: accountName,
-          country: selectedCountryName,
-          transactionId: '12dwerkxywurcksc',
+          transactionTitle: successTransactionData 
+            ? `${successTransactionData.amount}${successTransactionData.currencySymbol} Deposited`
+            : `${amount}${currencySymbol} Deposited`,
+          transferAmount: successTransactionData 
+            ? `${successTransactionData.amount}${successTransactionData.currencySymbol}`
+            : `${amount}${currencySymbol}`,
+          amountNGN: successTransactionData 
+            ? `${successTransactionData.amount}${successTransactionData.currencySymbol}`
+            : `${amount}${currencySymbol}`,
+          fee: successTransactionData 
+            ? `${successTransactionData.fee}${successTransactionData.currencySymbol}`
+            : `20${currencySymbol}`,
+          mobileNumber: successTransactionData?.mobileNumber || momoNumber,
+          provider: successTransactionData?.provider || providers.find((p) => p.id === selectedProvider)?.name || '',
+          accountName: successTransactionData?.accountName || accountName,
+          country: successTransactionData?.country || selectedCountryName,
+          transactionId: successTransactionData?.transactionId || '12dwerkxywurcksc',
           dateTime: new Date().toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -1153,10 +1337,11 @@ const Fund = () => {
             hour: '2-digit',
             minute: '2-digit',
           }),
-          paymentMethod: 'Mobile Money',
+          paymentMethod: successTransactionData?.paymentMethod || (selectedChannel === 'bank_transfer' ? 'Bank Transfer' : 'Mobile Money'),
         }}
         onClose={() => {
           setShowReceiptModal(false);
+          setSuccessTransactionData(null);
         }}
       />
 
@@ -1631,10 +1816,187 @@ const styles = StyleSheet.create({
     gap: 12 * SCALE,
   },
   pinModalContent: {
-    backgroundColor: '#020C19',
-    borderTopLeftRadius: 20 * SCALE,
-    borderTopRightRadius: 20 * SCALE,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingBottom: 20 * SCALE,
     maxHeight: '90%',
+  },
+  pinModalContentFull: {
+    maxHeight: '95%',
+  },
+  pinModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10 * SCALE,
+    paddingTop: 30 * SCALE,
+    paddingBottom: 18 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  pinModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  pinIconContainer: {
+    alignItems: 'center',
+    marginTop: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  pinIconCircle: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinIcon: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+  },
+  pinModalTextContainer: {
+    alignItems: 'center',
+    marginBottom: 22 * SCALE,
+  },
+  pinInstruction: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  pinAmount: {
+    fontSize: 36 * SCALE,
+    fontWeight: '600',
+    color: '#A9EF45',
+    textAlign: 'center',
+  },
+  pinBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 22 * SCALE,
+    marginBottom: 35 * SCALE,
+    gap: 12 * SCALE,
+  },
+  pinBarInner: {
+    height: 60 * SCALE,
+    width: 248 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 100 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24 * SCALE,
+  },
+  fingerprintButton: {
+    width: 60 * SCALE,
+    height: 60 * SCALE,
+    borderRadius: 30 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinSlot: {
+    width: 28 * SCALE,
+    height: 28 * SCALE,
+    borderRadius: 18 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinSlotText: {
+    fontSize: 20 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  pinSlotAsterisk: {
+    fontSize: 19.2 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  numpad: {
+    marginTop: 0,
+    paddingHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  numpadRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20 * SCALE,
+  },
+  numpadButton: {
+    width: 117 * SCALE,
+    alignItems: 'center',
+  },
+  numpadCircle: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numpadCirclePressed: {
+    backgroundColor: '#A9EF45',
+  },
+  numpadText: {
+    fontSize: 19.2 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  numpadTextPressed: {
+    color: '#000000',
+  },
+  backspaceSquare: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bankDetailsCardInline: {
+    borderRadius: 15 * SCALE,
+    marginBottom: 20 * SCALE,
+    overflow: 'hidden',
+  },
+  bankDetailRowInline: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF08',
+    paddingHorizontal: 10 * SCALE,
+    paddingVertical: 22 * SCALE,
+    borderWidth: 0.3,
+    borderColor: '#FFFFFF33',
+  },
+  bankDetailLabelInline: {
+    fontSize: 12 * 1,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  bankDetailValueRowInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  bankDetailValueInline: {
+    fontSize: 12 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF',
   },
   pinModalScrollContent: {
     paddingBottom: 30 * SCALE,

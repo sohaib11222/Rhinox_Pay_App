@@ -85,6 +85,8 @@ const HomeScreen = () => {
   const [fundWalletSelectedCountryName, setFundWalletSelectedCountryName] = useState('Nigeria');
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedFiatCurrency, setSelectedFiatCurrency] = useState<string>('NGN'); // Default to NGN
+  const [showFiatWalletModal, setShowFiatWalletModal] = useState(false);
 
   // API Queries
   const { 
@@ -133,23 +135,30 @@ const HomeScreen = () => {
   const allCryptoWallets = cryptoWalletsFromAPI.filter((w: any) => w.active !== false);
   const allWallets = [...allFiatWallets, ...allCryptoWallets];
 
-  // Filter wallets based on selected country
+  // Filter wallets for home screen - Only show NGN and KSH fiat wallets (max 2)
+  // According to Figma design, home screen should only show two fiat wallets: NGN and KSH
   const filteredWallets = useMemo(() => {
-    if (!selectedCountry) {
-      // If no country selected, show all wallets
-      return allWallets;
-    }
-    // Filter wallets by country ID
-    // Fiat wallets typically have countryId or country.id
-    // Crypto wallets don't have country, so show all crypto wallets
-    const filteredFiat = allFiatWallets.filter((w: any) => {
-      return w.countryId === selectedCountry || 
-             w.country?.id === selectedCountry ||
-             w.countryId === selectedCountry;
+    // Only show fiat wallets (exclude crypto)
+    const fiatOnly = allFiatWallets.filter((w: any) => {
+      const currency = (w.currency || '').toUpperCase();
+      // Only show NGN and KSH wallets
+      return currency === 'NGN' || currency === 'KES' || currency === 'KSH';
     });
-    // Always show crypto wallets regardless of country selection
-    return [...filteredFiat, ...allCryptoWallets];
-  }, [allWallets, allFiatWallets, allCryptoWallets, selectedCountry]);
+    
+    // Sort to prioritize NGN first, then KSH
+    const sorted = fiatOnly.sort((a: any, b: any) => {
+      const aCurrency = (a.currency || '').toUpperCase();
+      const bCurrency = (b.currency || '').toUpperCase();
+      if (aCurrency === 'NGN') return -1;
+      if (bCurrency === 'NGN') return 1;
+      if (aCurrency === 'KES' || aCurrency === 'KSH') return -1;
+      if (bCurrency === 'KES' || bCurrency === 'KSH') return 1;
+      return 0;
+    });
+    
+    // Limit to maximum 2 wallets (NGN and KSH)
+    return sorted.slice(0, 2);
+  }, [allFiatWallets]);
   const totalBalance = homeDataResponse?.totalBalance || '0.00';
   const activeWalletsCount = homeDataResponse?.activeWalletsCount || 0;
   const activeCryptoWalletsCount = homeDataResponse?.activeCryptoWalletsCount || 0;
@@ -327,13 +336,43 @@ const HomeScreen = () => {
     };
   }, [allCryptoWallets, selectedAsset?.id, isLoadingWallets]); // Use stable dependencies - only id, not the whole object
 
-  // Balance data for Fiat and Crypto (from API or fallback)
-  const fiatBalance = {
-    currency: fiatWallets[0]?.currency || 'N',
-    amount: formatBalance(fiatTotal).split('.')[0] + '.',
-    decimals: formatBalance(fiatTotal).split('.')[1] || '00',
-    fullAmount: formatBalance(fiatTotal),
-  };
+  // Balance data for Fiat - based on selected currency
+  const fiatBalance = useMemo(() => {
+    // Find wallet matching selected currency
+    const selectedWallet = allFiatWallets.find((w: any) => 
+      (w.currency || '').toUpperCase() === selectedFiatCurrency.toUpperCase()
+    );
+    
+    if (selectedWallet) {
+      const balance = parseFloat(selectedWallet.balance || '0');
+      const formatted = formatBalance(balance);
+      const parts = formatted.split('.');
+      return {
+        currency: selectedWallet.currency || selectedFiatCurrency,
+        amount: parts[0] + '.',
+        decimals: parts[1] || '00',
+        fullAmount: formatted,
+      };
+    }
+    
+    // Fallback if no wallet found for selected currency
+    return {
+      currency: selectedFiatCurrency,
+      amount: '0.',
+      decimals: '00',
+      fullAmount: '0.00',
+    };
+  }, [allFiatWallets, selectedFiatCurrency]);
+
+  // Initialize selected currency to first available wallet or NGN
+  useEffect(() => {
+    if (allFiatWallets.length > 0 && !allFiatWallets.some((w: any) => 
+      (w.currency || '').toUpperCase() === selectedFiatCurrency.toUpperCase()
+    )) {
+      // If selected currency doesn't exist, set to first available wallet
+      setSelectedFiatCurrency(allFiatWallets[0]?.currency || 'NGN');
+    }
+  }, [allFiatWallets]);
 
   const cryptoBalance = {
     currency: cryptoWallets[0]?.currency || 'BTC',
@@ -663,7 +702,19 @@ const HomeScreen = () => {
 
         {/* Balance Section */}
         <View style={styles.balanceSection}>
-          <ThemedText style={styles.balanceLabel}>Your balance</ThemedText>
+          <View style={styles.balanceHeaderRow}>
+            <ThemedText style={styles.balanceLabel}>Your balance</ThemedText>
+            {selectedFilter === 'Fiat' && (
+              <TouchableOpacity
+                style={styles.fiatWalletSelector}
+                onPress={() => setShowFiatWalletModal(true)}
+                activeOpacity={0.7}
+              >
+                <ThemedText style={styles.fiatWalletSelectorText}>{selectedFiatCurrency}</ThemedText>
+                <MaterialCommunityIcons name="chevron-down" size={16 * SCALE} color="#A9EF45" />
+              </TouchableOpacity>
+            )}
+          </View>
           <View style={styles.balanceRow}>
             {isLoadingHomeData ? (
               <ActivityIndicator size="small" color="#A9EF45" style={{ marginRight: 10 }} />
@@ -749,46 +800,45 @@ const HomeScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Wallet Cards - Horizontal Scrollable */}
+        {/* Wallet Cards - Fixed Width (50% each) */}
         {isLoadingWallets && isLoadingHomeData ? (
           <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', minHeight: 139 * SCALE, marginHorizontal: SCREEN_WIDTH * 0.047 }]}>
             <ActivityIndicator size="small" color="#A9EF45" />
           </View>
         ) : filteredWallets.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.walletCardsScrollContent}
-            style={styles.walletCardsScrollView}
-          >
+          <View style={styles.walletCardsContainer}>
             {filteredWallets.map((wallet: any, index: number) => {
               const isFirst = index === 0;
-              const isFiat = wallet.type === 'fiat';
+              // All wallets in filteredWallets are fiat (NGN and KSH only)
+              const isFiat = true;
               const flagUri = wallet.flag ? `${API_BASE_URL.replace('/api', '')}${wallet.flag}` : null;
               const currencyName = getCurrencyName(wallet.currency, wallet);
+              
+              // Determine flag image based on currency
+              let flagImageSource;
+              if (flagUri) {
+                flagImageSource = { uri: flagUri };
+              } else {
+                // Fallback to country flag based on currency
+                const currency = (wallet.currency || '').toUpperCase();
+                if (currency === 'NGN') {
+                  flagImageSource = require('../../assets/login/nigeria-flag.png');
+                } else if (currency === 'KES' || currency === 'KSH') {
+                  // Use Kenya flag - you may need to add this asset
+                  flagImageSource = require('../../assets/login/nigeria-flag.png'); // TODO: Replace with Kenya flag asset
+                } else {
+                  flagImageSource = require('../../assets/login/nigeria-flag.png');
+                }
+              }
               
               const WalletCardContent = (
                 <>
                   <View style={styles.walletCardContent}>
-                    {isFiat && flagUri ? (
-                      <Image
-                        source={{ uri: flagUri }}
-                        style={styles.walletIcon}
-                        resizeMode="cover"
-                      />
-                    ) : isFiat ? (
-                      <Image
-                        source={require('../../assets/login/nigeria-flag.png')}
-                        style={styles.walletIcon}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <Image
-                        source={require('../../assets/CurrencyBtc.png')}
-                        style={styles.walletIcon}
-                        resizeMode="cover"
-                      />
-                    )}
+                    <Image
+                      source={flagImageSource}
+                      style={styles.walletIcon}
+                      resizeMode="cover"
+                    />
                     <View style={styles.walletInfo}>
                       <ThemedText style={[styles.walletCode, !isFirst && styles.walletCodeDark]}>
                         {wallet.currency}
@@ -803,7 +853,7 @@ const HomeScreen = () => {
                     Balance
                   </ThemedText>
                   <ThemedText style={[styles.walletBalanceAmount, !isFirst && styles.walletBalanceAmountDark]}>
-                    {isFiat ? formatBalance(wallet.balance) : formatBalanceNoDecimals(wallet.balance)}
+                    {formatBalance(wallet.balance)}
                     <ThemedText style={[styles.walletBalanceCurrency, !isFirst && styles.walletBalanceCurrencyDark]}>
                       {wallet.currency}
                     </ThemedText>
@@ -814,7 +864,7 @@ const HomeScreen = () => {
                 </>
               );
 
-              if (isFirst && isFiat) {
+              if (isFirst) {
                 return (
                   <LinearGradient
                     key={wallet.id}
@@ -834,7 +884,7 @@ const HomeScreen = () => {
                 );
               }
             })}
-          </ScrollView>
+          </View>
         ) : (
           <View style={[styles.walletCard, { justifyContent: 'center', alignItems: 'center', minHeight: 139 * SCALE, marginHorizontal: SCREEN_WIDTH * 0.047 }]}>
             <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>
@@ -1094,6 +1144,93 @@ const HomeScreen = () => {
               onPress={() => setShowCountryModal(false)}
             >
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Fiat Wallet Selection Modal */}
+      <Modal
+        visible={showFiatWalletModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFiatWalletModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Fiat Wallet</ThemedText>
+              <TouchableOpacity onPress={() => setShowFiatWalletModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            {isLoadingWallets ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color="#A9EF45" />
+              </View>
+            ) : allFiatWallets.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>
+                  No fiat wallets available
+                </ThemedText>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalList}>
+                {allFiatWallets.map((wallet: any) => {
+                  const currency = (wallet.currency || '').toUpperCase();
+                  const isSelected = currency === selectedFiatCurrency.toUpperCase();
+                  const flagUri = wallet.flag ? `${API_BASE_URL.replace('/api', '')}${wallet.flag}` : null;
+                  const country = countries.find((c: any) => 
+                    getCurrencyFromCountryCode(c.code || '') === currency
+                  );
+                  
+                  return (
+                    <TouchableOpacity
+                      key={wallet.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSelectedFiatCurrency(wallet.currency || currency);
+                        setShowFiatWalletModal(false);
+                      }}
+                    >
+                      {flagUri ? (
+                        <Image
+                          source={{ uri: flagUri }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : country?.flag ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${country.flag}` }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlag}>{currency}</ThemedText>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <ThemedText style={styles.countryName}>
+                          {getCurrencyName(wallet.currency, wallet)}
+                        </ThemedText>
+                        <ThemedText style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.5)' }}>
+                          {formatBalance(wallet.balance || '0')} {wallet.currency}
+                        </ThemedText>
+                      </View>
+                      <MaterialCommunityIcons
+                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <TouchableOpacity 
+              style={styles.applyButton} 
+              onPress={() => setShowFiatWalletModal(false)}
+            >
+              <ThemedText style={styles.applyButtonText}>Done</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
@@ -1392,7 +1529,7 @@ const HomeScreen = () => {
                         onPress={() => {
                           setShowSendFundsModal(false);
                           (navigation as any).navigate('Settings', {
-                            screen: 'SendFundCrypto',
+                            screen: 'SendToRhinoxPayUser',
                           });
                         }}
                       >
@@ -1805,8 +1942,9 @@ const HomeScreen = () => {
                       <TouchableOpacity
                         onPress={() => {
                           setShowFundWalletModal(false);
-                          (navigation as any).navigate('Settings', {
-                            screen: 'FundWallet',
+                          // Navigate to Fund screen in Wallet stack (uses real API endpoints)
+                          (navigation as any).navigate('Wallet', {
+                            screen: 'Fund',
                           });
                         }}
                       >
@@ -1834,8 +1972,9 @@ const HomeScreen = () => {
                       <TouchableOpacity
                         onPress={() => {
                           setShowFundWalletModal(false);
-                          (navigation as any).navigate('Settings', {
-                            screen: 'MobileFund',
+                          // Navigate to Fund screen in Wallet stack (for funding/depositing)
+                          (navigation as any).navigate('Wallet', {
+                            screen: 'Fund',
                           });
                         }}
                       >
@@ -1953,7 +2092,7 @@ const HomeScreen = () => {
                         onPress={() => {
                           setShowFundWalletModal(false);
                           (navigation as any).navigate('Settings', {
-                            screen: 'CryptoFundDeposit',
+                            screen: 'Assets',
                           });
                         }}
                       >
@@ -2280,11 +2419,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: SCREEN_WIDTH * 0.051, // ~22px
     paddingTop: 16 * SCALE,
   },
+  balanceHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6 * SCALE,
+  },
   balanceLabel: {
     fontSize: 12 * 1,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
-    marginBottom: 6 * SCALE,
+  },
+  fiatWalletSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: 'rgba(169, 239, 69, 0.1)',
+    borderWidth: 0.5,
+    borderColor: '#A9EF45',
+  },
+  fiatWalletSelectorText: {
+    fontSize: 12 * 1,
+    fontWeight: '400',
+    color: '#A9EF45',
   },
   walletCardContent: {
     flexDirection: 'row',
@@ -2368,6 +2528,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SCREEN_WIDTH * 0.047,
     gap: 10 * SCALE,
     marginBottom: 20 * SCALE,
+    width: '100%',
   },
   walletCardsScrollView: {
     marginBottom: 20 * SCALE,
@@ -2382,6 +2543,7 @@ const styles = StyleSheet.create({
     padding: 10 * SCALE,
     minHeight: 139 * SCALE,
     overflow: 'hidden',
+    minWidth: 0, // Allow flex to shrink properly
   },
   walletCardWhite: {
     backgroundColor: '#FFFFFF',
@@ -2459,6 +2621,7 @@ const styles = StyleSheet.create({
     borderRadius: 20 * 1,
     overflow: 'hidden',
     minHeight: 118 * 1,
+    padding: 16 * SCALE,
   },
   promoBannerImage: {
     width: '100%',

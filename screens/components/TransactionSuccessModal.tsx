@@ -21,7 +21,7 @@ interface TransactionSuccessModalProps {
     mobileNumber?: string;
     networkProvider?: string;
     country?: string;
-    transactionType?: 'airtime' | 'billPayment' | 'send';
+    transactionType?: 'airtime' | 'billPayment' | 'send' | 'deposit';
   };
   onViewTransaction: () => void;
   onCancel: () => void;
@@ -35,6 +35,11 @@ const TransactionSuccessModal: React.FC<TransactionSuccessModalProps> = ({
 }) => {
   // Format success message based on transaction type
   const getSuccessMessage = () => {
+    if (transaction.transactionType === 'deposit') {
+      const amount = transaction.amount || 'N2,000';
+      const country = transaction.country || 'Nigeria';
+      return `Congratulations, You have successfully deposited ${amount} to your ${country} Wallet`;
+    }
     if (transaction.transactionType === 'airtime' || transaction.transactionType === 'billPayment') {
       const amount = transaction.amount || 'N2,000';
       const network = transaction.networkProvider || 'MTN';

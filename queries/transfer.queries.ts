@@ -58,3 +58,31 @@ export const useGetTransferReceipt = (
   });
 };
 
+/**
+ * Validate recipient (Rhinox Pay user) by email
+ */
+export const validateRecipient = async (email: string): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.get(API_ROUTES.TRANSFER.VALIDATE_RECIPIENT, {
+      params: { email },
+    });
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
+ * Query hook for validating recipient
+ */
+export const useValidateRecipient = (
+  email: string,
+  options?: Omit<UseQueryOptions<ApiResponse, Error>, 'queryKey' | 'queryFn'>
+) => {
+  return useQuery<ApiResponse, Error>({
+    queryKey: ['transfer', 'validate-recipient', email],
+    queryFn: () => validateRecipient(email),
+    enabled: !!email && email.includes('@'), // Only enable if email is provided and looks valid
+    ...options,
+  });
+};

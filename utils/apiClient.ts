@@ -197,6 +197,32 @@ const apiClient: AxiosInstance = axios.create({
 });
 
 /**
+ * Decode JWT token to get payload (userId, etc.)
+ * React Native compatible base64 decoding
+ */
+const decodeJWT = (token: string): any => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    const payload = parts[1];
+    // Base64 decode - React Native compatible
+    // Add padding if needed
+    let base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    // Decode base64
+    const decoded = atob(base64);
+    return JSON.parse(decoded);
+  } catch (error) {
+    console.error('[decodeJWT] Error decoding token:', error);
+    return null;
+  }
+};
+
+/**
  * Request interceptor - Add auth token to requests
  */
 apiClient.interceptors.request.use(
@@ -219,7 +245,13 @@ apiClient.interceptors.request.use(
       }
       if (token) {
         console.log('[API REQUEST] Token (full):', token);
-        console.log('[API REQUEST] Token (preview):', token.substring(0, 50) + '...');
+        // Decode token to show userId and other info
+        const decoded = decodeJWT(token);
+        if (decoded) {
+          console.log('[API REQUEST] Token Payload:', JSON.stringify(decoded, null, 2));
+          console.log('[API REQUEST] UserId from token:', decoded.userId || decoded.sub || decoded.id || 'Not found');
+          console.log('[API REQUEST] Token expires at:', decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'Not found');
+        }
       } else {
         console.log('[API REQUEST] No token available');
       }

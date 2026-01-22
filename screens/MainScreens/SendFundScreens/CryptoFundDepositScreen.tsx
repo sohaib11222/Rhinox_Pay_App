@@ -76,6 +76,9 @@ const CryptoFundDepositScreen = () => {
 
   const [selectedToken, setSelectedToken] = useState<Token | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   const [depositAddress, setDepositAddress] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
 
@@ -145,15 +148,16 @@ const CryptoFundDepositScreen = () => {
     return null;
   }, [virtualAccountsData?.data, selectedToken]);
 
-  // Fetch deposit address from API only if not found in virtual accounts
+  // Fetch deposit address from API only if not found in virtual accounts (fallback for when no network selected)
   const shouldFetchDepositAddress = useMemo(() => {
     return (
       !!selectedToken?.currency &&
       !!selectedToken?.blockchain &&
+      !selectedNetwork && // Only use this if network not selected yet
       !depositAddressFromVirtualAccount &&
       !isLoadingVirtualAccounts
     );
-  }, [selectedToken, depositAddressFromVirtualAccount, isLoadingVirtualAccounts]);
+  }, [selectedToken, selectedNetwork, depositAddressFromVirtualAccount, isLoadingVirtualAccounts]);
 
   const {
     data: depositAddressData,
@@ -170,17 +174,92 @@ const CryptoFundDepositScreen = () => {
     } as any
   );
 
+  // Get networks for selected token
+  const networksForToken = useMemo(() => {
+    if (!selectedToken) return [];
+    return availableTokens.filter(token => token.currency === selectedToken.currency);
+  }, [availableTokens, selectedToken]);
+
+  // Handle network selection
+  const handleNetworkSelect = (network: string) => {
+    setSelectedNetwork(network);
+    setShowNetworkModal(false);
+    // Find the token for this network
+    const tokenForNetwork = availableTokens.find(
+      t => t.currency === selectedToken?.currency && t.blockchain === network
+    );
+    if (tokenForNetwork) {
+      setSelectedToken(tokenForNetwork);
+    }
+  };
+
+  // Update deposit address fetching to use selectedNetwork
+  const shouldFetchDepositAddressWithNetwork = useMemo(() => {
+    return (
+      !!selectedToken?.currency &&
+      !!selectedNetwork &&
+      !depositAddressFromVirtualAccount &&
+      !isLoadingVirtualAccounts
+    );
+  }, [selectedToken, selectedNetwork, depositAddressFromVirtualAccount, isLoadingVirtualAccounts]);
+
+  // Update deposit address query to use selectedNetwork
+  const {
+    data: depositAddressDataWithNetwork,
+    isLoading: isLoadingDepositAddressWithNetwork,
+    refetch: refetchDepositAddressWithNetwork,
+  } = useGetDepositAddress(
+    selectedToken?.currency || '',
+    selectedNetwork || '',
+    {
+      enabled: shouldFetchDepositAddressWithNetwork,
+      queryKey: ['crypto', 'deposit-address', selectedToken?.currency || '', selectedNetwork || ''],
+    } as any
+  );
+
+  // Get deposit address from virtual accounts for selected network
+  const depositAddressFromVirtualAccountForNetwork = useMemo(() => {
+    if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data) || !selectedToken || !selectedNetwork) {
+      return null;
+    }
+    const account = virtualAccountsData.data.find(
+      (va: any) =>
+        va.currency === selectedToken.currency &&
+        va.blockchain === selectedNetwork
+    );
+    
+    if (account?.depositAddresses && Array.isArray(account.depositAddresses) && account.depositAddresses.length > 0) {
+      return account.depositAddresses[0]?.address || null;
+    }
+    return null;
+  }, [virtualAccountsData?.data, selectedToken, selectedNetwork]);
+
   // Set deposit address from virtual account or API
   useEffect(() => {
-    if (depositAddressFromVirtualAccount) {
+    if (selectedNetwork) {
+      // Use network-specific address
+      if (depositAddressFromVirtualAccountForNetwork) {
+        setDepositAddress(depositAddressFromVirtualAccountForNetwork);
+      } else if (depositAddressDataWithNetwork?.data?.address) {
+        setDepositAddress(depositAddressDataWithNetwork.data.address);
+      } else {
+        setDepositAddress(null);
+      }
+    } else if (depositAddressFromVirtualAccount) {
       setDepositAddress(depositAddressFromVirtualAccount);
     } else if (depositAddressData?.data?.address) {
       setDepositAddress(depositAddressData.data.address);
     } else if (selectedToken && !shouldFetchDepositAddress && !isLoadingDepositAddress) {
-      // Clear address when token changes and no address available
       setDepositAddress(null);
     }
-  }, [depositAddressFromVirtualAccount, depositAddressData?.data?.address, selectedToken, shouldFetchDepositAddress, isLoadingDepositAddress]);
+  }, [depositAddressFromVirtualAccountForNetwork, depositAddressDataWithNetwork?.data?.address, depositAddressFromVirtualAccount, depositAddressData?.data?.address, selectedToken, selectedNetwork, shouldFetchDepositAddress, isLoadingDepositAddress]);
+
+  // Show QR modal when deposit address is ready
+  useEffect(() => {
+    if (depositAddress && selectedToken && selectedNetwork && !showQRModal) {
+      setShowQRModal(true);
+    }
+  }, [depositAddress, selectedToken, selectedNetwork]);
 
   // Get balance for selected token
   const tokenBalance = useMemo(() => {
@@ -473,7 +552,7 @@ const CryptoFundDepositScreen = () => {
                     onPress={() => {
                       setSelectedToken(token);
                       setShowTokenModal(false);
-                      // Address will be updated automatically via useEffect when token changes
+                      setShowNetworkModal(true);
                     }}
                   >
                     <Image
@@ -494,6 +573,136 @@ const CryptoFundDepositScreen = () => {
                 ))}
               </ScrollView>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Network Selection Modal */}
+      <Modal
+        visible={showNetworkModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowNetworkModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Network</ThemedText>
+              <TouchableOpacity onPress={() => setShowNetworkModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {networksForToken.map((token) => (
+                <TouchableOpacity
+                  key={token.id}
+                  style={styles.tokenItem}
+                  onPress={() => handleNetworkSelect(token.blockchain)}
+                >
+                  <View style={styles.tokenItemInfo}>
+                    <ThemedText style={styles.tokenItemName}>{token.blockchainName}</ThemedText>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={selectedNetwork === token.blockchain ? 'radiobox-marked' : 'radiobox-blank'}
+                    size={24 * SCALE}
+                    color={selectedNetwork === token.blockchain ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.applyButton}
+              onPress={() => {
+                if (networksForToken.length > 0) {
+                  handleNetworkSelect(networksForToken[0].blockchain);
+                }
+              }}
+            >
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* QR Code Modal */}
+      <Modal
+        visible={showQRModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => {
+          setShowQRModal(false);
+          setDepositAddress(null);
+          setSelectedToken(null);
+          setSelectedNetwork(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.qrModalContent}>
+            <View style={styles.qrModalHeader}>
+              <ThemedText style={styles.qrModalTitle}>Save QR Code</ThemedText>
+              <TouchableOpacity onPress={() => {
+                setShowQRModal(false);
+                setDepositAddress(null);
+                setSelectedToken(null);
+                setSelectedNetwork(null);
+              }}>
+                <View style={styles.qrModalCloseCircle}>
+                  <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {isLoadingDepositAddressWithNetwork || isLoadingDepositAddress ? (
+              <View style={styles.qrLoadingContainer}>
+                <ActivityIndicator size="large" color="#A9EF45" />
+                <ThemedText style={styles.qrLoadingText}>Generating deposit address...</ThemedText>
+              </View>
+            ) : depositAddress ? (
+              <>
+                <View style={styles.qrWhiteCard}>
+                  <ThemedText style={styles.qrDepositTitle}>Deposit {selectedToken?.currency}</ThemedText>
+
+                  <View style={styles.qrCodeContainer}>
+                    <View style={styles.qrCodeBox}>
+                      <View style={styles.qrCodePlaceholder}>
+                        <MaterialCommunityIcons name="qrcode" size={170 * SCALE} color="#000000" />
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.qrAddressContainer}>
+                    <View style={styles.qrAddressBox}>
+                      <ThemedText style={styles.qrAddressText} numberOfLines={1} ellipsizeMode="middle">
+                        {depositAddress}
+                      </ThemedText>
+                      <TouchableOpacity onPress={handleCopyAddress}>
+                        <MaterialCommunityIcons name="content-copy" size={20 * SCALE} color="#A9EF45" />
+                      </TouchableOpacity>
+                    </View>
+                    <ThemedText style={styles.qrNetworkText}>Network: {selectedToken?.blockchainName}</ThemedText>
+                  </View>
+                </View>
+
+                <View style={styles.qrModalButtons}>
+                  <TouchableOpacity
+                    style={styles.downloadButton}
+                    onPress={() => {
+                      // Handle download QR code functionality
+                    }}
+                  >
+                    <ThemedText style={styles.downloadButtonText}>Download</ThemedText>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.shareButton}
+                    onPress={() => {
+                      // Handle share QR code functionality
+                    }}
+                  >
+                    <ThemedText style={styles.shareButtonText}>Share</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
           </View>
         </View>
       </Modal>
@@ -821,6 +1030,152 @@ const styles = StyleSheet.create({
     fontSize: 12 * SCALE,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
+  },
+  applyButton: {
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 18 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginTop: 20 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applyButtonText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  // QR Modal Styles
+  qrModalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingTop: 20 * SCALE,
+    paddingBottom: 30 * SCALE,
+    width: '100%',
+    maxHeight: '90%',
+  },
+  qrModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  qrModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  qrModalCloseCircle: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+    borderRadius: 12 * SCALE,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrLoadingContainer: {
+    padding: 40 * SCALE,
+    alignItems: 'center',
+    gap: 10 * SCALE,
+  },
+  qrLoadingText: {
+    fontSize: 14 * SCALE,
+    color: 'rgba(255, 255, 255, 0.7)',
+  },
+  qrWhiteCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20 * SCALE,
+    padding: 20 * SCALE,
+    marginHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  qrDepositTitle: {
+    fontSize: 18 * SCALE,
+    fontWeight: '500',
+    color: '#000000',
+    marginBottom: 20 * SCALE,
+    textAlign: 'center',
+  },
+  qrCodeContainer: {
+    alignItems: 'center',
+    marginBottom: 20 * SCALE,
+  },
+  qrCodeBox: {
+    width: 200 * SCALE,
+    height: 200 * SCALE,
+    borderRadius: 15 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20 * SCALE,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    backgroundColor: '#00000008',
+  },
+  qrCodePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrAddressContainer: {
+    marginBottom: 0,
+  },
+  qrAddressBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    borderRadius: 10 * SCALE,
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 12 * SCALE,
+    gap: 10 * SCALE,
+    borderWidth: 1,
+    borderColor: '#A9EF45',
+    marginBottom: 8 * SCALE,
+  },
+  qrAddressText: {
+    flex: 1,
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  qrNetworkText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(0, 0, 0, 0.5)',
+    paddingLeft: 0,
+  },
+  qrModalButtons: {
+    flexDirection: 'row',
+    gap: 12 * SCALE,
+    paddingHorizontal: 20 * SCALE,
+  },
+  downloadButton: {
+    flex: 1,
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 18 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadButtonText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#000000',
+  },
+  shareButton: {
+    flex: 1,
+    backgroundColor: '#A9EF45',
+    borderRadius: 100,
+    paddingVertical: 18 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareButtonText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#000000',
   },
 });
 

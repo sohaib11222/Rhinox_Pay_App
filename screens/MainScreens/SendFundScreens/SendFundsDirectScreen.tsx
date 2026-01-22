@@ -62,6 +62,10 @@ interface RecentTransaction {
 
 const SendFundsDirectScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const routeParams = (route.params as any) || {};
+  const recipientFromRoute = routeParams.recipient;
+  const recipientEmailFromRoute = routeParams.recipientEmail;
 
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -97,10 +101,10 @@ const SendFundsDirectScreen = () => {
   );
 
   const queryClient = useQueryClient();
-  const [balance, setBalance] = useState('200,000');
+  const [balance, setBalance] = useState('0');
   const [amount, setAmount] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [accountName, setAccountName] = useState('');
+  const [accountNumber, setAccountNumber] = useState(recipientFromRoute?.email || recipientEmailFromRoute || '');
+  const [accountName, setAccountName] = useState(recipientFromRoute?.name || '');
   const [selectedBank, setSelectedBank] = useState<PaymentMethod | null>(null);
   const [tempSelectedBank, setTempSelectedBank] = useState<PaymentMethod | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
@@ -243,8 +247,20 @@ const SendFundsDirectScreen = () => {
     if (fiatBalance) {
       const formatted = parseFloat(fiatBalance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       setBalance(formatted);
+    } else {
+      setBalance('0');
     }
   }, [fiatBalance]);
+
+  // Set recipient data from route params if available
+  useEffect(() => {
+    if (recipientFromRoute) {
+      setAccountName(recipientFromRoute.name || recipientFromRoute.email || '');
+      if (recipientFromRoute.email || recipientEmailFromRoute) {
+        setAccountNumber(recipientFromRoute.email || recipientEmailFromRoute || '');
+      }
+    }
+  }, [recipientFromRoute, recipientEmailFromRoute]);
 
   // Initiate transfer mutation
   const initiateTransferMutation = useInitiateTransfer({

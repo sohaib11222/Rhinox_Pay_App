@@ -19,12 +19,12 @@ const getApiBaseUrl = (): string => {
     // For Android emulator, use 10.0.2.2
     // For physical device, replace with your computer's IP address
     // Example: return 'http://192.168.1.100:3000/api';
-    return 'http://192.168.1.16:3000/api';
+    return 'https://rhinoxpay.hmstech.xyz/api';
   }
   
   // For iOS simulator, localhost works
   // For iOS physical device, you may need to use your computer's IP
-  return 'http://localhost:3000/api';
+  return 'https://rhinoxpay.hmstech.xyz/api';
 };
 
 export const API_BASE_URL = getApiBaseUrl();
@@ -211,6 +211,7 @@ export const API_ROUTES = {
     INITIATE: '/transfer/initiate',
     VERIFY: '/transfer/verify',
     RECEIPT: '/transfer/receipt',
+    VALIDATE_RECIPIENT: '/transfer/validate-recipient',
   },
 
   // Wallet Routes

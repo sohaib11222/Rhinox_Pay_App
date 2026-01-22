@@ -19,9 +19,11 @@ import { ThemedText } from '../../components';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword } from '../../mutations/auth.mutations';
 import { getBiometricEnabled, setBiometricEnabled, getAccessToken } from '../../utils/apiClient';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../utils/customAlert';
+import { useAuth } from '../../hooks/useAuth';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
+  const { setAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -47,6 +49,13 @@ const LoginScreen = () => {
   const loginMutation = useLogin({
     onSuccess: async (data) => {
       console.log('[LoginScreen] Login successful');
+      const accessToken = data?.data?.accessToken;
+      
+      if (accessToken) {
+        // Update auth state
+        await setAuthenticated(accessToken);
+      }
+      
       // Update token state after successful login
       await checkToken();
       // Check if user has biometric enabled and update preference

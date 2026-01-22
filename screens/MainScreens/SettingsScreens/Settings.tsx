@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -19,6 +19,8 @@ import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useLogout } from '../../../mutations/auth.mutations';
 import { clearTokens, getBiometricEnabled, setBiometricEnabled } from '../../../utils/apiClient';
 import { showErrorAlert, showConfirmAlert } from '../../../utils/customAlert';
+import { useGetKYCStatus } from '../../../queries/kyc.queries';
+import { useAuth } from '../../../hooks/useAuth';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -42,6 +44,7 @@ interface SettingsSection {
 
 const Settings = () => {
   const navigation = useNavigation();
+  const { logout: authLogout } = useAuth();
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [showDeleteWarningModal, setShowDeleteWarningModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
@@ -50,6 +53,13 @@ const Settings = () => {
     cannotLogin: true,
     balancesDeleted: true,
   });
+
+  // Fetch KYC status
+  const { 
+    data: kycStatusData, 
+    isLoading: isLoadingKYC,
+    refetch: refetchKYC 
+  } = useGetKYCStatus();
 
   // Load biometric preference on mount
   useEffect(() => {
@@ -83,6 +93,7 @@ const Settings = () => {
   const navigateToLogin = async () => {
     // Clear tokens from storage (even if logout API failed)
     await clearTokens();
+    await authLogout(); // Update auth state
     console.log('[Settings] Tokens cleared, navigating to Login...');
     
     // Navigate to Auth/Login screen
@@ -160,9 +171,45 @@ const Settings = () => {
     isVerified: true,
   };
 
+  // Determine KYC status from API
+  const kycStatus = kycStatusData?.data?.status || kycStatusData?.data?.kycStatus || 'not_done';
+  const kycStatusLower = (kycStatus as string).toLowerCase();
+  
+  // Determine badge text and styling based on KYC status
+  const getKYCBadgeInfo = () => {
+    if (kycStatusLower === 'approved' || kycStatusLower === 'verified' || kycStatusLower === 'complete') {
+      return {
+        text: 'Verified',
+        hasBadge: true,
+        badgeColor: '#008000',
+        badgeBgColor: 'rgba(0, 128, 0, 0.1)',
+        badgeBorderColor: '#008000',
+      };
+    } else if (kycStatusLower === 'pending' || kycStatusLower === 'under_review' || kycStatusLower === 'submitted') {
+      return {
+        text: 'Pending',
+        hasBadge: true,
+        badgeColor: '#FFA500',
+        badgeBgColor: 'rgba(255, 165, 0, 0.1)',
+        badgeBorderColor: '#FFA500',
+      };
+    } else {
+      // not_done, not_started, incomplete, etc.
+      return {
+        text: 'Complete KYC',
+        hasBadge: false,
+        badgeColor: '#A9EF45',
+        badgeBgColor: 'rgba(169, 239, 69, 0.1)',
+        badgeBorderColor: '#A9EF45',
+      };
+    }
+  };
+
+  const kycBadgeInfo = getKYCBadgeInfo();
+
   // Settings sections - Replace with API call
   // TODO: Replace image sources with actual images from Figma when available
-  const settingsSections: SettingsSection[] = [
+  const settingsSections: SettingsSection[] = useMemo(() => [
     {
       id: 'profile',
       title: 'Profile',
@@ -174,10 +221,10 @@ const Settings = () => {
         },
         {
           id: 'account-verification',
-          title: 'Account Verifcation',
+          title: 'Account Verification',
           icon: require('../../../assets/bank.png'), // TODO: Replace with bank icon image
-          hasBadge: true,
-          badgeText: 'Verified',
+          hasBadge: kycBadgeInfo.hasBadge,
+          badgeText: kycBadgeInfo.text,
         },
         {
           id: 'support',
@@ -239,7 +286,7 @@ const Settings = () => {
         },
       ],
     },
-  ];
+  ], [kycBadgeInfo]);
 
   const handleItemPress = (item: SettingsItem) => {
     // TODO: Implement navigation or actions based on item.id
@@ -247,6 +294,20 @@ const Settings = () => {
       (navigation as any).navigate('Settings', {
         screen: 'EditProfile',
       });
+    } else if (item.id === 'account-verification') {
+      // Navigate to KYC screen if not verified
+      // Get root navigator to navigate to Auth stack
+      const rootNavigation = navigation.getParent()?.getParent()?.getParent();
+      if (rootNavigation) {
+        rootNavigation.navigate('Auth' as never, {
+          screen: 'KYC' as never,
+        });
+      } else {
+        // Fallback: try direct navigation
+        (navigation as any).navigate('Auth', {
+          screen: 'KYC',
+        });
+      }
     } else if (item.id === 'p2p-profile') {
       (navigation as any).navigate('Settings', {
         screen: 'P2PProfile',
@@ -313,18 +374,11 @@ const Settings = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest user profile data
-        // - Fetch latest settings configuration
-        // - Fetch latest account verification status
-        // - Update any other data that needs refreshing
-        console.log('Refreshing settings data...');
-        resolve();
-      }, 1000);
-    });
+    // Fetch latest data
+    await Promise.all([
+      refetchKYC(),
+      loadBiometricPreference(),
+    ]);
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -392,7 +446,42 @@ const Settings = () => {
                       />
                     </View>
                     <ThemedText style={styles.itemTitle}>{item.title}</ThemedText>
-                    {item.hasBadge && (
+                    {item.id === 'account-verification' && (
+                      <View style={[
+                        styles.itemBadge,
+                        {
+                          backgroundColor: kycBadgeInfo.badgeBgColor,
+                          borderColor: kycBadgeInfo.badgeBorderColor,
+                        },
+                        !kycBadgeInfo.hasBadge && styles.itemBadgeAction,
+                      ]}>
+                        {kycBadgeInfo.hasBadge ? (
+                          <>
+                            {kycStatusLower === 'approved' || kycStatusLower === 'verified' || kycStatusLower === 'complete' ? (
+                              <MaterialCommunityIcons
+                                name="check-circle"
+                                size={10 * SCALE}
+                                color={kycBadgeInfo.badgeColor}
+                              />
+                            ) : (
+                              <MaterialCommunityIcons
+                                name="timer-sand"
+                                size={10 * SCALE}
+                                color={kycBadgeInfo.badgeColor}
+                              />
+                            )}
+                            <ThemedText style={[styles.itemBadgeText, { color: kycBadgeInfo.badgeColor }]}>
+                              {item.badgeText}
+                            </ThemedText>
+                          </>
+                        ) : (
+                          <ThemedText style={[styles.itemBadgeText, { color: kycBadgeInfo.badgeColor }]}>
+                            {item.badgeText}
+                          </ThemedText>
+                        )}
+                      </View>
+                    )}
+                    {item.hasBadge && item.id !== 'account-verification' && (
                       <View style={styles.itemBadge}>
                         <MaterialCommunityIcons
                           name="check-circle"
@@ -685,6 +774,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4 * SCALE,
     gap: 3 * SCALE,
     marginRight: 8 * SCALE,
+  },
+  itemBadgeAction: {
+    backgroundColor: 'rgba(169, 239, 69, 0.1)',
+    borderColor: '#A9EF45',
   },
   itemBadgeText: {
     fontSize: 8 * SCALE,

@@ -139,49 +139,67 @@ const Conversion = () => {
         isLoading: isLoadingCountries,
     } = useGetCountries();
 
-    // Transform countries data with currency info
+    // Fetch wallet balances
+    const {
+        data: balancesData,
+        isLoading: isLoadingBalances,
+        refetch: refetchBalances,
+    } = useGetWalletBalances();
+
+    // Get available fiat currencies from wallets
+    const availableFiatCurrencies = useMemo(() => {
+        if (!balancesData?.data?.fiat || !Array.isArray(balancesData.data.fiat)) {
+            return [];
+        }
+        return balancesData.data.fiat.map((w: any) => w.currency).filter(Boolean);
+    }, [balancesData?.data?.fiat]);
+
+    // Transform countries data with currency info - FILTERED to only show countries with fiat wallets
     const countries = useMemo(() => {
         if (!countriesData?.data || !Array.isArray(countriesData.data)) {
-            return FALLBACK_COUNTRIES;
+            // Filter fallback countries too
+            return FALLBACK_COUNTRIES.filter(c => availableFiatCurrencies.includes(c.currency));
         }
-        return countriesData.data.map((country: any) => {
-            const code = country.code || country.countryCode || '';
-            const currency = getCurrencyFromCountryCode(code);
-            const currencySymbol = getCurrencySymbol(currency);
-            
-            // Handle flag - can be URL from backend or use fallback
-            let flagSource: any = require('../../../assets/login/nigeria-flag.png'); // Default fallback
-            if (country.flag) {
-                if (typeof country.flag === 'string') {
-                    // If it's a URL path from backend
-                    if (country.flag.startsWith('/') || country.flag.startsWith('http')) {
-                        flagSource = { uri: country.flag.startsWith('/') 
-                            ? `${API_BASE_URL.replace('/api', '')}${country.flag}`
-                            : country.flag };
+        return countriesData.data
+            .map((country: any) => {
+                const code = country.code || country.countryCode || '';
+                const currency = getCurrencyFromCountryCode(code);
+                const currencySymbol = getCurrencySymbol(currency);
+                
+                // Handle flag - can be URL from backend or use fallback
+                let flagSource: any = require('../../../assets/login/nigeria-flag.png'); // Default fallback
+                if (country.flag) {
+                    if (typeof country.flag === 'string') {
+                        // If it's a URL path from backend
+                        if (country.flag.startsWith('/') || country.flag.startsWith('http')) {
+                            flagSource = { uri: country.flag.startsWith('/') 
+                                ? `${API_BASE_URL.replace('/api', '')}${country.flag}`
+                                : country.flag };
+                        } else {
+                            // Try to match with fallback countries
+                            const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
+                            flagSource = fallback?.flag || flagSource;
+                        }
                     } else {
-                        // Try to match with fallback countries
-                        const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
-                        flagSource = fallback?.flag || flagSource;
+                        flagSource = country.flag;
                     }
                 } else {
-                    flagSource = country.flag;
+                    // Try to match with fallback countries by code
+                    const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
+                    flagSource = fallback?.flag || flagSource;
                 }
-            } else {
-                // Try to match with fallback countries by code
-                const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
-                flagSource = fallback?.flag || flagSource;
-            }
 
-            return {
-                id: country.id,
-                name: country.name,
-                code: code,
-                currency: currency,
-                currencySymbol: currencySymbol,
-                flag: flagSource,
-            };
-        });
-    }, [countriesData?.data]);
+                return {
+                    id: country.id,
+                    name: country.name,
+                    code: code,
+                    currency: currency,
+                    currencySymbol: currencySymbol,
+                    flag: flagSource,
+                };
+            })
+            .filter((c: any) => availableFiatCurrencies.includes(c.currency)); // Only show countries with fiat wallets
+    }, [countriesData?.data, availableFiatCurrencies]);
 
     const sendCountryData = countries.find(c => c.id === sendCountry || (c as any).code === sendCountry);
     const receiveCountryData = countries.find(c => c.id === receiveCountry || (c as any).code === receiveCountry);
@@ -215,13 +233,6 @@ const Conversion = () => {
         const num = parseFloat(cleaned);
         return isNaN(num) || num <= 0 ? '0' : num.toString();
     }, [sendAmount]);
-
-    // Fetch wallet balances
-    const {
-        data: balancesData,
-        isLoading: isLoadingBalances,
-        refetch: refetchBalances,
-    } = useGetWalletBalances();
 
     // Get balances for send and receive currencies
     const sendBalance = useMemo(() => {
@@ -592,9 +603,18 @@ const Conversion = () => {
                 return num;
             }
             const cleaned = currentAmount.replace(/,/g, '');
-            // If it's '0' or '0.00', replace with new digit, otherwise append
-            if (cleaned === '0' || cleaned === '0.00' || cleaned === '0.0') {
+            // If it's '0' or '0.00' or '0.0', replace with new digit, otherwise append
+            if (cleaned === '0' || cleaned === '0.00' || cleaned === '0.0' || cleaned === '0.') {
                 return num;
+            }
+            // Check if it ends with '.' - if so, append to decimal part
+            if (cleaned.endsWith('.')) {
+                return cleaned + num;
+            }
+            // Check if it already has 2 decimal places - don't add more
+            const parts = cleaned.split('.');
+            if (parts.length === 2 && parts[1].length >= 2) {
+                return currentAmount; // Don't add more digits if already has 2 decimals
             }
             const newValue = cleaned + num;
             const formatted = formatNumber(newValue);
@@ -606,46 +626,38 @@ const Conversion = () => {
         if (!value || value.trim() === '') {
             return '';
         }
+        
+        // If value ends with '.', don't format decimals yet - just format integer part
+        if (value.endsWith('.')) {
+            const integerPart = value.replace(/\.$/, '').replace(/,/g, '');
+            if (integerPart === '' || integerPart === '0') {
+                return '0.';
+            }
+            const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+            return formattedInteger + '.';
+        }
+        
         // Parse the number to handle negatives and decimals properly
-        const numValue = parseFloat(value);
+        const numValue = parseFloat(value.replace(/,/g, ''));
         if (isNaN(numValue)) {
-            return '0.00';
+            return '';
         }
         
         // Handle negative numbers by showing absolute value (we handle negatives in display logic)
         const absValue = Math.abs(numValue);
         
-        // If value ends with '.', don't format decimals yet
-        if (value.endsWith('.')) {
-            const integerPart = String(absValue).split('.')[0].replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-            return integerPart + '.';
-        }
-        
-        // Format with proper decimal places (up to 3 decimal places for small amounts)
+        // Format with proper decimal places (up to 2 decimal places for currency)
         const parts = String(absValue).split('.');
         const integerPart = parts[0].replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-        const decimalPart = parts[1] ? parts[1] : '';
+        const decimalPart = parts[1] ? parts[1].substring(0, 2) : ''; // Max 2 decimal places
         
-        // For small amounts (< 1), show up to 3 decimal places, otherwise 2
-        let maxDecimals = 2;
-        if (absValue < 1 && absValue > 0) {
-            maxDecimals = 3;
+        // If there's a decimal part, show it (up to 2 digits)
+        if (decimalPart) {
+            return `${integerPart}.${decimalPart}`;
         }
         
-        const formattedDecimal = decimalPart.length > maxDecimals 
-            ? decimalPart.substring(0, maxDecimals) 
-            : decimalPart;
-        
-        // Always show at least 2 decimal places for currency (unless it's a whole number)
-        if (formattedDecimal.length < 2 && absValue > 0 && integerPart !== '0') {
-            const paddedDecimal = formattedDecimal.padEnd(2, '0');
-            return `${integerPart}.${paddedDecimal}`;
-        }
-        
-        // For very small amounts (< 1), show the actual decimals without padding
-        if (absValue > 0 && absValue < 1) {
-            return formattedDecimal ? `0.${formattedDecimal}` : '0.00';
-        }
+        // For whole numbers, don't add .00 - just return the formatted integer
+        return integerPart;
         
         return formattedDecimal ? `${integerPart}.${formattedDecimal}` : `${integerPart}.00`;
     };
@@ -941,7 +953,7 @@ const Conversion = () => {
                 </View>
 
                 {/* Numeric Keypad */}
-                <View style={styles.keypad}>
+                <View style={styles.keypad} pointerEvents={showSendCountryModal || showReceiveCountryModal ? 'none' : 'auto'}>
                     <View style={styles.keypadRow}>
                         {[1, 2, 3].map((num) => (
                             <TouchableOpacity
@@ -1101,6 +1113,11 @@ const Conversion = () => {
                 onRequestClose={() => setShowSendCountryModal(false)}
             >
                 <View style={styles.modalOverlay}>
+                    <TouchableOpacity 
+                        style={{ flex: 1 }}
+                        activeOpacity={1}
+                        onPress={() => setShowSendCountryModal(false)}
+                    />
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
@@ -1124,6 +1141,7 @@ const Conversion = () => {
                                         style={styles.countryItem}
                                         onPress={() => {
                                             setSendCountry(c.id);
+                                            setShowSendCountryModal(false); // Close modal immediately on selection
                                         }}
                                     >
                                         {typeof c.flag === 'object' && 'uri' in c.flag ? (
@@ -1167,6 +1185,11 @@ const Conversion = () => {
                 onRequestClose={() => setShowReceiveCountryModal(false)}
             >
                 <View style={styles.modalOverlay}>
+                    <TouchableOpacity 
+                        style={{ flex: 1 }}
+                        activeOpacity={1}
+                        onPress={() => setShowReceiveCountryModal(false)}
+                    />
                     <View style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
@@ -1190,6 +1213,7 @@ const Conversion = () => {
                                         style={styles.countryItem}
                                         onPress={() => {
                                             setReceiveCountry(c.id);
+                                            setShowReceiveCountryModal(false); // Close modal immediately on selection
                                         }}
                                     >
                                         {typeof c.flag === 'object' && 'uri' in c.flag ? (

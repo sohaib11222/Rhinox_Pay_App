@@ -25,6 +25,7 @@ import { useGetWallets, useGetWalletBalances } from '../../../queries/wallet.que
 import { useGetHomeData, useGetHomeTransactions } from '../../../queries/home.queries';
 import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import { useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
+import { useGetCountries } from '../../../queries/country.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showErrorAlert } from '../../../utils/customAlert';
 
@@ -93,6 +94,28 @@ const Wallet = () => {
   const [currencySearchQuery, setCurrencySearchQuery] = useState<string>('');
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // Modal states for Send Funds and Fund Wallet
+  const [showSendFundsModal, setShowSendFundsModal] = useState(false);
+  const [sendFundsWalletType, setSendFundsWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
+  const [showSendFundsCountryModal, setShowSendFundsCountryModal] = useState(false);
+  const [sendFundsSelectedCountry, setSendFundsSelectedCountry] = useState<string>('NG');
+  const [sendFundsSelectedCountryName, setSendFundsSelectedCountryName] = useState('Nigeria');
+  const [showAssetModal, setShowAssetModal] = useState(false);
+  const [assetSearchTerm, setAssetSearchTerm] = useState('');
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>({
+    id: '1',
+    name: 'Bitcoin',
+    balance: '0.00001',
+    icon: require('../../../assets/CurrencyBtc.png'),
+  });
+  const [showFundWalletModal, setShowFundWalletModal] = useState(false);
+  const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
+  const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
+  const [showFundWalletAssetModal, setShowFundWalletAssetModal] = useState(false);
+  const [fundWalletAssetSearchTerm, setFundWalletAssetSearchTerm] = useState('');
+  const [fundWalletSelectedCountry, setFundWalletSelectedCountry] = useState<string>('NG');
+  const [fundWalletSelectedCountryName, setFundWalletSelectedCountryName] = useState('Nigeria');
+
   // Fetch user data for name
   const { data: homeData, isLoading: isLoadingUser } = useGetHomeData();
   const user = homeData?.data?.user;
@@ -117,6 +140,14 @@ const Wallet = () => {
     isLoading: isLoadingVirtualAccounts, 
     refetch: refetchVirtualAccounts 
   } = useGetVirtualAccounts();
+
+  // Fetch countries for modals
+  const {
+    data: countriesData,
+    isLoading: isLoadingCountries,
+  } = useGetCountries();
+  
+  const countries = countriesData?.data || [];
 
   // Fetch home transactions (both fiat and crypto)
   const { 
@@ -186,7 +217,27 @@ const Wallet = () => {
     return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // Transform API wallets to UI format
+  const formatBalanceNoDecimals = (amount: string | number) => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '0';
+    return num.toLocaleString('en-US', { maximumFractionDigits: 8 });
+  };
+
+  // Get currency from country code
+  const getCurrencyFromCountryCode = (countryCode: string): string => {
+    const currencyMap: { [key: string]: string } = {
+      'NG': 'NGN',
+      'KE': 'KES',
+      'GH': 'GHS',
+      'ZA': 'ZAR',
+      'BW': 'BWP',
+      'TZ': 'TZS',
+      'UG': 'UGX',
+    };
+    return currencyMap[countryCode] || 'NGN';
+  };
+
+  // Transform API wallets to UI format - MUST BE DEFINED FIRST
   const fiatWallets: Wallet[] = useMemo(() => {
     if (!walletsData?.data || !Array.isArray(walletsData.data)) return [];
     
@@ -210,6 +261,74 @@ const Wallet = () => {
     });
   }, [walletsData?.data, user]);
 
+  // Get crypto wallets from balances data
+  const cryptoWallets = useMemo(() => {
+    if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
+      return [];
+    }
+    return balancesData.data.crypto.filter((w: any) => w.active !== false);
+  }, [balancesData?.data?.crypto]);
+
+  // Get balance for selected country currency (for Send Funds Fiat)
+  const sendFundsFiatBalance = useMemo(() => {
+    if (isLoadingWallets || !fiatWallets || !Array.isArray(fiatWallets)) return null;
+    const currency = getCurrencyFromCountryCode(sendFundsSelectedCountry);
+    const wallet = fiatWallets.find((w: any) => w.currencyCode === currency);
+    if (wallet) {
+      return {
+        currency: wallet.currencyCode || currency,
+        balance: wallet.balance || '0',
+        formatted: `${wallet.currencyCode || currency}${formatBalance(wallet.balance || '0')}`,
+      };
+    }
+    return {
+      currency: currency,
+      balance: '0',
+      formatted: `${currency}0.00`,
+    };
+  }, [fiatWallets, sendFundsSelectedCountry, isLoadingWallets]);
+
+  // Get balance for selected country currency (for Fund Wallet Fiat)
+  const fundWalletFiatBalance = useMemo(() => {
+    if (isLoadingWallets || !fiatWallets || !Array.isArray(fiatWallets)) return null;
+    const currency = getCurrencyFromCountryCode(fundWalletSelectedCountry);
+    const wallet = fiatWallets.find((w: any) => w.currencyCode === currency);
+    if (wallet) {
+      return {
+        currency: wallet.currencyCode || currency,
+        balance: wallet.balance || '0',
+        formatted: `${wallet.currencyCode || currency}${formatBalance(wallet.balance || '0')}`,
+      };
+    }
+    return {
+      currency: currency,
+      balance: '0',
+      formatted: `${currency}0.00`,
+    };
+  }, [fiatWallets, fundWalletSelectedCountry, isLoadingWallets]);
+
+  // Get balance for selected crypto asset (for Fund Wallet Crypto)
+  const fundWalletCryptoBalance = useMemo(() => {
+    if (isLoadingBalances || !selectedAsset || !cryptoWallets || !Array.isArray(cryptoWallets)) return null;
+    const wallet = cryptoWallets.find((w: any) => 
+      w.currency === selectedAsset.name || 
+      w.symbol === selectedAsset.name ||
+      w.currency?.toUpperCase() === selectedAsset.name.toUpperCase()
+    );
+    if (wallet) {
+      return {
+        currency: wallet.currency || selectedAsset.name,
+        balance: wallet.balance || wallet.availableBalance || '0',
+        formatted: `${formatBalanceNoDecimals(wallet.balance || wallet.availableBalance || '0')} ${wallet.currency || selectedAsset.name}`,
+      };
+    }
+    return {
+      currency: selectedAsset.name,
+      balance: selectedAsset.balance || '0',
+      formatted: `${selectedAsset.balance || '0'} ${selectedAsset.name}`,
+    };
+  }, [cryptoWallets, selectedAsset, isLoadingBalances]);
+
   // Get wallet ID from first fiat wallet
   const walletId = useMemo(() => {
     if (fiatWallets.length > 0) {
@@ -221,7 +340,11 @@ const Wallet = () => {
   // Transform API virtual accounts to UI format
   const cryptoAssets: CryptoAsset[] = useMemo(() => {
     // Use virtual accounts data if available, otherwise fallback to balancesData
-    const accountsData = virtualAccountsData?.data || [];
+    // Ensure accountsData is always an array
+    let accountsData: any[] = [];
+    if (virtualAccountsData?.data) {
+      accountsData = Array.isArray(virtualAccountsData.data) ? virtualAccountsData.data : [];
+    }
     
     if (!Array.isArray(accountsData) || accountsData.length === 0) {
       // Fallback to balancesData if virtual accounts not available
@@ -372,6 +495,7 @@ const Wallet = () => {
 
   // Get currency symbol for display
   const getCurrencySymbol = (currency: string) => {
+    if (!currencyOptions || !Array.isArray(currencyOptions)) return '';
     const option = currencyOptions.find(opt => opt.code === currency);
     return option?.symbol || '';
   };
@@ -986,15 +1110,11 @@ const Wallet = () => {
                 style={styles.quickActionButton}
                 onPress={() => {
                   if (action.id === '1' && action.title === 'Send') {
-                    // Navigate to SendFunds screen in Settings stack
-                    // @ts-ignore - allow parent route name
-                    navigation.navigate('Settings' as never, {
-                      screen: 'SendFunds' as never,
-                    } as never);
+                    // Open Send Funds modal (same as home screen)
+                    setShowSendFundsModal(true);
                   } else if (action.id === '2' && action.title === 'Fund') {
-                    // Navigate to Fund screen in Wallet stack
-                    // @ts-ignore - allow parent route name
-                    navigation.navigate('Fund' as never);
+                    // Open Fund Wallet modal (same as home screen)
+                    setShowFundWalletModal(true);
                   } else if (action.id === '3' && action.title === 'Withdraw') {
                     // Navigate to Withdrawal screen in Wallet stack
                     // @ts-ignore - allow parent route name
@@ -1618,6 +1738,1042 @@ const Wallet = () => {
           }}
         />
       )}
+
+      {/* Send Funds Modal */}
+      <Modal
+        visible={showSendFundsModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSendFundsModal(false)}
+      >
+        <View style={styles.sendFundsModalOverlay}>
+          <View style={styles.sendFundsModalContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sendFundsModalScrollContent}
+            >
+              <View style={styles.sendFundsModalHeader}>
+                <ThemedText style={styles.sendFundsModalTitle}>Send Funds</ThemedText>
+                <TouchableOpacity onPress={() => setShowSendFundsModal(false)}>
+                  <View style={styles.sendFundsModalCloseCircle}>
+                    <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Large Icon */}
+              <View style={styles.sendFundsIconContainer}>
+                <View style={styles.sendFundsLargeIconCircle}>
+                  <Image
+                    source={require('../../../assets/Group 57.png')}
+                    style={styles.sendFundsLargeIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
+              {/* Wallet Type Toggle */}
+              <View style={styles.sendFundsWalletToggleContainer}>
+                <TouchableOpacity
+                  style={[styles.sendFundsWalletToggleButton, styles.sendFundsWalletToggleLeft, sendFundsWalletType === 'Fiat' && styles.sendFundsWalletToggleActive]}
+                  onPress={() => setSendFundsWalletType('Fiat')}
+                >
+                  <MaterialCommunityIcons name="bank" size={16 * SCALE} color={sendFundsWalletType === 'Fiat' ? '#000000' : '#FFFFFF'} />
+                  <ThemedText style={[styles.sendFundsWalletToggleText, sendFundsWalletType === 'Fiat' && styles.sendFundsWalletToggleTextActive]}>Fiat Wallet</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sendFundsWalletToggleButton, styles.sendFundsWalletToggleRight, sendFundsWalletType === 'Crypto' && styles.sendFundsWalletToggleActive]}
+                  onPress={() => setSendFundsWalletType('Crypto')}
+                >
+                  <Image
+                    source={require('../../../assets/CurrencyBtc.png')}
+                    style={styles.sendFundsBitcoinIcon}
+                    resizeMode="contain"
+                  />
+                  <ThemedText style={[styles.sendFundsWalletToggleText, sendFundsWalletType === 'Crypto' && styles.sendFundsWalletToggleTextActive]}>Crypto Wallet</ThemedText>
+                </TouchableOpacity>
+              </View>
+
+              {sendFundsWalletType === 'Fiat' ? (
+                <>
+                  {/* Select Currency Section */}
+                  <View style={styles.sendFundsCurrencySection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Currency</ThemedText>
+                    <LinearGradient
+                      colors={['#A9EF4533', '#FFFFFF0D']}
+                      start={{ x: 1, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={styles.sendFundsBalanceCard}
+                    >
+                      <View style={styles.sendFundsBalanceCardContent}>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
+                        <View style={styles.sendFundsBalanceRow}>
+                          <Image
+                            source={require('../../../assets/Vector (34).png')}
+                            style={styles.sendFundsWalletIcon}
+                            resizeMode="cover"
+                          />
+                          {isLoadingWallets ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {sendFundsFiatBalance?.formatted || 'NGN0.00'}
+                            </ThemedText>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.sendFundsCountrySelector}
+                        onPress={() => setShowSendFundsCountryModal(true)}
+                        disabled={isLoadingCountries}
+                      >
+                        {isLoadingCountries ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (() => {
+                          const selectedCountryData = countries && Array.isArray(countries) ? countries.find((c: any) => c.code === sendFundsSelectedCountry) : null;
+                          const flagValue = selectedCountryData?.flag || '';
+                          const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+                          const flagUrl = isFlagUrl 
+                            ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+                            : null;
+                          const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+                          
+                          return (
+                            <>
+                              {flagUrl ? (
+                                <Image
+                                  source={{ uri: flagUrl }}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              ) : flagEmoji ? (
+                                <ThemedText style={styles.sendFundsCountryFlagEmoji}>{flagEmoji}</ThemedText>
+                              ) : (
+                                <Image
+                                  source={require('../../../assets/login/nigeria-flag.png')}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              )}
+                              <ThemedText style={styles.sendFundsCountryNameText}>
+                                {sendFundsSelectedCountryName || selectedCountryData?.name || 'Nigeria'}
+                              </ThemedText>
+                              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                            </>
+                          );
+                        })()}
+                      </TouchableOpacity>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Send Options Section */}
+                  <View style={styles.sendFundsOptionsSection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Send Options</ThemedText>
+                    <View style={styles.sendFundsOptionsContainer}>
+                      {/* Rhinox User Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowSendFundsModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'SendFunds',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Vector (42).png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* Bank Account Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowSendFundsModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'SendFundsDirect',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Vector (43).png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Bank Account</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send to a user's bank account.</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* Mobile Money Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowSendFundsModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'MobileFund',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Cardholder.png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send via mobile moneyt</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {/* Select Asset Section */}
+                  <View style={styles.sendFundsCurrencySection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Crypto</ThemedText>
+                    <LinearGradient
+                      colors={['#A9EF4533', '#FFFFFF0D']}
+                      start={{ x: 1, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={styles.sendFundsBalanceCard}
+                    >
+                      <View style={styles.sendFundsBalanceCardContent}>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
+                        <View style={styles.sendFundsBalanceRow}>
+                          <Image
+                            source={require('../../../assets/Vector (34).png')}
+                            style={styles.sendFundsWalletIcon}
+                            resizeMode="cover"
+                          />
+                          {isLoadingBalances ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {(() => {
+                                const firstCrypto = cryptoWallets[0];
+                                if (firstCrypto) {
+                                  return `${formatBalanceNoDecimals(firstCrypto.balance || firstCrypto.availableBalance || '0')} ${firstCrypto.currency || firstCrypto.symbol || 'BTC'}`;
+                                }
+                                return '0.00000 BTC';
+                              })()}
+                            </ThemedText>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.sendFundsAssetSelector}
+                        onPress={() => setShowAssetModal(true)}
+                      >
+                        {selectedAsset ? (
+                          <>
+                            <Image
+                              source={selectedAsset.icon}
+                              style={styles.sendFundsAssetIcon}
+                              resizeMode="cover"
+                            />
+                            <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
+                          </>
+                        ) : (
+                          <>
+                            <Image
+                              source={require('../../../assets/CurrencyBtc.png')}
+                              style={styles.sendFundsAssetIcon}
+                              resizeMode="cover"
+                            />
+                            <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
+                          </>
+                        )}
+                        <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Send Options Section */}
+                  <View style={styles.sendFundsOptionsSection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Send Options</ThemedText>
+                    <View style={styles.sendFundsOptionsContainer}>
+                      {/* Rhinox User Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowSendFundsModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'SendFundCrypto',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Vector (42).png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* Wallet Address Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowSendFundsModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'WalletAddress',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/CurrencyBtc.png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Wallet Address</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send to a user's wallet address</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+
+        {/* Select Asset Modal */}
+        <Modal
+          visible={showAssetModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowAssetModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
+                <TouchableOpacity onPress={() => {
+                  setShowAssetModal(false);
+                  setAssetSearchTerm('');
+                }}>
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.searchContainer}>
+                <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={assetSearchTerm}
+                  onChangeText={setAssetSearchTerm}
+                />
+              </View>
+              <ScrollView style={styles.modalList}>
+                {isLoadingBalances ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                    <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
+                      Loading crypto wallets...
+                    </ThemedText>
+                  </View>
+                ) : (() => {
+                  const filteredWallets = assetSearchTerm.trim() 
+                    ? cryptoWallets.filter((wallet: any) => {
+                        const currency = (wallet.currency || wallet.symbol || '').toLowerCase();
+                        const searchLower = assetSearchTerm.toLowerCase().trim();
+                        return currency.includes(searchLower);
+                      })
+                    : cryptoWallets;
+                  
+                  if (filteredWallets.length === 0) {
+                    return (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                          {assetSearchTerm.trim() ? 'No assets found' : 'No crypto wallets available'}
+                        </ThemedText>
+                      </View>
+                    );
+                  }
+                  
+                  return filteredWallets.map((wallet: any) => {
+                    let icon = require('../../../assets/CurrencyBtc.png');
+                    const currency = wallet.currency || wallet.symbol || '';
+                    
+                    const asset = {
+                      id: String(wallet.id || wallet.currency || wallet.symbol || ''),
+                      name: currency,
+                      balance: wallet.balance || wallet.availableBalance || '0',
+                      icon: icon,
+                    };
+                    const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
+                    return (
+                      <TouchableOpacity
+                        key={asset.id}
+                        style={styles.assetItem}
+                        onPress={() => {
+                          setSelectedAsset(asset);
+                          setShowAssetModal(false);
+                          setAssetSearchTerm('');
+                        }}
+                      >
+                        <Image
+                          source={asset.icon}
+                          style={styles.assetItemIcon}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.assetItemInfo}>
+                          <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                          <ThemedText style={styles.assetItemBalance}>
+                            Bal : {formatBalanceNoDecimals(wallet.balance || wallet.availableBalance || '0')}
+                          </ThemedText>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                          size={24 * SCALE}
+                          color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
+              </ScrollView>
+              <View style={styles.applyButtonContainer}>
+                <TouchableOpacity
+                  style={styles.applyButton}
+                  onPress={() => {
+                    setShowAssetModal(false);
+                    setAssetSearchTerm('');
+                  }}
+                >
+                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Country Modal for Send Funds */}
+        <Modal
+          visible={showSendFundsCountryModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowSendFundsCountryModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
+                <TouchableOpacity onPress={() => setShowSendFundsCountryModal(false)}>
+                  <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+              {isLoadingCountries ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                </View>
+              ) : (
+                <ScrollView style={styles.modalList}>
+                  {countries.map((c: any) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setSendFundsSelectedCountry(c.code || 'NG');
+                        setSendFundsSelectedCountryName(c.name || 'Nigeria');
+                      }}
+                    >
+                      {c.flag ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
+                      )}
+                      <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={sendFundsSelectedCountry === c.code ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={sendFundsSelectedCountry === c.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              <TouchableOpacity 
+                style={styles.applyButton} 
+                onPress={() => setShowSendFundsCountryModal(false)}
+              >
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </Modal>
+
+      {/* Fund Wallet Modal */}
+      <Modal
+        visible={showFundWalletModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFundWalletModal(false)}
+      >
+        <View style={styles.sendFundsModalOverlay}>
+          <View style={styles.sendFundsModalContent}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.sendFundsModalScrollContent}
+            >
+              <View style={styles.sendFundsModalHeader}>
+                <ThemedText style={styles.sendFundsModalTitle}>Fund Wallet</ThemedText>
+                <TouchableOpacity onPress={() => setShowFundWalletModal(false)}>
+                  <View style={styles.sendFundsModalCloseCircle}>
+                    <MaterialCommunityIcons name="close" size={18 * SCALE} color="#000" />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Large Icon */}
+              <View style={styles.sendFundsIconContainer}>
+                <View style={styles.sendFundsLargeIconCircle}>
+                  <Image
+                    source={require('../../../assets/Group 57.png')}
+                    style={styles.sendFundsLargeIcon}
+                    resizeMode="contain"
+                  />
+                </View>
+              </View>
+
+              {/* Wallet Type Toggle */}
+              <View style={styles.sendFundsWalletToggleContainer}>
+                <TouchableOpacity
+                  style={[styles.sendFundsWalletToggleButton, styles.sendFundsWalletToggleLeft, fundWalletType === 'Fiat' && styles.sendFundsWalletToggleActive]}
+                  onPress={() => setFundWalletType('Fiat')}
+                >
+                  <MaterialCommunityIcons name="bank" size={16 * SCALE} color={fundWalletType === 'Fiat' ? '#000000' : '#FFFFFF'} />
+                  <ThemedText style={[styles.sendFundsWalletToggleText, fundWalletType === 'Fiat' && styles.sendFundsWalletToggleTextActive]}>Fiat Wallet</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.sendFundsWalletToggleButton, styles.sendFundsWalletToggleRight, fundWalletType === 'Crypto' && styles.sendFundsWalletToggleActive]}
+                  onPress={() => setFundWalletType('Crypto')}
+                >
+                  <Image
+                    source={require('../../../assets/CurrencyBtc.png')}
+                    style={styles.sendFundsBitcoinIcon}
+                    resizeMode="contain"
+                  />
+                  <ThemedText style={[styles.sendFundsWalletToggleText, fundWalletType === 'Crypto' && styles.sendFundsWalletToggleTextActive]}>Crypto Wallet</ThemedText>
+                </TouchableOpacity>
+              </View>
+
+              {fundWalletType === 'Fiat' ? (
+                <>
+                  {/* Select Currency Section */}
+                  <View style={styles.sendFundsCurrencySection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Currency</ThemedText>
+                    <LinearGradient
+                      colors={['#A9EF4533', '#FFFFFF0D']}
+                      start={{ x: 1, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={styles.sendFundsBalanceCard}
+                    >
+                      <View style={styles.sendFundsBalanceCardContent}>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
+                        <View style={styles.sendFundsBalanceRow}>
+                          <Image
+                            source={require('../../../assets/Vector (34).png')}
+                            style={styles.sendFundsWalletIcon}
+                            resizeMode="cover"
+                          />
+                          {isLoadingWallets ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {fundWalletFiatBalance?.formatted || 'NGN0.00'}
+                            </ThemedText>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.sendFundsCountrySelector}
+                        onPress={() => setShowFundWalletCountryModal(true)}
+                        disabled={isLoadingCountries}
+                      >
+                        {isLoadingCountries ? (
+                          <ActivityIndicator size="small" color="#FFFFFF" />
+                        ) : (() => {
+                          const selectedCountryData = countries && Array.isArray(countries) ? countries.find((c: any) => c.code === fundWalletSelectedCountry) : null;
+                          const flagValue = selectedCountryData?.flag || '';
+                          const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
+                          const flagUrl = isFlagUrl 
+                            ? `${API_BASE_URL.replace('/api', '')}${flagValue}`
+                            : null;
+                          const flagEmoji = isFlagUrl ? null : (flagValue || '🏳️');
+                          
+                          return (
+                            <>
+                              {flagUrl ? (
+                                <Image
+                                  source={{ uri: flagUrl }}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              ) : flagEmoji ? (
+                                <ThemedText style={styles.sendFundsCountryFlagEmoji}>{flagEmoji}</ThemedText>
+                              ) : (
+                                <Image
+                                  source={require('../../../assets/login/nigeria-flag.png')}
+                                  style={styles.sendFundsCountryFlagImage}
+                                  resizeMode="cover"
+                                />
+                              )}
+                              <ThemedText style={styles.sendFundsCountryNameText}>
+                                {fundWalletSelectedCountryName || 'Nigeria'}
+                              </ThemedText>
+                              <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                            </>
+                          );
+                        })()}
+                      </TouchableOpacity>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Select Channel Section */}
+                  <View style={styles.sendFundsOptionsSection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Channel</ThemedText>
+                    <View style={styles.sendFundsOptionsContainer}>
+                      {/* Bank Transfer Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowFundWalletModal(false);
+                          // Navigate directly to Fund screen since we're already in Wallet stack
+                          (navigation as any).navigate('Fund');
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Vector (43).png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Bank Transfer</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via bank transfer</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* Mobile Money Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowFundWalletModal(false);
+                          // Navigate directly to Fund screen since we're already in Wallet stack
+                          (navigation as any).navigate('Fund');
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Cardholder.png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via mobile moneyt</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* Conversion Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowFundWalletModal(false);
+                          (navigation as any).navigate('Settings', { screen: 'Conversion' });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Vector (44).png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Conversion</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Convert funds between your fiat wallets</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  {/* Select Asset Section */}
+                  <View style={styles.sendFundsCurrencySection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Crypto</ThemedText>
+                    <LinearGradient
+                      colors={['#A9EF4533', '#FFFFFF0D']}
+                      start={{ x: 1, y: 0 }}
+                      end={{ x: 0, y: 1 }}
+                      style={styles.sendFundsBalanceCard}
+                    >
+                      <View style={styles.sendFundsBalanceCardContent}>
+                        <ThemedText style={styles.sendFundsBalanceLabel}>My Balance</ThemedText>
+                        <View style={styles.sendFundsBalanceRow}>
+                          <Image
+                            source={require('../../../assets/Vector (34).png')}
+                            style={styles.sendFundsWalletIcon}
+                            resizeMode="cover"
+                          />
+                          {isLoadingBalances ? (
+                            <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
+                          ) : (
+                            <ThemedText style={styles.sendFundsBalanceAmount}>
+                              {fundWalletCryptoBalance?.formatted || (selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00000 BTC')}
+                            </ThemedText>
+                          )}
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.sendFundsAssetSelector}
+                        onPress={() => setShowFundWalletAssetModal(true)}
+                      >
+                        {selectedAsset ? (
+                          <>
+                            <Image
+                              source={selectedAsset.icon}
+                              style={styles.sendFundsAssetIcon}
+                              resizeMode="cover"
+                            />
+                            <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
+                          </>
+                        ) : (
+                          <>
+                            <Image
+                              source={require('../../../assets/CurrencyBtc.png')}
+                              style={styles.sendFundsAssetIcon}
+                              resizeMode="cover"
+                            />
+                            <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
+                          </>
+                        )}
+                        <MaterialCommunityIcons name="chevron-down" size={14 * SCALE} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </LinearGradient>
+                  </View>
+
+                  {/* Select Channel Section */}
+                  <View style={styles.sendFundsOptionsSection}>
+                    <ThemedText style={styles.sendFundsSectionTitle}>Select Channel</ThemedText>
+                    <View style={styles.sendFundsOptionsContainer}>
+                      {/* Crypto Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowFundWalletModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'Assets',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/CurrencyBtc.png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>Crypto</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via crypto</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+
+                      {/* P2P Trading Option */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          setShowFundWalletModal(false);
+                          (navigation as any).navigate('Settings', {
+                            screen: 'P2PFund',
+                          });
+                        }}
+                      >
+                        <LinearGradient
+                          colors={['#A9EF4533', '#FFFFFF0D']}
+                          start={{ x: 1, y: 0 }}
+                          end={{ x: 0, y: 1 }}
+                          style={styles.sendFundsOption}
+                        >
+                          <View style={styles.sendFundsIconCircle}>
+                            <Image
+                              source={require('../../../assets/Vector (42).png')}
+                              style={styles.sendFundsIcon}
+                              resizeMode="contain"
+                            />
+                          </View>
+                          <View style={styles.sendFundsTextContainer}>
+                            <ThemedText style={styles.sendFundsOptionTitle}>P2P Trading</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Trade your assets in our p2p market</ThemedText>
+                          </View>
+                        </LinearGradient>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+
+        {/* Select Asset Modal for Fund Wallet */}
+        <Modal
+          visible={showFundWalletAssetModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowFundWalletAssetModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Select Asset</ThemedText>
+                <TouchableOpacity onPress={() => {
+                  setShowFundWalletAssetModal(false);
+                  setFundWalletAssetSearchTerm('');
+                }}>
+                  <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.searchContainer}>
+                <MaterialCommunityIcons name="magnify" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  value={fundWalletAssetSearchTerm}
+                  onChangeText={setFundWalletAssetSearchTerm}
+                />
+              </View>
+              <ScrollView style={styles.modalList}>
+                {isLoadingBalances ? (
+                  <View style={{ padding: 20, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" color="#A9EF45" />
+                    <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
+                      Loading crypto wallets...
+                    </ThemedText>
+                  </View>
+                ) : (() => {
+                  const filteredWallets = fundWalletAssetSearchTerm.trim() 
+                    ? cryptoWallets.filter((wallet: any) => {
+                        const currency = (wallet.currency || wallet.symbol || '').toLowerCase();
+                        const searchLower = fundWalletAssetSearchTerm.toLowerCase().trim();
+                        return currency.includes(searchLower);
+                      })
+                    : cryptoWallets;
+                  
+                  if (filteredWallets.length === 0) {
+                    return (
+                      <View style={{ padding: 20, alignItems: 'center' }}>
+                        <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE }}>
+                          {fundWalletAssetSearchTerm.trim() ? 'No assets found' : 'No crypto wallets available'}
+                        </ThemedText>
+                      </View>
+                    );
+                  }
+                  
+                  return filteredWallets.map((wallet: any) => {
+                    let icon = require('../../../assets/CurrencyBtc.png');
+                    const currency = wallet.currency || wallet.symbol || '';
+                    
+                    const asset = {
+                      id: String(wallet.id || wallet.currency || wallet.symbol || ''),
+                      name: currency,
+                      balance: wallet.balance || wallet.availableBalance || '0',
+                      icon: icon,
+                    };
+                    const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
+                    return (
+                      <TouchableOpacity
+                        key={asset.id}
+                        style={styles.assetItem}
+                        onPress={() => {
+                          setSelectedAsset(asset);
+                          setShowFundWalletAssetModal(false);
+                          setFundWalletAssetSearchTerm('');
+                        }}
+                      >
+                        <Image
+                          source={asset.icon}
+                          style={styles.assetItemIcon}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.assetItemInfo}>
+                          <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
+                          <ThemedText style={styles.assetItemBalance}>
+                            Bal : {formatBalanceNoDecimals(wallet.balance || wallet.availableBalance || '0')}
+                          </ThemedText>
+                        </View>
+                        <MaterialCommunityIcons
+                          name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                          size={24 * SCALE}
+                          color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                        />
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
+              </ScrollView>
+              <View style={styles.applyButtonContainer}>
+                <TouchableOpacity
+                  style={styles.applyButton}
+                  onPress={() => {
+                    setShowFundWalletAssetModal(false);
+                    setFundWalletAssetSearchTerm('');
+                  }}
+                >
+                  <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Country Modal for Fund Wallet */}
+        <Modal
+          visible={showFundWalletCountryModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowFundWalletCountryModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <ThemedText style={styles.modalTitle}>Select Country</ThemedText>
+                <TouchableOpacity onPress={() => setShowFundWalletCountryModal(false)}>
+                  <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+              {isLoadingCountries ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                </View>
+              ) : (
+                <ScrollView style={styles.modalList}>
+                  {countries.map((c: any) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={styles.countryItem}
+                      onPress={() => {
+                        setFundWalletSelectedCountry(c.code || 'NG');
+                        setFundWalletSelectedCountryName(c.name || 'Nigeria');
+                      }}
+                    >
+                      {c.flag ? (
+                        <Image
+                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                          style={styles.countryFlagImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
+                      )}
+                      <ThemedText style={styles.countryName}>{c.name}</ThemedText>
+                      <MaterialCommunityIcons
+                        name={fundWalletSelectedCountry === c.code ? 'radiobox-marked' : 'radiobox-blank'}
+                        size={24}
+                        color={fundWalletSelectedCountry === c.code ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+              <TouchableOpacity 
+                style={styles.applyButton} 
+                onPress={() => setShowFundWalletCountryModal(false)}
+              >
+                <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </Modal>
 
       {/* Loading overlay when fetching transaction details */}
       {isLoadingTransactionDetails && selectedTransactionId && (
@@ -2288,9 +3444,59 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    padding: 10,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SCREEN_WIDTH * 0.047,
+    padding: 10,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  modalTitle: {
+    fontSize: 15.2,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  modalList: {
+    maxHeight: 390,
+    padding: 10,
+  },
+  countryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    marginTop: 10,
+    borderBottomWidth: 0.3,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10,
+  },
+  countryFlag: {
+    fontSize: 20,
+    marginRight: 15,
+  },
+  countryFlagImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginRight: 15,
+  },
+  countryName: {
+    flex: 1,
+    fontSize: 11.2,
+    fontWeight: '400',
+    color: '#FFFFFF',
   },
   qrModalContainer: {
     backgroundColor: '#020c19',
@@ -2434,6 +3640,283 @@ const styles = StyleSheet.create({
     fontSize: 11 * 1,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
+  },
+  // Send Funds Modal Styles
+  sendFundsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
+  sendFundsModalContent: {
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingTop: 10 * SCALE,
+    paddingBottom: 30 * SCALE,
+    width: '100%',
+    maxHeight: '80%',
+  },
+  sendFundsModalScrollContent: {
+    paddingBottom: 30 * SCALE,
+  },
+  sendFundsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 20 * SCALE,
+    paddingBottom: 10 * SCALE,
+  },
+  sendFundsModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  sendFundsModalCloseCircle: {
+    width: 25 * SCALE,
+    height: 25 * SCALE,
+    borderRadius: 16 * SCALE,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10 * SCALE,
+  },
+  sendFundsIconContainer: {
+    alignItems: 'center',
+    marginBottom: 25 * SCALE,
+  },
+  sendFundsLargeIconCircle: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+    borderRadius: 30 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendFundsLargeIcon: {
+    width: 94 * SCALE,
+    height: 94 * SCALE,
+  },
+  sendFundsWalletToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 100,
+    padding: 4 * SCALE,
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 20 * SCALE,
+  },
+  sendFundsWalletToggleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12 * SCALE,
+    borderRadius: 100,
+    gap: 6 * SCALE,
+  },
+  sendFundsWalletToggleLeft: {},
+  sendFundsWalletToggleRight: {},
+  sendFundsWalletToggleActive: {
+    backgroundColor: '#A9EF45',
+  },
+  sendFundsWalletToggleText: {
+    fontSize: 12 * 1,
+    fontWeight: '300',
+    color: '#FFFFFF',
+  },
+  sendFundsWalletToggleTextActive: {
+    color: '#000000',
+    fontWeight: '400',
+  },
+  sendFundsBitcoinIcon: {
+    width: 16 * SCALE,
+    height: 16 * SCALE,
+  },
+  sendFundsCurrencySection: {
+    paddingHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 20 * SCALE,
+  },
+  sendFundsSectionTitle: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF80',
+    marginBottom: 12 * SCALE,
+  },
+  sendFundsBalanceCard: {
+    borderRadius: 15 * SCALE,
+    padding: 14 * SCALE,
+    minHeight: 84 * SCALE,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  sendFundsBalanceCardContent: {
+    flex: 1,
+  },
+  sendFundsBalanceLabel: {
+    fontSize: 10 * 1,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginBottom: 8 * SCALE,
+  },
+  sendFundsBalanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * SCALE,
+  },
+  sendFundsWalletIcon: {
+    width: 18 * SCALE,
+    height: 16 * SCALE,
+  },
+  sendFundsBalanceAmount: {
+    fontSize: 20 * 1,
+    fontWeight: '500',
+    color: '#A9EF45',
+  },
+  sendFundsCountrySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 100,
+    paddingHorizontal: 12 * SCALE,
+    paddingVertical: 9 * SCALE,
+    gap: 8 * SCALE,
+    marginLeft: 12 * SCALE,
+  },
+  sendFundsCountryFlagImage: {
+    width: 36 * SCALE,
+    height: 38 * SCALE,
+    borderRadius: 18 * SCALE,
+  },
+  sendFundsCountryFlagEmoji: {
+    fontSize: 28 * SCALE,
+    width: 36 * SCALE,
+    height: 38 * SCALE,
+    textAlign: 'center',
+    lineHeight: 38 * SCALE,
+  },
+  sendFundsCountryNameText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  sendFundsOptionsSection: {
+    paddingHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 20 * SCALE,
+  },
+  sendFundsOptionsContainer: {},
+  sendFundsOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 15 * SCALE,
+    borderWidth: 0.3,
+    borderColor: '#484848',
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 10 * SCALE,
+    marginBottom: 12 * SCALE,
+  },
+  sendFundsIconCircle: {
+    width: 45 * 1,
+    height: 45 * 1,
+    borderRadius: 30 * SCALE,
+    backgroundColor: '#A9EF45',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15 * SCALE,
+  },
+  sendFundsIcon: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+    tintColor: '#000000',
+  },
+  sendFundsTextContainer: {
+    flex: 1,
+  },
+  sendFundsOptionTitle: {
+    fontSize: 14 * 1,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  sendFundsOptionSubtitle: {
+    fontSize: 8 * 1,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  sendFundsAssetSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 100,
+    paddingHorizontal: 12 * SCALE,
+    paddingVertical: 9 * SCALE,
+    gap: 8 * SCALE,
+    marginLeft: 12 * SCALE,
+  },
+  sendFundsAssetIcon: {
+    width: 24 * SCALE,
+    height: 24 * SCALE,
+    borderRadius: 12 * SCALE,
+  },
+  sendFundsAssetNameText: {
+    fontSize: 14 * 1,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  assetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20 * SCALE,
+    marginTop: 10 * SCALE,
+    borderBottomWidth: 0.3,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10 * SCALE,
+  },
+  assetItemIcon: {
+    width: 40 * SCALE,
+    height: 40 * SCALE,
+    borderRadius: 20 * SCALE,
+    marginRight: 15 * SCALE,
+  },
+  assetItemInfo: {
+    flex: 1,
+  },
+  assetItemName: {
+    fontSize: 14 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    marginBottom: 4 * SCALE,
+  },
+  assetItemBalance: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  applyButtonContainer: {
+    paddingHorizontal: 20 * SCALE,
+    paddingTop: 30 * SCALE,
+    paddingBottom: 20 * SCALE,
+  },
+  applyButton: {
+    backgroundColor: '#A9EF45',
+    height: 60,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 20,
+    marginTop: 20,
+  },
+  applyButtonText: {
+    fontSize: 11.2,
+    fontWeight: '400',
+    color: '#000000',
   },
 });
 
