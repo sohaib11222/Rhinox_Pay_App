@@ -221,8 +221,13 @@ export interface GetOrdersParams {
 
 export const getP2POrders = async (params?: GetOrdersParams): Promise<ApiResponse> => {
   try {
-    const url = buildApiUrl(API_ROUTES.P2P_USER.GET_ORDERS, params as any);
-    const response = await apiClient.get(url);
+    // apiClient already has baseURL, so use route directly with params
+    const route = API_ROUTES.P2P_USER.GET_ORDERS;
+    // Filter out undefined/null/empty values
+    const cleanParams = params ? Object.fromEntries(
+      Object.entries(params).filter(([_, value]) => value !== undefined && value !== null && value !== '')
+    ) : undefined;
+    const response = await apiClient.get(route, { params: cleanParams });
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);

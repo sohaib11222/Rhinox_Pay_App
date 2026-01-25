@@ -99,7 +99,7 @@ export const verifyEmail = async (data: VerifyEmailRequest): Promise<ApiResponse
     }
     
     const response = await apiClient.post(API_ROUTES.AUTH.VERIFY_EMAIL, data);
-    console.log('[verifyEmail] Response received:', JSON.stringify(response.data, null, 2));
+    // console.log('[verifyEmail] Response received:', JSON.stringify(response.data, null, 2));
     
     // Auto-save tokens if returned - await to ensure they're stored before returning
     if (response.data?.data?.accessToken) {
@@ -316,9 +316,21 @@ export const logoutUser = async (): Promise<ApiResponse> => {
     console.log('[logoutUser] Calling logout API...');
     const response = await apiClient.post(API_ROUTES.AUTH.LOGOUT);
     console.log('[logoutUser] Logout response:', JSON.stringify(response.data, null, 2));
+    
+    // Clear tokens after successful logout API call
+    const { clearTokens } = await import('../utils/apiClient');
+    await clearTokens();
+    console.log('[logoutUser] Tokens cleared after logout API call');
+    
     return response.data;
   } catch (error: any) {
     console.error('[logoutUser] Logout error:', error);
+    
+    // Even if logout API fails, clear tokens locally
+    const { clearTokens } = await import('../utils/apiClient');
+    await clearTokens();
+    console.log('[logoutUser] Tokens cleared even though logout API failed');
+    
     throw handleApiError(error);
   }
 };
@@ -366,7 +378,7 @@ export const forgotPassword = async (data: ForgotPasswordRequest): Promise<ApiRe
   try {
     console.log('[forgotPassword] Requesting password reset OTP:', data.email);
     const response = await apiClient.post(API_ROUTES.AUTH.FORGOT_PASSWORD, data);
-    console.log('[forgotPassword] Response received:', JSON.stringify(response.data, null, 2));
+    // console.log('[forgotPassword] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);

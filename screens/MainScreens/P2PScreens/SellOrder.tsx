@@ -20,6 +20,7 @@ import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
 import { useCreateP2POrder } from '../../../mutations/p2p.mutations';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -67,18 +68,24 @@ const SellOrder = () => {
     isLoading: isLoadingBalances,
   } = useGetWalletBalances();
 
+  // Fetch user's own payment methods (where they want to receive Naira)
+  const {
+    data: paymentMethodsData,
+    isLoading: isLoadingPaymentMethods,
+  } = useGetPaymentMethods();
+
   // Extract ad data
   const adData = useMemo(() => {
     if (!adDetailsData?.data) return null;
     return adDetailsData.data;
   }, [adDetailsData]);
 
-  // Transform payment methods from ad details
+  // Transform user's own payment methods (for receiving Naira when selling)
   const paymentMethods: PaymentMethod[] = useMemo(() => {
-    if (!adData?.paymentMethods || !Array.isArray(adData.paymentMethods)) {
+    if (!paymentMethodsData?.data || !Array.isArray(paymentMethodsData.data)) {
       return [];
     }
-    return adData.paymentMethods.map((method: any) => {
+    return paymentMethodsData.data.map((method: any) => {
       let name = '';
       if (method.type === 'bank_account') {
         name = `${method.bankName || 'Bank'} - ${method.accountNumber ? method.accountNumber.replace(/(.{4})$/, '****$1') : ''}`;
@@ -95,7 +102,7 @@ const SellOrder = () => {
         type: method.type || 'unknown',
       };
     });
-  }, [adData]);
+  }, [paymentMethodsData]);
 
   // Filter payment methods by search query
   const filteredPaymentMethods = useMemo(() => {
@@ -202,16 +209,28 @@ const SellOrder = () => {
   }, [balancesData?.data?.fiat, adData?.fiatCurrency]);
 
   // Calculate fiat amount - when Crypto is selected, user enters crypto, so calculate fiat
+  // When Fiat is selected, user enters fiat, so use that directly
   const fiatAmount = useMemo(() => {
     if (!amount || !adData?.price) return '0.00';
-    if (currencyType !== 'Crypto') return '0.00'; // Only calculate when Crypto is selected
-    const numericAmount = parseFloat(amount.replace(/,/g, ''));
-    if (isNaN(numericAmount)) return '0.00';
-    const calculated = numericAmount * parseFloat(adData.price);
-    return calculated.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    
+    if (currencyType === 'Fiat') {
+      // User entered fiat amount directly
+      const numericAmount = parseFloat(amount.replace(/,/g, ''));
+      if (isNaN(numericAmount)) return '0.00';
+      return numericAmount.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    } else {
+      // User entered crypto amount, calculate fiat
+      const numericAmount = parseFloat(amount.replace(/,/g, ''));
+      if (isNaN(numericAmount)) return '0.00';
+      const calculated = numericAmount * parseFloat(adData.price);
+      return calculated.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    }
   }, [amount, adData?.price, currencyType]);
 
   // Calculate crypto amount - when Fiat is selected, user enters fiat, so calculate crypto
@@ -229,23 +248,80 @@ const SellOrder = () => {
 
   // Create order mutation
   const createOrderMutation = useCreateP2POrder({
-    onSuccess: (data) => {
-      showSuccessAlert('Success', 'Sell order created successfully', () => {
-        queryClient.invalidateQueries({ queryKey: ['p2p', 'orders'] });
-        // Navigate to sell order flow screen
-        (navigation as any).navigate('Settings', {
-          screen: 'SellOrderFlow',
-          params: {
-            orderId: String(data?.data?.id || ''),
-            amount: fiatAmount,
-            assetAmount: `${amount.replace(/,/g, '')} ${adData?.cryptoCurrency || 'USDT'}`,
-            cryptoAmount: amount.replace(/,/g, ''),
-            paymentMethodId: selectedPaymentMethod?.id,
-          },
+    onSuccess: (response) => {
+      try {
+        console.log('[SellOrder] Order created successfully:', response);
+        
+        // Validate response data structure
+        if (!response) {
+          console.error('[SellOrder] Response is null or undefined');
+          showErrorAlert('Error', 'Order created but no response received');
+          return;
+        }
+
+        if (!response.data) {
+          console.error('[SellOrder] Response.data is missing:', response);
+          showErrorAlert('Error', 'Order created but invalid response structure');
+          return;
+        }
+
+        const orderData = response.data;
+        
+        if (!orderData.id) {
+          console.error('[SellOrder] Order ID is missing:', orderData);
+          showErrorAlert('Error', 'Order created but order ID is missing');
+          return;
+        }
+
+        const orderId = String(orderData.id);
+        
+        // Calculate fiat amount from order data or use computed value
+        let orderFiatAmount = '0.00';
+        if (orderData.fiatAmount) {
+          try {
+            orderFiatAmount = parseFloat(String(orderData.fiatAmount)).toLocaleString('en-US', { 
+              minimumFractionDigits: 2, 
+              maximumFractionDigits: 2 
+            });
+          } catch (e) {
+            console.error('[SellOrder] Error parsing fiatAmount:', e);
+            orderFiatAmount = fiatAmount || '0.00';
+          }
+        } else {
+          orderFiatAmount = fiatAmount || '0.00';
+        }
+        
+        // Get crypto amount from order data or use entered amount
+        const orderCryptoAmount = orderData.cryptoAmount 
+          ? String(orderData.cryptoAmount).replace(/,/g, '') 
+          : amount.replace(/,/g, '') || '0';
+        const orderCryptoCurrency = orderData.cryptoCurrency || adData?.cryptoCurrency || 'USDT';
+        
+        showSuccessAlert('Success', 'Sell order created successfully', () => {
+          // Invalidate queries after a short delay to avoid race conditions
+          setTimeout(() => {
+            queryClient.invalidateQueries({ queryKey: ['p2p', 'orders'] });
+          }, 500);
+          
+          // Navigate to sell order flow screen
+          (navigation as any).navigate('Settings', {
+            screen: 'SellOrderFlow',
+            params: {
+              orderId: orderId,
+              amount: orderFiatAmount,
+              assetAmount: `${orderCryptoAmount} ${orderCryptoCurrency}`,
+              cryptoAmount: orderCryptoAmount,
+              paymentMethodId: selectedPaymentMethod?.id || orderData.paymentMethodId || '',
+            },
+          });
         });
-      });
+      } catch (error: any) {
+        console.error('[SellOrder] Error in onSuccess handler:', error);
+        showErrorAlert('Error', 'Order created but navigation failed. Please check your orders.');
+      }
     },
     onError: (error: any) => {
+      console.error('[SellOrder] Error creating order:', error);
       showErrorAlert('Error', error?.message || 'Failed to create sell order');
     },
   });
@@ -361,6 +437,20 @@ const SellOrder = () => {
       }
     }
   }, [routeParams?.paymentMethodId, paymentMethods]);
+
+  // Debug: Log modal state changes
+  useEffect(() => {
+    console.log('showPaymentMethodModal changed:', showPaymentMethodModal);
+  }, [showPaymentMethodModal]);
+
+  // Debug: Log payment methods loading state
+  useEffect(() => {
+    console.log('Payment methods state:', {
+      isLoadingPaymentMethods,
+      paymentMethodsLength: paymentMethods.length,
+      hasPaymentMethods: paymentMethods.length > 0
+    });
+  }, [isLoadingPaymentMethods, paymentMethods.length]);
 
   return (
     <View style={styles.container}>
@@ -613,23 +703,40 @@ const SellOrder = () => {
             </>
           )}
 
-          {/* Payment Method */}
+          {/* Payment Method - Where client wants to receive Naira */}
           <TouchableOpacity
-            style={styles.paymentMethodField}
-            onPress={() => setShowPaymentMethodModal(true)}
-            disabled={isLoadingAdDetails || paymentMethods.length === 0}
+            style={[
+              styles.paymentMethodField,
+              (isLoadingPaymentMethods || paymentMethods.length === 0) && styles.paymentMethodFieldDisabled
+            ]}
+            onPress={() => {
+              console.log('Payment method button pressed', { 
+                isLoadingPaymentMethods, 
+                paymentMethodsLength: paymentMethods.length,
+                showPaymentMethodModal: showPaymentMethodModal
+              });
+              if (!isLoadingPaymentMethods && paymentMethods.length > 0) {
+                console.log('Opening modal...');
+                setShowPaymentMethodModal(true);
+                console.log('Modal state set to true');
+              } else {
+                console.log('Cannot open modal - isLoading:', isLoadingPaymentMethods, 'methodsCount:', paymentMethods.length);
+              }
+            }}
+            disabled={isLoadingPaymentMethods || paymentMethods.length === 0}
+            activeOpacity={0.7}
           >
-            {isLoadingAdDetails ? (
+            {isLoadingPaymentMethods ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <ActivityIndicator size="small" color="#A9EF45" />
                 <ThemedText style={styles.placeholder}>Loading payment methods...</ThemedText>
               </View>
             ) : paymentMethods.length === 0 ? (
-              <ThemedText style={styles.placeholder}>No payment methods available</ThemedText>
+              <ThemedText style={styles.placeholder}>No payment methods available. Please add a bank account or payment method.</ThemedText>
             ) : (
               <>
                 <ThemedText style={[styles.paymentMethodText, !selectedPaymentMethod && styles.placeholder]}>
-                  {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select payment method'}
+                  {selectedPaymentMethod ? selectedPaymentMethod.name : 'Select where to receive Naira'}
                 </ThemedText>
                 <MaterialCommunityIcons name="chevron-down" size={24 * SCALE} color="#FFFFFF" />
               </>
@@ -658,12 +765,29 @@ const SellOrder = () => {
         visible={showPaymentMethodModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowPaymentMethodModal(false)}
+        onRequestClose={() => {
+          console.log('Modal onRequestClose called');
+          setShowPaymentMethodModal(false);
+        }}
+        statusBarTranslucent={true}
+        presentationStyle="overFullScreen"
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.paymentModalContent}>
+          <TouchableOpacity 
+            style={{ flex: 1 }}
+            activeOpacity={1}
+            onPress={() => {
+              console.log('Overlay pressed');
+              setShowPaymentMethodModal(false);
+            }}
+          />
+          <View 
+            style={styles.paymentModalContent}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => true}
+          >
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Select Bank</ThemedText>
+              <ThemedText style={styles.modalTitle}>Select Payment Method</ThemedText>
               <TouchableOpacity onPress={() => setShowPaymentMethodModal(false)}>
                 <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
               </TouchableOpacity>
@@ -681,7 +805,7 @@ const SellOrder = () => {
             </View>
 
             <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
-              {isLoadingAdDetails ? (
+              {isLoadingPaymentMethods ? (
                 <View style={{ padding: 20, alignItems: 'center' }}>
                   <ActivityIndicator size="small" color="#A9EF45" />
                   <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', marginTop: 10, fontSize: 12 * SCALE }}>
@@ -964,6 +1088,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11 * SCALE,
     height: 60 * SCALE,
   },
+  paymentMethodFieldDisabled: {
+    opacity: 0.5,
+  },
   paymentMethodText: {
     fontSize: 14 * SCALE,
     fontWeight: '300',
@@ -996,15 +1123,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   paymentModalContent: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     backgroundColor: '#020c19',
     borderTopLeftRadius: 30 * SCALE,
     borderTopRightRadius: 30 * SCALE,
     maxHeight: '90%',
-    flex: 1,
+    minHeight: '50%',
   },
   modalHeader: {
     flexDirection: 'row',

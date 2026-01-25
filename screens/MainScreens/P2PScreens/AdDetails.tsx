@@ -16,7 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails, useGetVendorOrders, useGetP2POrderDetails } from '../../../queries/p2p.queries';
-import { useAcceptOrder, useDeclineOrder, useCancelVendorOrder, useDeleteP2PAd } from '../../../mutations/p2p.mutations';
+import { useAcceptOrder, useDeclineOrder, useCancelVendorOrder, useDeleteP2PAd, useMarkVendorPaymentReceived, useMarkVendorPaymentMade } from '../../../mutations/p2p.mutations';
 import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -285,6 +285,34 @@ const AdDetails = () => {
     },
   });
 
+  // Mark payment made mutation (for vendor when buying - BUY ads)
+  const markPaymentMadeMutation = useMarkVendorPaymentMade({
+    onSuccess: (data) => {
+      console.log('[AdDetails] Payment marked as made successfully:', data);
+      refetchOrders();
+      refetchAdDetails();
+      showSuccessAlert('Success', 'Payment confirmed. Waiting for seller to release crypto.');
+    },
+    onError: (error: any) => {
+      console.error('[AdDetails] Error marking payment made:', error);
+      showErrorAlert(error?.message || 'Failed to confirm payment made');
+    },
+  });
+
+  // Mark payment received mutation (for vendor when selling - SELL ads)
+  const markPaymentReceivedMutation = useMarkVendorPaymentReceived({
+    onSuccess: (data) => {
+      console.log('[AdDetails] Payment marked as received successfully:', data);
+      refetchOrders();
+      refetchAdDetails();
+      showSuccessAlert('Success', 'Payment confirmed. Crypto will be released to buyer.');
+    },
+    onError: (error: any) => {
+      console.error('[AdDetails] Error marking payment received:', error);
+      showErrorAlert(error?.message || 'Failed to confirm payment received');
+    },
+  });
+
   const handleAccept = (order: Order) => {
     if (!order.orderId) {
       showErrorAlert('Invalid order ID');
@@ -383,6 +411,48 @@ const AdDetails = () => {
       'Delete',
       'Cancel'
     );
+  };
+
+  const handleMarkPaymentReceived = (order: Order) => {
+    if (!order.orderId) {
+      showErrorAlert('Error', 'Invalid order ID');
+      return;
+    }
+    
+    // For BUY ads: vendor is buyer, needs to mark payment made
+    // For SELL ads: vendor is seller, needs to mark payment received
+    const isBuyAd = currentAd?.type === 'Buy';
+    
+    if (isBuyAd) {
+      // BUY ad: Vendor is buyer, mark payment made
+      showConfirmAlert(
+        'Confirm Payment Made',
+        'Have you made the payment to the seller? This will notify the seller to release crypto.',
+        () => {
+          markPaymentMadeMutation.mutate({
+            orderId: order.orderId,
+          });
+        },
+        undefined,
+        'Confirm',
+        'Cancel'
+      );
+    } else {
+      // SELL ad: Vendor is seller, mark payment received
+      showConfirmAlert(
+        'Confirm Payment Received',
+        'Have you received the payment from the buyer? This will release the crypto to the buyer.',
+        () => {
+          markPaymentReceivedMutation.mutate({
+            orderId: order.orderId,
+            confirmed: true,
+          });
+        },
+        undefined,
+        'Confirm',
+        'Cancel'
+      );
+    }
   };
 
   // Handle edit ad
@@ -759,8 +829,26 @@ const AdDetails = () => {
                 </View>
               ) : (
                 orders.map((order) => (
-                  <View key={order.id} style={styles.orderCard}>
-                    <View style={styles.orderHeader}>
+                  <TouchableOpacity
+                    key={order.id}
+                    onPress={() => {
+                      (navigation as any).navigate('Settings', {
+                        screen: 'OrderDetails',
+                        params: {
+                          orderId: order.orderId,
+                          adId: adId,
+                        },
+                      });
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <LinearGradient
+                      colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.03)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.orderCard}
+                    >
+                      <View style={styles.orderHeader}>
                       <View style={styles.orderHeaderLeft}>
                         <Image
                           source={order.userAvatar}
@@ -783,7 +871,8 @@ const AdDetails = () => {
                     <View style={styles.orderActions}>
                       <TouchableOpacity
                         style={styles.chatButton}
-                        onPress={() => {
+                        onPress={(e) => {
+                          e.stopPropagation();
                           // Navigate to chat screen with order ID (chatId = orderId)
                           (navigation as any).navigate('Settings', {
                             screen: 'ChatScreen',
@@ -806,7 +895,10 @@ const AdDetails = () => {
                         {(order.status === 'pending' || order.status === 'awaiting_payment') && (
                           <TouchableOpacity 
                             style={styles.cancelButton}
-                            onPress={() => handleCancel(order)}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleCancel(order);
+                            }}
                             disabled={cancelMutation.isPending}
                           >
                             {cancelMutation.isPending ? (
@@ -821,7 +913,10 @@ const AdDetails = () => {
                           <>
                             <TouchableOpacity
                               style={styles.declineButton}
-                              onPress={() => handleDecline(order)}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleDecline(order);
+                              }}
                               disabled={declineMutation.isPending}
                             >
                               {declineMutation.isPending ? (
@@ -832,7 +927,10 @@ const AdDetails = () => {
                             </TouchableOpacity>
                             <TouchableOpacity
                               style={styles.acceptButton}
-                              onPress={() => handleAccept(order)}
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleAccept(order);
+                              }}
                               disabled={acceptMutation.isPending}
                             >
                               {acceptMutation.isPending ? (
@@ -843,6 +941,44 @@ const AdDetails = () => {
                             </TouchableOpacity>
                           </>
                         )}
+                        {/* VENDOR BUYER (BUY ad): Mark Payment Made button for awaiting_payment (offline payments only) */}
+                        {order.status === 'awaiting_payment' && 
+                         currentAd?.type === 'Buy' && 
+                         order.rawData?.paymentChannel === 'offline' && (
+                          <TouchableOpacity
+                            style={styles.markPaymentReceivedButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleMarkPaymentReceived(order);
+                            }}
+                            disabled={markPaymentMadeMutation.isPending}
+                          >
+                            {markPaymentMadeMutation.isPending ? (
+                              <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                              <ThemedText style={styles.markPaymentReceivedButtonText}>
+                                Mark Payment Made
+                              </ThemedText>
+                            )}
+                          </TouchableOpacity>
+                        )}
+                        {/* VENDOR SELLER (SELL ad): Mark Payment Received button for payment_made */}
+                        {order.status === 'payment_made' && currentAd?.type === 'Sell' && (
+                          <TouchableOpacity
+                            style={styles.markPaymentReceivedButton}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleMarkPaymentReceived(order);
+                            }}
+                            disabled={markPaymentReceivedMutation.isPending}
+                          >
+                            {markPaymentReceivedMutation.isPending ? (
+                              <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                              <ThemedText style={styles.markPaymentReceivedButtonText}>Mark Payment Received</ThemedText>
+                            )}
+                          </TouchableOpacity>
+                        )}
                         {/* Show status for completed/cancelled orders */}
                         {(order.status === 'completed' || order.status === 'cancelled') && (
                           <ThemedText style={styles.orderStatusText}>
@@ -851,7 +987,8 @@ const AdDetails = () => {
                         )}
                       </View>
                     </View>
-                  </View>
+                    </LinearGradient>
+                  </TouchableOpacity>
                 ))
               )}
             </View>
@@ -1250,12 +1387,17 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.5)',
   },
   orderCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderWidth: 0.3,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     borderRadius: 15 * SCALE,
-    // padding: 15 * SCALE,
     marginBottom: 15 * SCALE,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -1317,10 +1459,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF08',
-    // padding: 15 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     paddingHorizontal: 15 * SCALE,
-    paddingVertical: 7 * SCALE,  
+    paddingVertical: 7 * SCALE,
+    borderTopWidth: 0.3,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
   },
   chatButton: {
     width: 40 * SCALE,
@@ -1373,6 +1516,18 @@ const styles = StyleSheet.create({
     fontSize: 10 * 1,
     fontWeight: '500',
     color: '#ff0000',
+  },
+  markPaymentReceivedButton: {
+    paddingHorizontal: 15 * SCALE,
+    paddingVertical: 12 * SCALE,
+    borderRadius: 100 * SCALE,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+  },
+  markPaymentReceivedButtonText: {
+    fontSize: 10 * 1,
+    fontWeight: '500',
+    color: '#000000',
   },
   orderStatusText: {
     fontSize: 10 * 1,

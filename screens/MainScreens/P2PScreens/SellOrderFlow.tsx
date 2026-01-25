@@ -107,18 +107,32 @@ const SellOrderFlow = () => {
 
   // Create order mutation
   const createOrderMutation = useCreateP2POrder({
-    onSuccess: (data) => {
-      const createdOrderId = data?.data?.id;
-      if (createdOrderId) {
+    onSuccess: (response) => {
+      try {
+        console.log('[SellOrderFlow] Order created successfully:', response);
+        
+        // Validate response data structure
+        if (!response || !response.data || !response.data.id) {
+          console.error('[SellOrderFlow] Invalid order response:', response);
+          showErrorAlert('Error', 'Order created but invalid response received');
+          return;
+        }
+
+        const createdOrderId = String(response.data.id);
+        
         // Navigate to order flow with orderId
         (navigation as any).replace('SellOrderFlow', {
-          orderId: String(createdOrderId),
+          orderId: createdOrderId,
           skipInitialScreen: true,
         });
         showSuccessAlert('Success', 'Order created successfully');
+      } catch (error: any) {
+        console.error('[SellOrderFlow] Error in onSuccess handler:', error);
+        showErrorAlert('Error', 'Order created but navigation failed. Please check your orders.');
       }
     },
     onError: (error: any) => {
+      console.error('[SellOrderFlow] Error creating order:', error);
       showErrorAlert('Error', error?.message || 'Failed to create order. Please try again.');
     },
   });
@@ -229,9 +243,10 @@ const SellOrderFlow = () => {
       let accountNumber = 'N/A';
       let accountName = 'N/A';
       
-      if (paymentMethod.type === 'rhinoxpay' || paymentMethod.name === 'RhinoxPay ID') {
+      if (paymentMethod.type === 'rhinoxpay' || paymentMethod.type === 'rhinoxpay_id' || paymentMethod.name === 'RhinoxPay ID') {
         bankName = 'RhinoxPay ID';
-        accountNumber = paymentMethod.accountNumber || 'N/A';
+        // Get RhinoxPay ID from rhinoxpayId or accountNumber field
+        accountNumber = paymentMethod.rhinoxpayId || paymentMethod.accountNumber || 'N/A';
         accountName = vendorName;
       } else if (paymentMethod.type === 'bank_account' || paymentMethod.bankName) {
         bankName = paymentMethod.bankName || 'N/A';
@@ -261,6 +276,9 @@ const SellOrderFlow = () => {
         bankName,
         accountNumber,
         accountName,
+        rhinoxPayId: paymentMethod.type === 'rhinoxpay' || paymentMethod.type === 'rhinoxpay_id' 
+          ? (paymentMethod.rhinoxpayId || paymentMethod.accountNumber || 'N/A')
+          : null,
         usdtAmount: `${cryptoAmount} USDT`,
       };
     }
@@ -282,9 +300,11 @@ const SellOrderFlow = () => {
       bankName: 'N/A',
       accountNumber: 'N/A',
       accountName: 'N/A',
-      usdtAmount: routeParams?.assetAmount || orderDetailsData?.data?.cryptoAmount 
+      usdtAmount: routeParams?.assetAmount || (orderDetailsData?.data?.cryptoAmount 
         ? `${orderDetailsData.data.cryptoAmount} ${orderDetailsData.data.cryptoCurrency || 'USDT'}`
-        : '0 USDT',
+        : routeParams?.cryptoAmount 
+          ? `${routeParams.cryptoAmount} USDT`
+          : '0 USDT'),
     };
   }, [orderDetailsData?.data, routeParams]);
 
@@ -1014,7 +1034,9 @@ const SellOrderFlow = () => {
             {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') ? (
               <View style={styles.rhinoxPayCard}>
                 <ThemedText style={styles.rhinoxPayLabel}>Rhinoxpay ID</ThemedText>
-                <ThemedText style={styles.rhinoxPayValue}>NGN1234</ThemedText>
+                <ThemedText style={styles.rhinoxPayValue}>
+                  {orderData?.rhinoxPayId || orderData?.accountNumber || 'N/A'}
+                </ThemedText>
               </View>
             ) : (
               <>

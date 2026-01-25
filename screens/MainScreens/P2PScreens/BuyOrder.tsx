@@ -25,6 +25,8 @@ import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mu
 import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
+import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
+import { useGetTransferEligibility } from '../../../queries/transfer.queries';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -57,12 +59,13 @@ const BuyOrder = () => {
     assetAmount?: string;
     cryptoAmount?: string;
     paymentMethodId?: string;
+    currentStep?: number;
   } | undefined;
   
-  // If skipInitialScreen is true, start at step 1, otherwise start at step 0
   const [currentStep, setCurrentStep] = useState<0 | 1 | 2 | 3 | 4>(
-    routeParams?.skipInitialScreen ? 1 : 0
+    routeParams?.skipInitialScreen ? (routeParams?.currentStep as any || 1) : 0
   );
+
   const [currencyType, setCurrencyType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [amount, setAmount] = useState(routeParams?.cryptoAmount || '');
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
@@ -78,6 +81,46 @@ const BuyOrder = () => {
   const [orderId, setOrderId] = useState<string | null>(routeParams?.orderId || null);
   const [adId, setAdId] = useState<string | null>(routeParams?.adId || null);
 
+  // ... (biometric and other states)
+
+  // Fetch order details if orderId is provided
+  const {
+    data: orderDetailsData,
+    isLoading: isLoadingOrderDetails,
+    refetch: refetchOrderDetails,
+  } = useGetP2POrderDetails(orderId || '', {
+    enabled: !!orderId && currentStep > 0,
+  } as any);
+
+  // Determine current step based on order status from API
+  const apiStep = useMemo(() => {
+    if (!orderDetailsData?.data) return null;
+    const status = orderDetailsData.data.status;
+    switch (status) {
+      case 'pending':
+        return 1;
+      case 'awaiting_payment':
+        return 2;
+      case 'payment_made':
+      case 'awaiting_coin_release':
+        return 3;
+      case 'completed':
+        return 4;
+      case 'cancelled':
+        return 1; // Or handle cancelled state specifically
+      default:
+        return 1;
+    }
+  }, [orderDetailsData?.data?.status]);
+
+  // Sync internal currentStep with API step
+  useEffect(() => {
+    if (apiStep !== null && apiStep !== currentStep) {
+      console.log(`[BuyOrder] Syncing step: ${currentStep} -> ${apiStep} (Status: ${orderDetailsData?.data?.status})`);
+      setCurrentStep(apiStep as any);
+    }
+  }, [apiStep, currentStep, orderDetailsData?.data?.status]);
+
   // PIN states
   const [pin, setPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
@@ -90,9 +133,11 @@ const BuyOrder = () => {
   // Security verification states
   const [emailCode, setEmailCode] = useState('');
   const [authenticatorCode, setAuthenticatorCode] = useState('');
+  const [transferTransactionId, setTransferTransactionId] = useState<number | null>(null);
 
   // RhinoxPay ID states
   const [showRhinoxPayModal, setShowRhinoxPayModal] = useState(false);
+  const [showEmailCodeModal, setShowEmailCodeModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [selectedCurrency, setSelectedCurrency] = useState('NGN');
   const [rhinoxPayAmount, setRhinoxPayAmount] = useState('20,000');
@@ -265,15 +310,6 @@ const BuyOrder = () => {
     return methods;
   }, [adDetailsData?.data?.paymentMethods, userPaymentMethodsData?.data]);
 
-  // Fetch order details if orderId is provided
-  const {
-    data: orderDetailsData,
-    isLoading: isLoadingOrderDetails,
-    refetch: refetchOrderDetails,
-  } = useGetP2POrderDetails(orderId || '', {
-    enabled: !!orderId && currentStep > 0,
-  } as any);
-
   // Get ad price for rate display (when creating order)
   const adPrice = useMemo(() => {
     if (adDetailsData?.data?.price) {
@@ -329,9 +365,16 @@ const BuyOrder = () => {
         bankName: paymentMethod.bankName || 'N/A',
         accountNumber: paymentMethod.accountNumber || paymentMethod.phoneNumber || 'N/A',
         accountName: paymentMethod.accountName || 'N/A',
+        // For RhinoxPay ID, get the actual ID from rhinoxpayId or accountNumber field
+        rhinoxPayId: paymentMethod.type === 'rhinoxpay_id' 
+          ? (paymentMethod.rhinoxpayId || paymentMethod.accountNumber || 'N/A')
+          : null,
         usdtAmount: `${order.cryptoAmount || '0'} ${order.cryptoCurrency || 'USDT'}`,
         orderStatus: order.status || 'pending',
         paymentMethodId: paymentMethod.id ? String(paymentMethod.id) : null,
+        // Get vendor email for RhinoxPay transfers
+        vendorEmail: vendor.email || null,
+        vendorId: vendor.id ? String(vendor.id) : null,
       };
     }
     
@@ -448,14 +491,49 @@ const BuyOrder = () => {
       queryClient.invalidateQueries({ queryKey: ['p2p', 'orders', orderId] });
       setPaymentConfirmed(true);
       setCurrentStep(3); // Move to Awaiting Coin Release
-      showSuccessAlert('Success', 'Payment confirmed. Waiting for coin release.');
-      // After some time, move to step 4
-      setTimeout(() => {
-        setCurrentStep(4);
-      }, 2000);
+      showSuccessAlert('Success', 'Payment confirmed. Waiting for vendor to release coins.');
+      // REMOVED: Auto-advancing to step 4. Step 4 should only be reachable via API status 'completed'.
     },
     onError: (error: any) => {
       showErrorAlert('Error', error?.message || 'Failed to confirm payment');
+    },
+  });
+
+  // Transfer mutations for RhinoxPay payments
+  const initiateTransferMutation = useInitiateTransfer({
+    onSuccess: (data) => {
+      console.log('[BuyOrder] Transfer initiated successfully:', data);
+      const transactionId = data?.data?.id || data?.data?.transactionId;
+      if (transactionId) {
+        setTransferTransactionId(Number(transactionId));
+        setShowRhinoxPayModal(false);
+        setShowEmailCodeModal(true);
+        showSuccessAlert('Success', 'Transfer initiated. Please check your email for verification code.');
+      } else {
+        showErrorAlert('Error', 'Transfer initiated but transaction ID not received');
+      }
+    },
+    onError: (error: any) => {
+      console.error('[BuyOrder] Error initiating transfer:', error);
+      showErrorAlert('Error', error?.message || 'Failed to initiate transfer. Please try again.');
+    },
+  });
+
+  const verifyTransferMutation = useVerifyTransfer({
+    onSuccess: (data) => {
+      console.log('[BuyOrder] Transfer verified successfully:', data);
+      setShowEmailCodeModal(false);
+      setEmailCode('');
+      setPin('');
+      // After successful transfer, mark payment as made
+      if (orderId) {
+        markPaymentMadeMutation.mutate({ orderId });
+      }
+      setShowSuccessModal(true);
+    },
+    onError: (error: any) => {
+      console.error('[BuyOrder] Error verifying transfer:', error);
+      showErrorAlert('Error', error?.message || 'Failed to verify transfer. Please try again.');
     },
   });
 
@@ -708,18 +786,93 @@ const BuyOrder = () => {
   };
 
   const handleRhinoxPayProceed = () => {
-    setShowRhinoxPayModal(false);
-    setShowSuccessModal(true);
+    // Validate required data
+    if (!orderData?.vendorEmail && !orderData?.rhinoxPayId) {
+      showErrorAlert('Error', 'Vendor payment information not available');
+      return;
+    }
+
+    if (!orderData?.amountToPay) {
+      showErrorAlert('Error', 'Payment amount not available');
+      return;
+    }
+
+    // Extract amount from "NGN1,800.00" format
+    const amountStr = orderData.amountToPay.replace(/[^0-9.]/g, '');
+    const numericAmount = parseFloat(amountStr);
+    
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      showErrorAlert('Error', 'Invalid payment amount');
+      return;
+    }
+
+    // Determine recipient - use vendor email if available, otherwise use RhinoxPay ID
+    const recipientEmail = orderData.vendorEmail;
+    const rhinoxPayId = orderData.rhinoxPayId;
+
+    if (!recipientEmail && !rhinoxPayId) {
+      showErrorAlert('Error', 'Vendor payment details not found');
+      return;
+    }
+
+    // Get country code from selected country (default to NG for Nigeria)
+    const countryCode = selectedCountryName === 'Nigeria' ? 'NG' : 
+                        selectedCountryName === 'South Africa' ? 'ZA' : 'NG';
+
+    // Initiate transfer
+    const transferData: any = {
+      amount: numericAmount.toFixed(2),
+      currency: selectedCurrency || 'NGN',
+      countryCode: countryCode,
+      channel: 'rhionx_user' as const,
+    };
+
+    // Use email if available, otherwise try RhinoxPay ID
+    if (recipientEmail) {
+      transferData.recipientEmail = recipientEmail;
+    } else if (rhinoxPayId && rhinoxPayId !== 'N/A') {
+      // If RhinoxPay ID is an email format, use it as email
+      if (rhinoxPayId.includes('@')) {
+        transferData.recipientEmail = rhinoxPayId;
+      } else {
+        // Otherwise, try to use it as accountNumber (API might accept it)
+        transferData.accountNumber = rhinoxPayId;
+      }
+    }
+
+    console.log('[BuyOrder] Initiating transfer:', transferData);
+    initiateTransferMutation.mutate(transferData);
+  };
+
+  const handleEmailCodeVerify = () => {
+    if (!emailCode || emailCode.length < 4) {
+      showErrorAlert('Error', 'Please enter a valid email verification code');
+      return;
+    }
+
+    if (!pin || pin.length !== 5) {
+      showErrorAlert('Error', 'Please enter your 5-digit PIN');
+      return;
+    }
+
+    if (!transferTransactionId) {
+      showErrorAlert('Error', 'Transaction ID not found');
+      return;
+    }
+
+    // Verify transfer with email code and PIN
+    verifyTransferMutation.mutate({
+      transactionId: transferTransactionId,
+      emailCode: emailCode,
+      pin: pin,
+    });
   };
 
   const handleSuccessModalClose = () => {
     setShowSuccessModal(false);
     setPaymentConfirmed(true);
     setCurrentStep(3); // Move to Awaiting Coin Release
-    // After some time, move to step 4
-    setTimeout(() => {
-      setCurrentStep(4);
-    }, 2000);
+    // REMOVED: Auto-advancing to step 4.
   };
 
   const handlePinPress = (num: string) => {
@@ -802,6 +955,25 @@ const BuyOrder = () => {
   });
 
   const getStepStatus = () => {
+    if (orderDetailsData?.data?.status) {
+      const status = orderDetailsData.data.status;
+      switch (status) {
+        case 'pending':
+          return 'Order Placed';
+        case 'awaiting_payment':
+          return 'Awaiting Payment';
+        case 'payment_made':
+        case 'awaiting_coin_release':
+          return 'Awaiting Coin Release';
+        case 'completed':
+          return 'Order Completed';
+        case 'cancelled':
+          return 'Order Cancelled';
+        default:
+          return 'Order Placed';
+      }
+    }
+
     switch (currentStep) {
       case 1:
         // If coming from AdDetails, show "Order Received", otherwise "Order Placed"
@@ -1288,10 +1460,17 @@ const BuyOrder = () => {
               )}
             </View>
             {/* RhinoxPay ID Payment Method */}
-            {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') ? (
+            {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2' || selectedPaymentMethod?.type === 'rhinoxpay_id') ? (
               <View style={styles.rhinoxPayCard}>
                 <ThemedText style={styles.rhinoxPayLabel}>Rhinoxpay ID</ThemedText>
-                <ThemedText style={styles.rhinoxPayValue}>NGN1234</ThemedText>
+                <ThemedText style={styles.rhinoxPayValue}>
+                  {orderData?.rhinoxPayId || 
+                   selectedPaymentMethod?.paymentMethodData?.rhinoxpayId || 
+                   selectedPaymentMethod?.paymentMethodData?.accountNumber ||
+                   adDetailsData?.data?.paymentMethods?.find((pm: any) => pm.type === 'rhinoxpay_id')?.rhinoxpayId ||
+                   adDetailsData?.data?.paymentMethods?.find((pm: any) => pm.type === 'rhinoxpay_id')?.accountNumber ||
+                   'N/A'}
+                </ThemedText>
               </View>
             ) : (
               <>
@@ -1849,12 +2028,21 @@ const BuyOrder = () => {
                 <ThemedText style={styles.rhinoxPayIdLabel}>Rhinox Pay ID</ThemedText>
                 <View style={styles.rhinoxPayIdInput}>
                   <ThemedText style={styles.rhinoxPayIdPlaceholder}>Rhinoxpay ID</ThemedText>
-                  <ThemedText style={styles.rhinoxPayIdValue}>NGN1234</ThemedText>
+                  <ThemedText style={styles.rhinoxPayIdValue}>
+                    {orderData?.rhinoxPayId || 
+                     selectedPaymentMethod?.paymentMethodData?.rhinoxpayId || 
+                     selectedPaymentMethod?.paymentMethodData?.accountNumber ||
+                     adDetailsData?.data?.paymentMethods?.find((pm: any) => pm.type === 'rhinoxpay_id')?.rhinoxpayId ||
+                     adDetailsData?.data?.paymentMethods?.find((pm: any) => pm.type === 'rhinoxpay_id')?.accountNumber ||
+                     'N/A'}
+                  </ThemedText>
                 </View>
                 <View style={styles.amountToPaySectionModal}>
                 <ThemedText style={styles.amountToPayLabelModal}>Amount to Pay</ThemedText>
                 <View style={styles.amountToPayInput}>
-                  <ThemedText style={styles.amountToPayValueModal}>{rhinoxPayAmount}</ThemedText>
+                  <ThemedText style={styles.amountToPayValueModal}>
+                    {orderData?.amountToPay ? orderData.amountToPay.replace(/[^0-9,.]/g, '') : rhinoxPayAmount}
+                  </ThemedText>
                 </View>
               </View>
               </View>
@@ -1866,6 +2054,135 @@ const BuyOrder = () => {
             <View style={styles.rhinoxPayModalFooter}>
               <TouchableOpacity style={styles.proceedButtonRhinoxPay} onPress={handleRhinoxPayProceed}>
                 <ThemedText style={styles.proceedButtonRhinoxPayText}>Proceed</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Email Code Verification Modal */}
+      <Modal
+        visible={showEmailCodeModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEmailCodeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.pinModalContent}>
+            <View style={styles.pinModalHeader}>
+              <ThemedText style={styles.pinModalTitle}>Verify Transfer</ThemedText>
+              <TouchableOpacity onPress={() => setShowEmailCodeModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.pinModalBody}>
+              <ThemedText style={styles.pinModalSubtitle}>
+                Enter the verification code sent to your email and your PIN
+              </ThemedText>
+              
+              {/* Email Code Input */}
+              <View style={styles.emailCodeInputContainer}>
+                <ThemedText style={styles.emailCodeLabel}>Email Verification Code</ThemedText>
+                <TextInput
+                  style={styles.emailCodeInput}
+                  value={emailCode}
+                  onChangeText={setEmailCode}
+                  placeholder="Enter code"
+                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+              </View>
+
+              {/* PIN Input */}
+              <View style={styles.pinInputContainer}>
+                <ThemedText style={styles.pinLabel}>Enter PIN</ThemedText>
+                <View style={styles.pinDotsContainer}>
+                  {[0, 1, 2, 3, 4].map((index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.pinDot,
+                        pin.length > index && styles.pinDotFilled,
+                      ]}
+                    />
+                  ))}
+                </View>
+                <View style={styles.numpad}>
+                  <View style={styles.numpadRow}>
+                    {[1, 2, 3].map((num) => (
+                      <TouchableOpacity
+                        key={num}
+                        style={styles.numpadButton}
+                        onPress={() => handlePinPress(num.toString())}
+                      >
+                        <View style={styles.numpadCircle}>
+                          <ThemedText style={styles.numpadText}>{num}</ThemedText>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.numpadRow}>
+                    {[4, 5, 6].map((num) => (
+                      <TouchableOpacity
+                        key={num}
+                        style={styles.numpadButton}
+                        onPress={() => handlePinPress(num.toString())}
+                      >
+                        <View style={styles.numpadCircle}>
+                          <ThemedText style={styles.numpadText}>{num}</ThemedText>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.numpadRow}>
+                    {[7, 8, 9].map((num) => (
+                      <TouchableOpacity
+                        key={num}
+                        style={styles.numpadButton}
+                        onPress={() => handlePinPress(num.toString())}
+                      >
+                        <View style={styles.numpadCircle}>
+                          <ThemedText style={styles.numpadText}>{num}</ThemedText>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.numpadRow}>
+                    <View style={styles.numpadButton} />
+                    <TouchableOpacity
+                      style={styles.numpadButton}
+                      onPress={() => handlePinPress('0')}
+                    >
+                      <View style={styles.numpadCircle}>
+                        <ThemedText style={styles.numpadText}>0</ThemedText>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.numpadButton}
+                      onPress={handlePinBackspace}
+                    >
+                      <View style={styles.numpadCircle}>
+                        <MaterialCommunityIcons name="backspace" size={24 * SCALE} color="#FFFFFF" />
+                      </View>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.proceedButton,
+                  (!emailCode || !pin || pin.length !== 5 || verifyTransferMutation.isPending) && styles.proceedButtonDisabled
+                ]}
+                onPress={handleEmailCodeVerify}
+                disabled={!emailCode || !pin || pin.length !== 5 || verifyTransferMutation.isPending}
+              >
+                {verifyTransferMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <ThemedText style={styles.proceedButtonText}>Verify & Complete</ThemedText>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -3259,6 +3576,65 @@ const styles = StyleSheet.create({
     fontSize: 14 * SCALE,
     fontWeight: '400',
     color: '#000000',
+  },
+  // Email Code Verification Styles
+  emailCodeInputContainer: {
+    marginBottom: 20 * SCALE,
+  },
+  emailCodeLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginBottom: 8 * SCALE,
+  },
+  emailCodeInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10 * SCALE,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 14 * SCALE,
+    paddingVertical: 16 * SCALE,
+    fontSize: 16 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  pinInputContainer: {
+    marginBottom: 20 * SCALE,
+  },
+  pinLabel: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+    marginBottom: 12 * SCALE,
+  },
+  pinDotsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  pinDot: {
+    width: 12 * SCALE,
+    height: 12 * SCALE,
+    borderRadius: 6 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  pinDotFilled: {
+    backgroundColor: '#A9EF45',
+    borderColor: '#A9EF45',
+  },
+  pinModalBody: {
+    padding: 20 * SCALE,
+  },
+  pinModalSubtitle: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.7)',
+    textAlign: 'center',
+    marginBottom: 24 * SCALE,
   },
   // Success Modal Styles
   successModalOverlay: {

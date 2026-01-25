@@ -35,6 +35,7 @@ interface P2POrder {
     amount: string;
     assetAmount: string;
     date: string;
+    rawData?: any; // Raw API data
 }
 
 interface P2PMenuItem {
@@ -183,6 +184,7 @@ const P2PProfile = () => {
                 amount: fiatAmount,
                 assetAmount: cryptoAmount,
                 date: date,
+                rawData: order, // Store raw order data for navigation
             };
         });
     }, [ordersData?.data]);
@@ -582,7 +584,18 @@ const P2PProfile = () => {
                         </View>
                     ) : filteredOrders.length > 0 ? (
                         filteredOrders.map((order) => (
-                            <View key={order.id} style={styles.orderItem}>
+                            <TouchableOpacity 
+                                key={order.id} 
+                                style={styles.orderItem}
+                                onPress={() => {
+                                    (navigation as any).navigate('Settings', {
+                                        screen: 'OrderDetails',
+                                        params: {
+                                            orderId: order.id,
+                                        },
+                                    });
+                                }}
+                            >
                                 <Image
                                     source={order.userAvatar}
                                     style={styles.orderAvatar}
@@ -611,7 +624,7 @@ const P2PProfile = () => {
                                     </ThemedText>
                                     <ThemedText style={styles.orderDate}>{order.date}</ThemedText>
                                 </View>
-                            </View>
+                            </TouchableOpacity>
                         ))
                     ) : (
                         <View style={{ alignItems: 'center', paddingVertical: 40 }}>

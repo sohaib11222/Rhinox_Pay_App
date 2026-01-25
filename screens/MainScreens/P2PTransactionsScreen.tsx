@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   StatusBar,
   Modal,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,7 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
+import { useGetP2PTransactions, GetP2PTransactionsParams } from '../../queries/transactionHistory.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -63,19 +65,31 @@ const P2PTransactionsScreen = () => {
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
+  // Build query params based on filters
+  const queryParams: GetP2PTransactionsParams = useMemo(() => {
+    const params: GetP2PTransactionsParams = {};
+    
+    if (selectedCurrency !== 'All') {
+      params.currency = selectedCurrency;
+    }
+    
+    if (selectedStatus !== 'All') {
+      params.status = selectedStatus as 'Completed' | 'Pending' | 'Failed';
+    }
+    
+    return params;
+  }, [selectedCurrency, selectedStatus]);
+
+  // Fetch P2P transactions from API
+  const {
+    data: p2pTransactionsData,
+    isLoading: isLoadingTransactions,
+    refetch: refetchTransactions,
+  } = useGetP2PTransactions(queryParams);
+
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // Simulate data fetching - replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        // Here you would typically:
-        // - Fetch latest P2P transactions
-        // - Fetch updated summary data
-        // - Update any other data that needs refreshing
-        console.log('Refreshing P2P transaction data...');
-        resolve();
-      }, 1000);
-    });
+    await refetchTransactions();
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
@@ -83,8 +97,41 @@ const P2PTransactionsScreen = () => {
     refreshDelay: 2000,
   });
 
-  // Mock data - Replace with API calls later
-  const p2pTransactions: P2PTransaction[] = [
+  // Map API data to P2PTransaction format, fallback to mock data
+  const p2pTransactions: P2PTransaction[] = useMemo(() => {
+    // If API data is available, map it to the expected format
+    if (p2pTransactionsData?.data?.transactions || p2pTransactionsData?.data?.data) {
+      const apiTransactions = p2pTransactionsData.data.transactions || p2pTransactionsData.data.data || [];
+      return apiTransactions.map((tx: any) => ({
+        id: tx.id || tx.transactionId || String(Math.random()),
+        recipientName: tx.recipientName || tx.merchantName || tx.p2pType || 'P2P Transaction',
+        amountNGN: tx.amountNGN || tx.amount || 'N0.00',
+        amountUSD: tx.amountUSD || tx.amountUSD || '$0.00',
+        date: tx.date || tx.createdAt || new Date().toLocaleDateString(),
+        status: tx.status || 'Pending',
+        paymentMethod: tx.paymentMethod || 'Bank Transfer',
+        transferAmount: tx.transferAmount || tx.amount,
+        fee: tx.fee || '0',
+        paymentAmount: tx.paymentAmount || tx.amount,
+        country: tx.country,
+        bank: tx.bank,
+        accountNumber: tx.accountNumber,
+        accountName: tx.accountName,
+        transactionId: tx.transactionId || tx.id,
+        dateTime: tx.dateTime || tx.createdAt,
+        p2pType: tx.p2pType || (tx.type === 'buy' ? 'Crypto Buy' : 'Crypto Sell'),
+        price: tx.price,
+        totalQty: tx.totalQty || tx.quantity,
+        txFee: tx.txFee || tx.fee,
+        merchantName: tx.merchantName || tx.recipientName,
+        merchantContact: tx.merchantContact,
+        reviewText: tx.reviewText,
+        hasLiked: tx.hasLiked,
+      }));
+    }
+    
+    // Fallback to mock data if API data is not available
+    return [
     {
       id: '1',
       recipientName: 'USDT Buy',
@@ -189,7 +236,8 @@ const P2PTransactionsScreen = () => {
       p2pType: 'Crypto Buy',
       merchantName: 'Ogunleye Funke',
     },
-  ];
+    ];
+  }, [p2pTransactionsData]);
 
   const summaryData = {
     incoming: {
@@ -405,8 +453,15 @@ const P2PTransactionsScreen = () => {
         {/* Transaction List Card */}
         <View style={styles.transactionCard}>
           <ThemedText style={styles.cardTitle}>Today</ThemedText>
-          <View style={styles.transactionList}>
-            {filteredTransactions.map((transaction) => (
+          {isLoadingTransactions && !refreshing ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#A9EF45" />
+              <ThemedText style={styles.loadingText}>Loading transactions...</ThemedText>
+            </View>
+          ) : (
+            <View style={styles.transactionList}>
+              {filteredTransactions.length > 0 ? (
+                filteredTransactions.map((transaction) => (
               <TouchableOpacity
                 key={transaction.id}
                 style={styles.transactionItem}
@@ -441,8 +496,14 @@ const P2PTransactionsScreen = () => {
                   <ThemedText style={styles.transactionAmountUSD}>{transaction.date}</ThemedText>
                 </View>
               </TouchableOpacity>
-            ))}
-          </View>
+                ))
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <ThemedText style={styles.emptyText}>No transactions found</ThemedText>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Bottom spacing for tab bar */}
@@ -773,6 +834,27 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100 * SCALE,
+  },
+  loadingContainer: {
+    paddingVertical: 40 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 12 * SCALE,
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  emptyContainer: {
+    paddingVertical: 40 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 12 * SCALE,
+    fontWeight: '300',
+    color: 'rgba(255, 255, 255, 0.5)',
   },
 });
 

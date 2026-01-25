@@ -83,9 +83,32 @@ export const setRefreshToken = async (token: string): Promise<void> => {
  */
 export const clearTokens = async (): Promise<void> => {
   try {
+    console.log('[clearTokens] Clearing all tokens from storage...');
     await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+    
+    // Verify tokens are cleared
+    const accessToken = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
+    const refreshToken = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
+    
+    if (accessToken || refreshToken) {
+      console.error('[clearTokens] ERROR: Tokens still exist after clearing!');
+      console.error('[clearTokens] Access token exists:', !!accessToken);
+      console.error('[clearTokens] Refresh token exists:', !!refreshToken);
+      // Force remove again
+      await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
+    } else {
+      console.log('[clearTokens] Tokens successfully cleared ✓');
+    }
   } catch (error) {
-    console.error('Error clearing tokens:', error);
+    console.error('[clearTokens] Error clearing tokens:', error);
+    // Try individual removal as fallback
+    try {
+      await AsyncStorage.removeItem(ACCESS_TOKEN_KEY);
+      await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
+      console.log('[clearTokens] Tokens cleared using fallback method');
+    } catch (fallbackError) {
+      console.error('[clearTokens] Fallback clear also failed:', fallbackError);
+    }
   }
 };
 
@@ -239,26 +262,26 @@ apiClient.interceptors.request.use(
       const method = config.method?.toUpperCase() || 'UNKNOWN';
       const url = config.url || '';
       const fullUrl = `${config.baseURL}${url}`;
-      console.log(`\n[API REQUEST] ${method} ${fullUrl}`);
+      // console.log(`\n[API REQUEST] ${method} ${fullUrl}`);
       if (config.data) {
-        console.log('[API REQUEST] Body:', JSON.stringify(config.data, null, 2));
+        // console.log('[API REQUEST] Body:', JSON.stringify(config.data, null, 2));
       }
       if (token) {
-        console.log('[API REQUEST] Token (full):', token);
+        //  console.log('[API REQUEST] Token (full):', token);
         // Decode token to show userId and other info
         const decoded = decodeJWT(token);
         if (decoded) {
-          console.log('[API REQUEST] Token Payload:', JSON.stringify(decoded, null, 2));
-          console.log('[API REQUEST] UserId from token:', decoded.userId || decoded.sub || decoded.id || 'Not found');
-          console.log('[API REQUEST] Token expires at:', decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'Not found');
+          // console.log('[API REQUEST] Token Payload:', JSON.stringify(decoded, null, 2));
+          // console.log('[API REQUEST] UserId from token:', decoded.userId || decoded.sub || decoded.id || 'Not found');
+          // console.log('[API REQUEST] Token expires at:', decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'Not found');
         }
       } else {
-        console.log('[API REQUEST] No token available');
+        // console.log('[API REQUEST] No token available');
       }
       if (config.headers?.Authorization) {
         const authHeader = config.headers.Authorization;
         if (typeof authHeader === 'string') {
-          console.log('[API REQUEST] Authorization header:', authHeader.substring(0, 50) + '...');
+          // console.log('[API REQUEST] Authorization header:', authHeader.substring(0, 50) + '...');
         }
       }
     } catch (error) {
@@ -280,9 +303,9 @@ apiClient.interceptors.response.use(
     const method = response.config.method?.toUpperCase() || 'UNKNOWN';
     const url = response.config.url || '';
     const fullUrl = `${response.config.baseURL}${url}`;
-    console.log(`\n[API RESPONSE] ${method} ${fullUrl} - Status: ${response.status}`);
+    // console.log(`\n[API RESPONSE] ${method} ${fullUrl} - Status: ${response.status}`);
     if (response.data) {
-      console.log('[API RESPONSE] Data:', JSON.stringify(response.data, null, 2));
+      // console.log('[API RESPONSE] Data:', JSON.stringify(response.data, null, 2));
     }
     return response;
   },

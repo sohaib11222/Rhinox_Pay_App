@@ -36,11 +36,11 @@ export const useAuth = () => {
       const token = await getAccessToken();
       const refreshToken = await getRefreshToken();
 
-      console.log('[useAuth] Token check - Access token:', token ? 'exists' : 'missing');
-      console.log('[useAuth] Token check - Refresh token:', refreshToken ? 'exists' : 'missing');
+      // console.log('[useAuth] Token check - Access token:', token ? 'exists' : 'missing');
+      // console.log('[useAuth] Token check - Refresh token:', refreshToken ? 'exists' : 'missing');
 
       if (!token && !refreshToken) {
-        console.log('[useAuth] No tokens found, user is not authenticated');
+        // console.log('[useAuth] No tokens found, user is not authenticated');
         setAuthState({
           isAuthenticated: false,
           isLoading: false,
@@ -51,7 +51,7 @@ export const useAuth = () => {
 
       // If we have a refresh token but no access token, try to refresh
       if (!token && refreshToken) {
-        console.log('[useAuth] Access token missing, attempting to refresh...');
+        // console.log('[useAuth] Access token missing, attempting to refresh...');
         try {
           const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
             refreshToken,
@@ -65,13 +65,13 @@ export const useAuth = () => {
             if (newRefreshToken) {
               await setRefreshToken(newRefreshToken);
             }
-            console.log('[useAuth] Token refreshed successfully');
+            // console.log('[useAuth] Token refreshed successfully');
             // Continue with validation
             await validateToken(accessToken);
             return;
           }
         } catch (refreshError) {
-          console.error('[useAuth] Token refresh failed:', refreshError);
+          // console.error('[useAuth] Token refresh failed:', refreshError);
           await clearTokens();
           setAuthState({
             isAuthenticated: false,
@@ -87,7 +87,7 @@ export const useAuth = () => {
         await validateToken(token);
       } else {
         // No token but we have refresh token - already handled above
-        console.log('[useAuth] No access token to validate');
+        // console.log('[useAuth] No access token to validate');
         setAuthState({
           isAuthenticated: false,
           isLoading: false,
@@ -95,7 +95,7 @@ export const useAuth = () => {
         });
       }
     } catch (error) {
-      console.error('[useAuth] Error checking auth:', error);
+      // console.error('[useAuth] Error checking auth:', error);
       setAuthState({
         isAuthenticated: false,
         isLoading: false,
@@ -109,7 +109,7 @@ export const useAuth = () => {
    */
   const validateToken = useCallback(async (token: string) => {
     try {
-      console.log('[useAuth] Validating token...');
+      // console.log('[useAuth] Validating token...');
       
       const response = await axios.get(`${API_BASE_URL}/auth/me`, {
         headers: {
@@ -118,14 +118,14 @@ export const useAuth = () => {
       });
       
       if (response.data && response.status === 200) {
-        console.log('[useAuth] Token is valid, user is authenticated');
+          // console.log('[useAuth] Token is valid, user is authenticated');
         setAuthState({
           isAuthenticated: true,
           isLoading: false,
           token: token,
         });
       } else {
-        console.log('[useAuth] Token validation failed');
+        // console.log('[useAuth] Token validation failed');
         await clearTokens();
         setAuthState({
           isAuthenticated: false,
@@ -134,7 +134,7 @@ export const useAuth = () => {
         });
       }
     } catch (error: any) {
-      console.error('[useAuth] Token validation error:', error);
+      // console.error('[useAuth] Token validation error:', error);
       
       // If 401, token is invalid - try refresh if we have refresh token
       if (error?.status === 401 || error?.response?.status === 401) {
@@ -153,7 +153,7 @@ export const useAuth = () => {
               if (newRefreshToken) {
                 await setRefreshToken(newRefreshToken);
               }
-              console.log('[useAuth] Token refreshed after validation failure');
+              // console.log('[useAuth] Token refreshed after validation failure');
               setAuthState({
                 isAuthenticated: true,
                 isLoading: false,
@@ -162,7 +162,7 @@ export const useAuth = () => {
               return;
             }
           } catch (refreshError) {
-            console.error('[useAuth] Token refresh failed after validation:', refreshError);
+            // console.error('[useAuth] Token refresh failed after validation:', refreshError);
           }
         }
       }
@@ -180,7 +180,7 @@ export const useAuth = () => {
    * Logout user
    */
   const logout = useCallback(async () => {
-    console.log('[useAuth] Logging out...');
+    //  console.log('[useAuth] Logging out...');
     await clearTokens();
     setAuthState({
       isAuthenticated: false,

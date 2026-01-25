@@ -560,10 +560,14 @@ const CryptoAssetDetails = () => {
                 style={styles.quickActionButton}
                 onPress={() => {
                   if (action.id === '1' && action.title === 'Deposit') {
-                    // Navigate to CryptoDeposit screen in Transactions stack
+                    // Navigate to CryptoFundDeposit screen in Settings stack to show deposit address + QR code
                     // @ts-ignore - allow parent route name
-                    navigation.navigate('Transactions' as never, {
-                      screen: 'CryptoDeposit' as never,
+                    navigation.navigate('Settings' as never, {
+                      screen: 'CryptoFundDeposit' as never,
+                      params: {
+                        currency: assetData.ticker || assetData.name,
+                        assetName: assetData.name,
+                      },
                     } as never);
                   } else if (action.id === '2' && action.title === 'Withdraw') {
                     // Navigate to CryptoWithdrawals screen in Transactions stack

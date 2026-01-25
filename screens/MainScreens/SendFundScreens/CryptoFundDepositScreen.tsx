@@ -13,12 +13,13 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetUSDTTokens, useGetDepositAddress, useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import * as Clipboard from 'expo-clipboard';
 import { showSuccessAlert } from '../../../utils/customAlert';
+import QRCode from 'react-native-qrcode-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -40,6 +41,8 @@ interface Token {
 
 const CryptoFundDepositScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const routeParams = route.params as { currency?: string; assetName?: string } | undefined;
 
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -121,12 +124,25 @@ const CryptoFundDepositScreen = () => {
     }));
   }, [tokensData?.data]);
 
-  // Set default token
+  // Set default token - prioritize token from route params if provided
   useEffect(() => {
     if (!selectedToken && availableTokens.length > 0) {
+      if (routeParams?.currency) {
+        // Try to find token matching the currency from route params
+        const matchingToken = availableTokens.find(
+          token => token.currency === routeParams.currency || 
+                   token.symbol === routeParams.currency ||
+                   token.currency?.toUpperCase() === routeParams.currency.toUpperCase()
+        );
+        if (matchingToken) {
+          setSelectedToken(matchingToken);
+          return;
+        }
+      }
+      // Fallback to first available token
       setSelectedToken(availableTokens[0]);
     }
-  }, [availableTokens, selectedToken]);
+  }, [availableTokens, selectedToken, routeParams?.currency]);
 
   // Get deposit address from virtual accounts first, then fetch if not available
   const depositAddressFromVirtualAccount = useMemo(() => {
@@ -664,9 +680,18 @@ const CryptoFundDepositScreen = () => {
 
                   <View style={styles.qrCodeContainer}>
                     <View style={styles.qrCodeBox}>
-                      <View style={styles.qrCodePlaceholder}>
-                        <MaterialCommunityIcons name="qrcode" size={170 * SCALE} color="#000000" />
-                      </View>
+                      {depositAddress ? (
+                        <QRCode
+                          value={depositAddress}
+                          size={170 * SCALE}
+                          color="#000000"
+                          backgroundColor="#FFFFFF"
+                        />
+                      ) : (
+                        <View style={styles.qrCodePlaceholder}>
+                          <MaterialCommunityIcons name="qrcode" size={170 * SCALE} color="#000000" />
+                        </View>
+                      )}
                     </View>
                   </View>
 

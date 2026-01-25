@@ -43,6 +43,7 @@ import MyAdsScreen from "../screens/MainScreens/P2PScreens/MyAdsScreen";
 import CreateBuyAd from "../screens/MainScreens/P2PScreens/CreateBuyAd";
 import CreateSellAd from "../screens/MainScreens/P2PScreens/CreateSellAd";
 import AdDetails from "../screens/MainScreens/P2PScreens/AdDetails";
+import OrderDetails from "../screens/MainScreens/P2PScreens/OrderDetails";
 import SendFundsScreen from "../screens/MainScreens/P2PScreens/SendFundsScreen";
 import SendFundsDirectScreen from "../screens/MainScreens/SendFundScreens/SendFundsDirectScreen";
 import SendFundCrypto from "../screens/MainScreens/SendFundScreens/SendFundCrypto";
@@ -126,6 +127,7 @@ const SettingsStackNavigator = () => {
       <SettingsStack.Screen name="CreateBuyAd" component={CreateBuyAd} />
       <SettingsStack.Screen name="CreateSellAd" component={CreateSellAd} />
       <SettingsStack.Screen name="AdDetails" component={AdDetails} />
+      <SettingsStack.Screen name="OrderDetails" component={OrderDetails} />
       <SettingsStack.Screen name="SendFunds" component={SendFundsScreen} />
       <SettingsStack.Screen name="SendFundsDirect" component={SendFundsDirectScreen} />
       <SettingsStack.Screen name="SendFundCrypto" component={SendFundCrypto} />

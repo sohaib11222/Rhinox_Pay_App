@@ -50,8 +50,24 @@ const LoginScreen = () => {
     onSuccess: async (data) => {
       console.log('[LoginScreen] Login successful');
       const accessToken = data?.data?.accessToken;
+      const refreshToken = data?.data?.refreshToken;
       
+      // Ensure tokens are cleared first (in case of re-login)
+      const { clearTokens } = await import('../../utils/apiClient');
+      await clearTokens();
+      console.log('[LoginScreen] Cleared any existing tokens before setting new ones');
+      
+      // Set both tokens
       if (accessToken) {
+        const { setAccessToken, setRefreshToken } = await import('../../utils/apiClient');
+        await setAccessToken(accessToken);
+        console.log('[LoginScreen] Access token set');
+        
+        if (refreshToken) {
+          await setRefreshToken(refreshToken);
+          console.log('[LoginScreen] Refresh token set');
+        }
+        
         // Update auth state
         await setAuthenticated(accessToken);
       }

@@ -57,6 +57,13 @@ const ChatScreen = () => {
   // Get current user to determine if message is from current user
   const { data: currentUserData } = useGetCurrentUser();
   const currentUserId = currentUserData?.data?.user?.id;
+  
+  // Debug: Log current user ID
+  useEffect(() => {
+    if (isP2P && currentUserId) {
+      console.log('[ChatScreen] Current user ID:', currentUserId, 'Type:', typeof currentUserId);
+    }
+  }, [currentUserId, isP2P]);
 
   // Determine if this is a P2P chat
   const isP2P = isP2PChat || !!orderId;
@@ -113,7 +120,28 @@ const ChatScreen = () => {
       // For support chat: check senderType
       let isUserMessage: boolean;
       if (isP2P) {
-        isUserMessage = msg.senderId === currentUserId;
+        // Compare senderId with currentUserId, handling both string and number types
+        // Convert both to numbers for comparison to handle type mismatches
+        const msgSenderId = msg.senderId != null ? Number(msg.senderId) : null;
+        const userId = currentUserId != null ? Number(currentUserId) : null;
+        
+        // Check if message is from current user
+        isUserMessage = msgSenderId === userId && userId != null && msgSenderId != null;
+        
+        // Debug log for troubleshooting
+        if (msgSenderId && userId && msgSenderId === userId) {
+          console.log('[ChatScreen] Message is from current user:', {
+            msgSenderId,
+            userId,
+            message: msg.message?.substring(0, 50)
+          });
+        }
+        
+        // Fallback: if currentUserId is not loaded yet, default to false (show as agent message)
+        if (currentUserId == null) {
+          console.warn('[ChatScreen] currentUserId is not available, cannot determine message sender. Showing as agent message.');
+          isUserMessage = false;
+        }
       } else {
         isUserMessage = msg.senderType === 'user' || 
                        (msg.senderType !== 'admin' && msg.senderType !== 'agent' && !msg.isFromSupport);

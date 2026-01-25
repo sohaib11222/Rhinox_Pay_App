@@ -422,10 +422,22 @@ const Wallet = () => {
           ? '0' 
           : balance.toFixed(8).replace(/\.?0+$/, '');
         
-        // Calculate USD value (placeholder - would need actual price conversion)
-        // For now, use a simple conversion or 0
-        // Note: In production, this should use actual crypto prices from an API
-        const balanceUSD = balance > 0 ? `$${formatBalance(balance * 0.001)}` : '$0.00';
+        // Calculate USD value
+        // USDT and USDC are stablecoins pegged to USD (1:1)
+        // For other cryptos, check if balanceInUSDT is available from API, otherwise use placeholder
+        let usdValue = 0;
+        if (currency.includes('USDT') || currency.includes('USDC')) {
+          // USDT/USDC are 1:1 with USD
+          usdValue = balance;
+        } else if (account.balanceInUSDT !== undefined && account.balanceInUSDT !== null) {
+          // Use API-provided USDT conversion if available
+          usdValue = parseFloat(account.balanceInUSDT || '0');
+        } else {
+          // Fallback: use placeholder conversion (would need actual price API in production)
+          // For now, assume very low value to avoid showing incorrect balances
+          usdValue = balance * 0.001;
+        }
+        const balanceUSD = usdValue > 0 ? `$${formatBalance(usdValue)}` : '$0.00';
         
         return {
           id: String(account.id),
@@ -445,27 +457,50 @@ const Wallet = () => {
   const totalCryptoBalanceUSD = useMemo(() => {
     // First try to get from balancesData totals
     if (balancesData?.data?.totals?.cryptoInUSDT) {
-      return parseFloat(balancesData.data.totals.cryptoInUSDT);
+      const total = parseFloat(balancesData.data.totals.cryptoInUSDT);
+      if (!isNaN(total) && total > 0) {
+        return total;
+      }
+    }
+    
+    // Calculate from crypto assets first (most accurate after our fixes)
+    if (cryptoAssets && cryptoAssets.length > 0) {
+      const total = cryptoAssets.reduce((sum, asset) => {
+        const usdValue = parseFloat(asset.balanceUSD.replace(/[$,]/g, ''));
+        return sum + (isNaN(usdValue) ? 0 : usdValue);
+      }, 0);
+      if (total > 0) {
+        return total;
+      }
     }
     
     // Calculate from virtual accounts if available
     if (virtualAccountsData?.data && Array.isArray(virtualAccountsData.data)) {
       const activeAccounts = virtualAccountsData.data.filter((account: any) => account.active !== false);
-      // Sum all account balances (using availableBalance as it's the actual usable balance)
+      // Sum all account balances converted to USDT/USD
       const total = activeAccounts.reduce((sum: number, account: any) => {
         const balance = parseFloat(account.availableBalance || account.accountBalance || '0');
-        // For now, use placeholder conversion (would need actual price API)
-        // Using a simple multiplier - in production, would fetch real prices
-        return sum + (balance * 0.001); // Placeholder: 0.001 conversion rate
+        const currency = account.currency || '';
+        
+        // USDT and USDC are stablecoins pegged to USD (1:1)
+        if (currency.includes('USDT') || currency.includes('USDC')) {
+          return sum + balance;
+        }
+        
+        // Use API-provided USDT conversion if available
+        if (account.balanceInUSDT !== undefined && account.balanceInUSDT !== null) {
+          const usdtValue = parseFloat(account.balanceInUSDT || '0');
+          return sum + (isNaN(usdtValue) ? 0 : usdtValue);
+        }
+        
+        // Fallback: use placeholder conversion (would need actual price API in production)
+        return sum + (balance * 0.001);
       }, 0);
       return total;
     }
     
-    // Fallback: calculate from crypto assets
-    return cryptoAssets.reduce((sum, asset) => {
-      const usdValue = parseFloat(asset.balanceUSD.replace(/[$,]/g, ''));
-      return sum + usdValue;
-    }, 0);
+    // Final fallback: return 0 if no data available
+    return 0;
   }, [balancesData?.data?.totals?.cryptoInUSDT, virtualAccountsData?.data, cryptoAssets]);
 
   // Currency options for dropdown
@@ -1180,7 +1215,7 @@ const Wallet = () => {
                   <ActivityIndicator size="small" color="#FFFFFF" style={{ marginVertical: 20 }} />
                 ) : balanceVisible ? (
                   <ThemedText fontFamily='Agbalumo-Regular' style={styles.totalBalanceAmount}>
-                    {formatBalanceByCurrency(totalCryptoBalanceUSD, selectedCurrency)}
+                    {formatBalanceByCurrency(totalCryptoBalanceUSD || 0, selectedCurrency)}
                   </ThemedText>
                 ) : (
                   <ThemedText style={styles.totalBalanceAmount}>••••••</ThemedText>
@@ -1201,23 +1236,18 @@ const Wallet = () => {
                       key={action.id}
                       onPress={() => {
                         if (action.id === '1' && action.title === 'Deposit') {
-                          // Navigate to CryptoDeposit screen in Transactions stack
-                          // @ts-ignore - allow parent route name
-                          navigation.navigate('Transactions' as never, {
-                            screen: 'CryptoDeposit' as never,
-                          } as never);
+                          // Open Fund Wallet modal with Crypto type (same as home screen)
+                          setFundWalletType('Crypto');
+                          setShowFundWalletModal(true);
                         } else if (action.id === '2' && action.title === 'Withdraw') {
-                          // Navigate to CryptoWithdrawals screen in Transactions stack
-                          // @ts-ignore - allow parent route name
-                          navigation.navigate('Transactions' as never, {
-                            screen: 'CryptoWithdrawals' as never,
-                          } as never);
+                          // Open Send Funds modal with Crypto type (same as home screen)
+                          setSendFundsWalletType('Crypto');
+                          setShowSendFundsModal(true);
                         } else if (action.id === '3' && action.title === 'P2P') {
-                            // Navigate to CryptoFundDeposit screen in Settings stack for crypto deposits
-                          // @ts-ignore - allow parent route name
-                            navigation.navigate('Settings' as never, {
-                              screen: 'CryptoFundDeposit' as never,
-                          } as never);
+                          // Navigate to P2PTransactions screen in Transactions stack
+                          (navigation as any).navigate('Transactions', {
+                            screen: 'P2PTransactions',
+                          });
                         }
                       }}
                         disabled={isButtonDisabled}

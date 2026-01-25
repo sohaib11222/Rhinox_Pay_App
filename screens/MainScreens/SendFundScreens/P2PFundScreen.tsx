@@ -314,6 +314,18 @@ const P2PFundScreen = () => {
         }
       }
       
+      // Determine userAction: if not provided, infer from ad type
+      // BUY ad (vendor wants to buy) = userAction: 'sell' (user can sell)
+      // SELL ad (vendor wants to sell) = userAction: 'buy' (user can buy)
+      let userAction = ad.userAction;
+      if (!userAction && ad.type) {
+        userAction = ad.type === 'buy' ? 'sell' : 'buy';
+      }
+      // Fallback: if still no userAction, use activeTab as last resort
+      if (!userAction) {
+        userAction = activeTab === 'Buy' ? 'buy' : 'sell';
+      }
+      
       return {
       id: String(ad.id),
       adId: ad.id,
@@ -328,11 +340,17 @@ const P2PFundScreen = () => {
       // Handle different field names: minOrderAmount/maxOrderAmount (buy) vs minOrder/maxOrder (browse)
       limits: `${ad.minOrderAmount || ad.minOrder || '0'} - ${ad.maxOrderAmount || ad.maxOrder || '0'} ${ad.fiatCurrency || 'NGN'}`,
       paymentMethods: ad.paymentMethods?.map((pm: any) => {
-        if (pm.type === 'bank_account') return pm.bankName || 'Bank Transfer';
-        if (pm.type === 'mobile_money') return pm.phoneNumber || 'Mobile Money';
-        return pm.type || 'Unknown';
+        if (pm.type === 'bank_account') {
+          return pm.bankName || 'Bank Transfer';
+        } else if (pm.type === 'mobile_money') {
+          return pm.providerName || pm.provider?.name || 'Mobile Money';
+        } else if (pm.type === 'rhinoxpay_id') {
+          return 'RhinoxPay ID';
+        }
+        return pm.name || pm.type || 'Unknown';
       }) || [],
       price: parseFloat(ad.price || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      userAction: userAction, // Store userAction for button label
       rawData: ad,
       };
     });
@@ -348,11 +366,17 @@ const P2PFundScreen = () => {
   const createOrderMutation = useCreateP2POrder({
     onSuccess: (data: any) => {
       console.log('[P2P] Order created successfully:', data);
-      setSelectedOrder(data?.data);
-      setShowBuyModal(false);
-      setShowOrderDetailsModal(true);
-      // Refetch ads to update availability
-      refetchAds();
+      // Ensure we have the order data before setting it
+      if (data?.data && data.data.id) {
+        setSelectedOrder(data.data);
+        setShowBuyModal(false);
+        setShowOrderDetailsModal(true);
+        // Refetch ads to update availability
+        refetchAds();
+      } else {
+        console.error('[P2P] Invalid order data structure:', data);
+        showErrorAlert('Error', 'Order created but invalid response received');
+      }
     },
     onError: (error: any) => {
       console.error('[P2P] Error creating order:', error);
@@ -377,19 +401,31 @@ const P2PFundScreen = () => {
     },
   });
 
-  // Get order details
+  // Get order details - only fetch if we have an order ID
+  const orderIdForQuery = useMemo(() => {
+    if (showOrderDetailsModal && selectedOrder?.id) {
+      return String(selectedOrder.id);
+    }
+    return '';
+  }, [showOrderDetailsModal, selectedOrder?.id]);
+
   const {
     data: orderDetailsData,
     isLoading: isLoadingOrderDetails,
     refetch: refetchOrderDetails,
-  } = useGetP2POrderDetails(showOrderDetailsModal && selectedOrder?.id ? selectedOrder.id : '');
+  } = useGetP2POrderDetails(orderIdForQuery, {
+    enabled: !!orderIdForQuery,
+  } as any);
 
   // Update selected order when details are fetched
   useEffect(() => {
     if (orderDetailsData?.data && selectedOrder) {
-      setSelectedOrder(orderDetailsData.data);
+      // Only update if we have valid data
+      if (orderDetailsData.data.id) {
+        setSelectedOrder(orderDetailsData.data);
+      }
     }
-  }, [orderDetailsData, selectedOrder]);
+  }, [orderDetailsData?.data, selectedOrder]);
 
   // Removed mock data - using real API data from tradingOffers
 
@@ -778,7 +814,11 @@ const P2PFundScreen = () => {
               </View>
               <View style={[styles.offerDetailRow, styles.offerDetailRowLast]}>
                 <ThemedText style={styles.offerDetailLabel}>Payment Methods</ThemedText>
-                <ThemedText style={styles.offerDetailValue}>{offer.paymentMethods.join(', ')}</ThemedText>
+                <ThemedText style={styles.offerDetailValue}>
+                  {offer.paymentMethods && offer.paymentMethods.length > 0 
+                    ? offer.paymentMethods.join(', ') 
+                    : 'No payment methods'}
+                </ThemedText>
               </View>
             </View>
 
@@ -790,11 +830,20 @@ const P2PFundScreen = () => {
               </View>
               <TouchableOpacity 
                 style={[styles.buyButton, !isBuyButtonEnabled(offer) && styles.buyButtonDisabled]}
-                onPress={() => activeTab === 'Buy' ? handleBuyPress(offer) : handleSellPress(offer)}
+                onPress={() => {
+                  // Use userAction to determine which handler to call
+                  const action = offer.userAction || (activeTab === 'Buy' ? 'buy' : 'sell');
+                  if (action === 'buy') {
+                    handleBuyPress(offer);
+                  } else {
+                    handleSellPress(offer);
+                  }
+                }}
                 disabled={!isBuyButtonEnabled(offer)}
               >
                 <ThemedText style={styles.buyButtonText}>
-                  {activeTab === 'Buy' ? 'Buy' : 'Sell'}
+                  {/* Use userAction from ad data, not activeTab */}
+                  {offer.userAction === 'buy' ? 'Buy' : offer.userAction === 'sell' ? 'Sell' : (activeTab === 'Buy' ? 'Buy' : 'Sell')}
                 </ThemedText>
               </TouchableOpacity>
             </View>
@@ -1583,7 +1632,10 @@ const P2PFundScreen = () => {
                     <View style={styles.orderInfoRow}>
                       <ThemedText style={styles.orderInfoLabel}>Vendor</ThemedText>
                       <ThemedText style={styles.orderInfoValue}>
-                        {selectedOrder.vendor.name || 'Unknown'}
+                        {selectedOrder.vendor?.name || 
+                         (selectedOrder.vendor?.firstName && selectedOrder.vendor?.lastName 
+                           ? `${selectedOrder.vendor.firstName} ${selectedOrder.vendor.lastName}` 
+                           : 'Unknown')}
                       </ThemedText>
                     </View>
                   )}

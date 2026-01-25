@@ -22,6 +22,7 @@ import { clearTokens, getBiometricEnabled, setBiometricEnabled } from '../../../
 import { showErrorAlert, showConfirmAlert } from '../../../utils/customAlert';
 import { useGetKYCStatus } from '../../../queries/kyc.queries';
 import { useAuth } from '../../../hooks/useAuth';
+import { useGetCurrentUser } from '../../../queries/auth.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -63,6 +64,13 @@ const Settings = () => {
     refetch: refetchKYC 
   } = useGetKYCStatus();
 
+  // Fetch current user data
+  const { 
+    data: currentUserData,
+    isLoading: isLoadingUser,
+    refetch: refetchUser 
+  } = useGetCurrentUser();
+
   // Load biometric preference on mount
   useEffect(() => {
     loadBiometricPreference();
@@ -94,7 +102,16 @@ const Settings = () => {
   // Helper function to navigate to login
   const navigateToLogin = async () => {
     // Clear tokens from storage (even if logout API failed)
+    console.log('[Settings] Clearing tokens on logout...');
     await clearTokens();
+    
+    // Verify tokens are cleared
+    const { getAccessToken, getRefreshToken } = await import('../../../utils/apiClient');
+    const accessTokenAfterClear = await getAccessToken();
+    const refreshTokenAfterClear = await getRefreshToken();
+    console.log('[Settings] Token verification after clear - Access token:', accessTokenAfterClear ? 'STILL EXISTS (ERROR!)' : 'cleared ✓');
+    console.log('[Settings] Token verification after clear - Refresh token:', refreshTokenAfterClear ? 'STILL EXISTS (ERROR!)' : 'cleared ✓');
+    
     await authLogout(); // Update auth state
     console.log('[Settings] Tokens cleared, navigating to Login...');
     
@@ -166,12 +183,32 @@ const Settings = () => {
     },
   });
 
-  // Mock user data - Replace with API call
-  const userData = {
-    name: 'Qamardeen Abdul Malik',
-    avatar: require('../../../assets/login/memoji.png'),
-    isVerified: true,
-  };
+  // Get user data from API
+  const userData = useMemo(() => {
+    if (currentUserData?.data?.user) {
+      const user = currentUserData.data.user;
+      const fullName = user.firstName && user.lastName 
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.firstName || user.lastName || user.name || 'User';
+      
+      return {
+        name: fullName,
+        avatar: require('../../../assets/login/memoji.png'),
+        isVerified: kycStatusData?.data?.status === 'approved' || 
+                    kycStatusData?.data?.status === 'verified' || 
+                    kycStatusData?.data?.status === 'complete' ||
+                    kycStatusData?.data?.kycStatus === 'approved' ||
+                    kycStatusData?.data?.kycStatus === 'verified' ||
+                    kycStatusData?.data?.kycStatus === 'complete',
+      };
+    }
+    // Fallback to default values while loading
+    return {
+      name: 'User',
+      avatar: require('../../../assets/login/memoji.png'),
+      isVerified: false,
+    };
+  }, [currentUserData, kycStatusData]);
 
   // Determine KYC status from API
   const kycStatus = kycStatusData?.data?.status || kycStatusData?.data?.kycStatus || 'not_done';
@@ -379,6 +416,7 @@ const Settings = () => {
     // Fetch latest data
     await Promise.all([
       refetchKYC(),
+      refetchUser(),
       loadBiometricPreference(),
     ]);
   };

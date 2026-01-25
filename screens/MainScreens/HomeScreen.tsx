@@ -2620,12 +2620,11 @@ const styles = StyleSheet.create({
     width: SCREEN_WIDTH - (SCREEN_WIDTH * 0.094), // Full width minus horizontal margins
     borderRadius: 20 * 1,
     overflow: 'hidden',
-    minHeight: 118 * 1,
-    padding: 16 * SCALE,
+    height: 118 * 1,
   },
   promoBannerImage: {
     width: '100%',
-    height: 118 * 1,
+    height: '100%',
     borderRadius: 20 * 1,
   },
   paginationDots: {
