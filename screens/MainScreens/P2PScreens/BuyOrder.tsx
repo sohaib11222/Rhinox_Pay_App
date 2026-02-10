@@ -1453,7 +1453,9 @@ const BuyOrder = () => {
                     : 'Pay to the account below'}
                 </ThemedText>
               </View>
-              {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') && (
+              {/* Only show Pay Now button when order status is awaiting_payment (step 2) - vendor has accepted */}
+              {(selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') && 
+               (orderDetailsData?.data?.status === 'awaiting_payment' || currentStep === 2) && (
                 <TouchableOpacity style={styles.payNowButton} onPress={handlePayNow}>
                   <ThemedText style={styles.payNowButtonText}>Pay Now</ThemedText>
                 </TouchableOpacity>

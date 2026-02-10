@@ -19,12 +19,12 @@ const getApiBaseUrl = (): string => {
     // For Android emulator, use 10.0.2.2
     // For physical device, replace with your computer's IP address
     // Example: return 'http://192.168.1.100:3000/api';
-    return 'https://rhinoxpay.hmstech.xyz/api';
+    return 'https://rhinoxpay.hmstech.org/api';
   }
   
   // For iOS simulator, localhost works
   // For iOS physical device, you may need to use your computer's IP
-  return 'https://rhinoxpay.hmstech.xyz/api';
+  return 'https://rhinoxpay.hmstech.org/api';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

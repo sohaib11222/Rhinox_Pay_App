@@ -462,7 +462,60 @@ const Fund = () => {
     },
     onError: (error: any) => {
       console.error('[Fund] Error confirming deposit:', error);
-      showErrorAlert('Error', error?.message || 'Failed to confirm deposit');
+      
+      // Extract error message from different possible error structures
+      let errorMessage = 'Failed to confirm deposit';
+      
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      // Check if error is related to PIN
+      const errorMessageLower = errorMessage.toLowerCase();
+      const isPinNotSet = errorMessageLower.includes('pin not set') || 
+                          errorMessageLower.includes('pin not setup') ||
+                          errorMessageLower.includes('setup your pin');
+      const isPinMismatch = errorMessageLower.includes('pin') && 
+                           (errorMessageLower.includes('mismatch') || 
+                            errorMessageLower.includes('incorrect') ||
+                            errorMessageLower.includes('invalid') ||
+                            errorMessageLower.includes('wrong'));
+      
+      if (isPinNotSet) {
+        // Show helpful error with navigation option to setup PIN
+        showConfirmAlert(
+          'PIN Not Set Up',
+          'You need to set up a transaction PIN before you can make deposits. Would you like to set up your PIN now?',
+          () => {
+            // Navigate to Account Security screen to setup PIN
+            setShowPinModal(false);
+            setPin('');
+            (navigation as any).navigate('Settings', {
+              screen: 'AccountSecurity',
+            });
+          },
+          () => {
+            setShowPinModal(false);
+            setPin('');
+          },
+          'Setup PIN',
+          'Cancel'
+        );
+      } else if (isPinMismatch) {
+        // Show PIN mismatch error and clear PIN input
+        showErrorAlert('PIN Error', errorMessage, () => {
+          setPin('');
+        });
+      } else {
+        // Show generic error
+        showErrorAlert('Error', errorMessage);
+      }
     },
   });
 
