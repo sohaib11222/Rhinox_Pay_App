@@ -42,7 +42,7 @@ const Betting = ({ route }: any) => {
       setUserId(beneficiary.accountNumber || beneficiary.phoneNumber || '');
       // Set provider if available
       if (beneficiary.provider?.id) {
-        setSelectedBettingPlatform(beneficiary.provider.id);
+        setSelectedBettingPlatform(String(beneficiary.provider.id));
         setSelectedProviderCode(beneficiary.provider.code);
       }
       // Clear the params to avoid re-applying on re-render
@@ -85,7 +85,7 @@ const Betting = ({ route }: any) => {
   );
 
   const [amount, setAmount] = useState('');
-  const [selectedBettingPlatform, setSelectedBettingPlatform] = useState<number | null>(null);
+  const [selectedBettingPlatform, setSelectedBettingPlatform] = useState<string | null>(null);
   const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
   const [userId, setUserId] = useState('');
   const [accountName, setAccountName] = useState('');
@@ -523,7 +523,7 @@ const Betting = ({ route }: any) => {
   const handleBettingPlatformSelect = (platformId: string) => {
     const platform = bettingPlatforms.find((p) => p.id === platformId);
     if (platform) {
-      setSelectedBettingPlatform(parseInt(platformId));
+      setSelectedBettingPlatform(platformId);
       setSelectedProviderCode(platform.code);
       setShowBettingPlatformModal(false);
       // Re-validate account if userId is already entered
@@ -793,7 +793,7 @@ const Betting = ({ route }: any) => {
                       setAccountName(beneficiary.name || '');
                       // Set provider if available
                       if (beneficiary.provider?.id) {
-                        setSelectedBettingPlatform(beneficiary.provider.id);
+                        setSelectedBettingPlatform(String(beneficiary.provider.id));
                         setSelectedProviderCode(beneficiary.provider.code);
                       }
                     },
@@ -858,7 +858,7 @@ const Betting = ({ route }: any) => {
                     // Find and set the provider
                     const provider = bettingPlatforms.find((p) => p.name === beneficiary.platform || p.code === beneficiary.platform);
                     if (provider) {
-                      setSelectedBettingPlatform(parseInt(provider.id));
+                      setSelectedBettingPlatform(provider.id);
                       setSelectedProviderCode(provider.code);
                     }
                   }}
@@ -1027,9 +1027,9 @@ const Betting = ({ route }: any) => {
                     <Image source={platform.icon} style={styles.platformIcon} resizeMode="cover" />
                     <ThemedText style={styles.platformName}>{platform.name}</ThemedText>
                     <MaterialCommunityIcons
-                      name={selectedBettingPlatform === parseInt(platform.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      name={selectedBettingPlatform === platform.id ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24 * SCALE}
-                      color={selectedBettingPlatform === parseInt(platform.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      color={selectedBettingPlatform === platform.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                     />
                   </TouchableOpacity>
                 ))}

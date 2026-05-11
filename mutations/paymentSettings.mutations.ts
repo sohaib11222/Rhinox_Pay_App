@@ -13,6 +13,7 @@ import { API_ROUTES, buildRouteWithParams } from '../utils/apiConfig';
 export interface AddBankAccountRequest {
   accountType: string;
   bankName: string;
+  bankCode: string;
   accountNumber: string;
   accountName: string;
   countryCode: string;

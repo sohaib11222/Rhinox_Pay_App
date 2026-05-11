@@ -78,7 +78,8 @@ export const useGetBillPaymentProviders = (
  * Get plans/bundles by provider
  */
 export interface GetPlansParams {
-  providerId: number;
+  providerId: string | number;
+  categoryCode?: string;
 }
 
 export const getBillPaymentPlans = async (params: GetPlansParams): Promise<ApiResponse> => {

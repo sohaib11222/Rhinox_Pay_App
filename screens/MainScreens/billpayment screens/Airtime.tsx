@@ -64,7 +64,7 @@ const Airtime = ({ route }: any) => {
       setAccountName(beneficiary.name || '');
       // Set provider if available
       if (beneficiary.provider?.id) {
-        setSelectedProvider(beneficiary.provider.id);
+        setSelectedProvider(String(beneficiary.provider.id));
         setSelectedProviderCode(beneficiary.provider.code);
       }
       // Clear the params to avoid re-applying on re-render
@@ -107,7 +107,7 @@ const Airtime = ({ route }: any) => {
   );
 
   const [amount, setAmount] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
   const [accountName, setAccountName] = useState('');
@@ -532,7 +532,7 @@ const Airtime = ({ route }: any) => {
   const handleProviderSelect = (networkId: string) => {
     const provider = networks.find((n) => n.id === networkId);
     if (provider) {
-      setSelectedProvider(parseInt(networkId));
+      setSelectedProvider(networkId);
       setSelectedProviderCode(provider.code);
       setShowNetworkModal(false);
     }
@@ -837,7 +837,7 @@ const Airtime = ({ route }: any) => {
                       setAccountName(beneficiary.name || '');
                       // Set provider if available
                       if (beneficiary.provider?.id) {
-                        setSelectedProvider(beneficiary.provider.id);
+                        setSelectedProvider(String(beneficiary.provider.id));
                         setSelectedProviderCode(beneficiary.provider.code);
                       }
                     },
@@ -911,7 +911,7 @@ const Airtime = ({ route }: any) => {
                     // Find and set the provider
                     const provider = networks.find((n) => n.name === beneficiary.network || n.code === beneficiary.network);
                     if (provider) {
-                      setSelectedProvider(parseInt(provider.id));
+                      setSelectedProvider(provider.id);
                       setSelectedProviderCode(provider.code);
                     }
                   }}
@@ -1073,9 +1073,9 @@ const Airtime = ({ route }: any) => {
                     <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
                     <ThemedText style={styles.networkName}>{network.name}</ThemedText>
                     <MaterialCommunityIcons
-                      name={selectedProvider === parseInt(network.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      name={selectedProvider === network.id ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24 * SCALE}
-                      color={selectedProvider === parseInt(network.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      color={selectedProvider === network.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                     />
                   </TouchableOpacity>
                 ))}

@@ -35,6 +35,12 @@ const SCALE = 0.9;
 
 const CableTv = ({ route }: any) => {
   const navigation = useNavigation();
+
+  useEffect(() => {
+    showWarningAlert('Under Maintenance', 'This bill payment service is temporarily unavailable.', () => {
+      (navigation as any).goBack?.();
+    });
+  }, [navigation]);
   
   // Handle beneficiary selection from BeneficiariesScreen
   React.useEffect(() => {

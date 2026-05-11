@@ -47,6 +47,7 @@ const FALLBACK_COUNTRIES = [
 interface BankAccount {
   id: string;
   bankName: string;
+  bankCode?: string;
   accountNumber: string;
   accountName: string;
   paymentMethodId?: number;
@@ -150,10 +151,11 @@ const Withdrawal = () => {
       return [];
     }
     return paymentMethodsData.data
-      .filter((method: any) => method.type === 'bank_account' || method.type === 'Bank Transfer')
+      .filter((method: any) => (method.type === 'bank_account' || method.type === 'Bank Transfer') && !!method.bankCode)
       .map((method: any) => ({
         id: String(method.id),
         bankName: method.bankName || method.bank_name || 'Unknown Bank',
+        bankCode: method.bankCode,
         accountNumber: method.accountNumber || method.account_number || '',
         accountName: method.accountName || method.account_name || '',
         paymentMethodId: method.id,
@@ -259,8 +261,12 @@ const Withdrawal = () => {
 
   // Verify transfer mutation
   const verifyMutation = useVerifyTransfer({
-    onSuccess: () => {
+    onSuccess: (response: any) => {
       setShowSecurityModal(false);
+      const status = response?.data?.status;
+      if (status === 'processing' || status === 'pending') {
+        showWarningAlert('Withdrawal Processing', 'PalmPay has accepted your withdrawal. We will update the transaction status when the bank confirms it.');
+      }
       setShowSuccessModal(true);
       // Fetch receipt
       if (pendingTransactionId) {
@@ -1267,8 +1273,12 @@ const Withdrawal = () => {
                     key={country.id}
                     style={styles.countryItem}
                     onPress={() => {
-                      setSelectedCountry((country as any).code || String(country.id));
-                      setSelectedCountryName(country.name);
+                      if ((country as any).code !== 'NG') {
+                        showWarningAlert('Unsupported Country', 'PalmPay withdrawals currently support Nigeria only.');
+                        return;
+                      }
+                      setSelectedCountry('NG');
+                      setSelectedCountryName('Nigeria');
                       setShowCountryModal(false);
                     }}
                   >

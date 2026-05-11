@@ -84,7 +84,7 @@ const Fund = () => {
   );
 
   // Channel selection (Bank Transfer or Mobile Money)
-  const [selectedChannel, setSelectedChannel] = useState<'bank_transfer' | 'mobile_money'>('mobile_money');
+  const [selectedChannel, setSelectedChannel] = useState<'bank_transfer' | 'mobile_money'>('bank_transfer');
   
   // Common state
   const [amount, setAmount] = useState('');
@@ -327,15 +327,13 @@ const Fund = () => {
       }
       
       if (selectedChannel === 'bank_transfer') {
-        // Update bank details with reference from response
-        if (data?.data?.reference) {
-          setBankDetails((prev: any) => ({
-            ...prev,
-            reference: data.data.reference,
-          }));
-        }
-        // For bank transfer, show PIN modal after user clicks "I've Made the Transfer"
-        // Don't show PIN modal yet - wait for user to confirm they've made the transfer
+        setBankDetails({
+          ...(data?.data?.virtualAccount || {}),
+          reference: data?.data?.reference,
+          merchantOrderId: data?.data?.merchantOrderId,
+          orderNo: data?.data?.orderNo,
+        });
+        showSuccessAlert('Deposit Created', 'Transfer the exact amount to the PalmPay virtual account shown below. Your wallet will be credited automatically after payment is confirmed.');
       } else {
         // For mobile money, show PIN modal directly
         setShowPinModal(true);
@@ -533,13 +531,8 @@ const Fund = () => {
     }
 
     if (selectedChannel === 'bank_transfer') {
-      // If reference exists, user has made transfer - show PIN modal
-      if (pendingTransactionData?.reference) {
-        if (pendingTransactionId) {
-          setShowPinModal(true);
-        } else {
-          showErrorAlert('Error', 'Transaction ID not found. Please initiate deposit again.');
-        }
+      if (pendingTransactionData?.virtualAccount) {
+        showSuccessAlert('Deposit Pending', 'Your PalmPay virtual account is active for this deposit. Complete the bank transfer and wait for automatic confirmation.');
         return;
       }
       // For bank transfer, initiate deposit to get reference
@@ -829,7 +822,7 @@ const Fund = () => {
                 Bank Transfer
               </ThemedText>
             </TouchableOpacity>
-            <TouchableOpacity
+            {false && <TouchableOpacity
               style={[
                 styles.channelButton,
                 selectedChannel === 'mobile_money' && styles.channelButtonActive,
@@ -849,7 +842,7 @@ const Fund = () => {
               ]}>
                 Mobile Money
               </ThemedText>
-            </TouchableOpacity>
+            </TouchableOpacity>}
           </View>
 
           {/* Amount Input Section */}
@@ -1051,7 +1044,7 @@ const Fund = () => {
           ) : (
             <ThemedText style={styles.proceedButtonText}>
               {selectedChannel === 'bank_transfer' 
-                ? (pendingTransactionData?.reference ? "I've Made the Transfer" : 'Initiate Deposit')
+                ? (pendingTransactionData?.virtualAccount ? 'Deposit Pending' : 'Create PalmPay Account')
                 : 'Proceed'}
             </ThemedText>
           )}

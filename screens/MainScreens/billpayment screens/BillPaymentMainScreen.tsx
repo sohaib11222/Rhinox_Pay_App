@@ -20,6 +20,7 @@ import { useGetBillPayments, useGetTransactionDetails } from '../../../queries/t
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import TransactionErrorModal from '../../components/TransactionErrorModal';
+import { showWarningAlert } from '../../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -310,24 +311,12 @@ const BillPaymentMainScreen = () => {
       navigation.navigate('Transactions' as never, {
         screen: 'DataRecharge' as never,
       } as never);
-    } else if (category.title === 'Internet Subscription') {
-      // Navigate to InternetSubscription screen within Transactions stack
-      // @ts-ignore - allow nested navigation
-      navigation.navigate('Transactions' as never, {
-        screen: 'InternetSubscription' as never,
-      } as never);
-    } else if (category.title === 'Electricity') {
-      // Navigate to Electricity screen within Transactions stack
-      // @ts-ignore - allow nested navigation
-      navigation.navigate('Transactions' as never, {
-        screen: 'Electricity' as never,
-      } as never);
-    } else if (category.title === 'Cable TV') {
-      // Navigate to CableTv screen within Transactions stack
-      // @ts-ignore - allow nested navigation
-      navigation.navigate('Transactions' as never, {
-        screen: 'CableTv' as never,
-      } as never);
+    } else if (
+      category.title === 'Internet Subscription' ||
+      category.title === 'Electricity' ||
+      category.title === 'Cable TV'
+    ) {
+      showWarningAlert('Under Maintenance', 'This bill payment service is temporarily unavailable.');
     } else if (category.title === 'Betting') {
       // Navigate to Betting screen within Transactions stack
       // @ts-ignore - allow nested navigation

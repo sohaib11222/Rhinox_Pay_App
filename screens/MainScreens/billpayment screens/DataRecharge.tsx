@@ -53,7 +53,7 @@ const DataRecharge = ({ route }: any) => {
       setAccountName(beneficiary.name || '');
       // Set provider if available
       if (beneficiary.provider?.id) {
-        setSelectedProvider(beneficiary.provider.id);
+        setSelectedProvider(String(beneficiary.provider.id));
         setSelectedProviderCode(beneficiary.provider.code);
       }
       // Clear the params to avoid re-applying on re-render
@@ -95,7 +95,7 @@ const DataRecharge = ({ route }: any) => {
     }, [navigation])
   );
 
-  const [selectedProvider, setSelectedProvider] = useState<number | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
@@ -225,7 +225,7 @@ const DataRecharge = ({ route }: any) => {
     isLoading: isLoadingPlans,
     refetch: refetchPlans,
   } = useGetBillPaymentPlans(
-    { providerId: selectedProvider || 0 }
+    { providerId: selectedProvider || '', categoryCode: 'data' }
   );
 
   // Transform plans data
@@ -534,7 +534,7 @@ const DataRecharge = ({ route }: any) => {
   const handleProviderSelect = (networkId: string) => {
     const provider = networks.find((n) => n.id === networkId);
     if (provider) {
-      setSelectedProvider(parseInt(networkId));
+      setSelectedProvider(networkId);
       setSelectedProviderCode(provider.code);
       setSelectedPlan(null); // Reset plan when provider changes
       setShowNetworkModal(false);
@@ -800,7 +800,7 @@ const DataRecharge = ({ route }: any) => {
                       setAccountName(beneficiary.name || '');
                       // Set provider if available
                       if (beneficiary.provider?.id) {
-                        setSelectedProvider(beneficiary.provider.id);
+                        setSelectedProvider(String(beneficiary.provider.id));
                         setSelectedProviderCode(beneficiary.provider.code);
                       }
                     },
@@ -874,7 +874,7 @@ const DataRecharge = ({ route }: any) => {
                     // Find and set the provider
                     const provider = networks.find((n) => n.name === beneficiary.network || n.code === beneficiary.network);
                     if (provider) {
-                      setSelectedProvider(parseInt(provider.id));
+                      setSelectedProvider(provider.id);
                       setSelectedProviderCode(provider.code);
                     }
                   }}
@@ -1109,9 +1109,9 @@ const DataRecharge = ({ route }: any) => {
                     <Image source={network.icon} style={styles.networkIcon} resizeMode="cover" />
                     <ThemedText style={styles.networkName}>{network.name}</ThemedText>
                     <MaterialCommunityIcons
-                      name={selectedProvider === parseInt(network.id) ? 'radiobox-marked' : 'radiobox-blank'}
+                      name={selectedProvider === network.id ? 'radiobox-marked' : 'radiobox-blank'}
                       size={24 * SCALE}
-                      color={selectedProvider === parseInt(network.id) ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      color={selectedProvider === network.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                     />
                   </TouchableOpacity>
                 ))}

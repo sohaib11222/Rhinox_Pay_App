@@ -45,6 +45,7 @@ interface PaymentMethod {
   type: string;
   accountType?: string;
   bankName?: string;
+  bankCode?: string;
   accountNumber?: string;
   accountName?: string;
   phoneNumber?: string;
@@ -58,6 +59,7 @@ interface PaymentMethod {
 interface Bank {
   id?: string;
   name: string;
+  bankCode?: string;
   type?: string;
   countryCode?: string;
   currency?: string;
@@ -81,6 +83,7 @@ const PaymentSettings = () => {
   const [paymentMethodType, setPaymentMethodType] = useState<'bank_account' | 'mobile_money' | 'rhinoxpay_id' | null>(null);
   const [accountType, setAccountType] = useState<'savings' | 'current' | ''>('');
   const [bankName, setBankName] = useState('');
+  const [bankCode, setBankCode] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [accountName, setAccountName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -209,6 +212,7 @@ const PaymentSettings = () => {
             method.type,
       accountType: method.accountType,
       bankName: method.bankName || method.provider?.name || 'N/A',
+      bankCode: method.bankCode,
       accountNumber: method.accountNumber || method.phoneNumber || 'N/A',
       accountName: method.accountName || 'N/A',
       phoneNumber: method.phoneNumber,
@@ -235,8 +239,9 @@ const PaymentSettings = () => {
       return [];
     }
     return banksData.data.map((bank: any, index: number) => ({
-      id: String(bank.name || index + 1),
-      name: bank.name || '',
+      id: String(bank.bankCode || bank.code || index + 1),
+      name: bank.bankName || bank.name || '',
+      bankCode: bank.bankCode || bank.code,
       type: 'bank',
       countryCode: bank.countryCode,
       currency: bank.currency,
@@ -365,6 +370,7 @@ const PaymentSettings = () => {
     setPaymentMethodType(methodType);
     setAccountType((method.accountType as 'savings' | 'current') || '');
     setBankName(method.bankName || '');
+    setBankCode(method.bankCode || '');
     setAccountNumber(method.accountNumber || method.phoneNumber || '');
     setAccountName(method.accountName || '');
     setPhoneNumber(method.phoneNumber || '');
@@ -385,9 +391,6 @@ const PaymentSettings = () => {
       const updateData: any = {};
       if (paymentMethodType === 'bank_account') {
         if (accountType) updateData.accountType = accountType;
-        if (bankName) updateData.bankName = bankName;
-        if (accountNumber) updateData.accountNumber = accountNumber;
-        if (accountName) updateData.accountName = accountName;
       } else if (paymentMethodType === 'mobile_money') {
         if (phoneNumber) updateData.phoneNumber = phoneNumber;
       }
@@ -404,7 +407,7 @@ const PaymentSettings = () => {
       }
 
       if (paymentMethodType === 'bank_account') {
-        if (!accountType || !bankName || !accountNumber || !accountName) {
+        if (!accountType || !bankName || !bankCode || !accountNumber || !accountName) {
           showErrorAlert('Validation Error', 'Please fill in all required fields');
           return;
         }
@@ -415,6 +418,7 @@ const PaymentSettings = () => {
         addBankAccountMutation.mutate({
           accountType: accountType as 'savings' | 'current',
           bankName,
+          bankCode,
           accountNumber,
           accountName,
           countryCode,
@@ -468,6 +472,7 @@ const PaymentSettings = () => {
     setPaymentMethodType(null);
     setAccountType('');
     setBankName('');
+    setBankCode('');
     setAccountNumber('');
     setAccountName('');
     setPhoneNumber('');
@@ -489,6 +494,7 @@ const PaymentSettings = () => {
     const selectedBank = banks.find((b) => b.id === selectedBankType);
     if (selectedBank) {
       setBankName(selectedBank.name);
+      setBankCode(selectedBank.bankCode || selectedBank.id || '');
       setShowBankModal(false);
       setSelectedBankType(null);
       setSearchQuery('');
@@ -508,6 +514,7 @@ const PaymentSettings = () => {
     if (type !== 'bank_account') {
       setAccountType('');
       setBankName('');
+      setBankCode('');
       setAccountNumber('');
       setAccountName('');
     }

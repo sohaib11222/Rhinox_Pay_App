@@ -39,7 +39,7 @@ export const useValidateMeter = (
  * Validate account number (betting)
  */
 export interface ValidateAccountRequest {
-  providerId: number;
+  providerId: string | number;
   accountNumber: string;
 }
 
@@ -72,12 +72,12 @@ export const useValidateAccount = (
  */
 export interface InitiateBillPaymentRequest {
   categoryCode: string;
-  providerId: number;
+  providerId: string | number;
   currency: string;
   amount: string;
   accountNumber: string;
   accountType?: string;
-  planId?: number;
+  planId?: string | number;
   beneficiaryId?: number;
 }
 
@@ -142,7 +142,7 @@ export const useConfirmBillPayment = (
  */
 export interface CreateBeneficiaryRequest {
   categoryCode: string;
-  providerId: number;
+  providerId: string | number;
   name: string;
   accountNumber: string;
   accountType?: string;
