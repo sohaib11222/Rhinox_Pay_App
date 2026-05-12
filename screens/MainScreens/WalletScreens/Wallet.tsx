@@ -27,7 +27,7 @@ import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import { useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
-import { showErrorAlert } from '../../../utils/customAlert';
+import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
 
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -102,12 +102,7 @@ const Wallet = () => {
   const [sendFundsSelectedCountryName, setSendFundsSelectedCountryName] = useState('Nigeria');
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>({
-    id: '1',
-    name: 'Bitcoin',
-    balance: '0.00001',
-    icon: require('../../../assets/CurrencyBtc.png'),
-  });
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>(null);
   const [showFundWalletModal, setShowFundWalletModal] = useState(false);
   const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
@@ -1677,19 +1672,27 @@ const Wallet = () => {
               : selectedTransaction.date;
             
             // Map API status to UI status
-            const mapStatusToUI = (status?: string): 'Successful' | 'Pending' | 'Failed' => {
-              if (!status) return 'Successful';
+            const mapStatusToUI = (status?: string): 'Successful' | 'Pending' | 'Failed' | 'Cancelled' => {
+              if (!status) return 'Pending';
               const statusLower = status.toLowerCase();
               if (statusLower === 'completed' || statusLower === 'successful' || statusLower === 'success') {
                 return 'Successful';
               }
-              if (statusLower === 'pending') {
+              if (statusLower === 'pending' || statusLower === 'processing') {
                 return 'Pending';
               }
               if (statusLower === 'failed' || statusLower === 'fail') {
                 return 'Failed';
               }
-              return 'Successful';
+              if (statusLower === 'cancelled' || statusLower === 'canceled' || statusLower === 'cancel') {
+                return 'Cancelled';
+              }
+              return 'Pending';
+            };
+
+            const formatCountryForReceipt = (country?: string | null) => {
+              if (!country) return undefined;
+              return country.toUpperCase() === 'NG' ? 'Nigeria' : country;
             };
 
             // Base transaction object
@@ -1699,28 +1702,55 @@ const Wallet = () => {
               amountNGN: formattedAmount,
               transferAmount: formattedAmount,
               dateTime: formattedDateTime,
-              transactionId: details.reference || `TXN-${details.id}`,
+              transactionId: details.reference || (details.id ? String(details.id) : undefined),
               fee: details.fee ? `${currencySymbol}${formatBalance(parseFloat(details.fee))}` : undefined,
               paymentAmount: details.totalAmount ? `${currencySymbol}${formatBalance(parseFloat(details.totalAmount))}` : formattedAmount,
               status: mapStatusToUI(details.status),
+              country: formatCountryForReceipt(details.country),
+              paymentMethod: details.paymentMethod,
             };
             
             // Add type-specific fields
             if (transactionType === 'send' || transactionType === 'cryptoWithdrawal') {
-              baseTransaction.recipientName = details.recipientInfo?.name || details.metadata?.recipientInfo?.name || details.accountName;
-              baseTransaction.accountNumber = details.recipientInfo?.phone || details.metadata?.recipientInfo?.phone || details.accountNumber;
-              baseTransaction.bank = details.paymentMethod || details.channel;
-              baseTransaction.country = details.country;
+              const metadata = details.metadata || {};
+              const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
+              baseTransaction.recipientName = recipientInfo.name || recipientInfo.accountName || metadata.accountName || details.accountName;
+              baseTransaction.accountName = recipientInfo.accountName || recipientInfo.name || metadata.accountName || details.accountName;
+              baseTransaction.accountNumber = metadata.accountNumber || recipientInfo.accountNumber || recipientInfo.phone || recipientInfo.phoneNumber || details.accountNumber;
+              baseTransaction.bank = metadata.bankName || recipientInfo.bankName || details.bankName;
+              baseTransaction.country = formatCountryForReceipt(details.country);
             } else if (transactionType === 'fund' || transactionType === 'deposit') {
+              const virtualAccount = details.virtualAccount || {};
               baseTransaction.fundingRoute = details.channel;
-              baseTransaction.provider = details.paymentMethod || details.channel;
+              baseTransaction.provider = details.channel === 'bank_transfer' ? 'Bank Transfer' : details.paymentMethod || details.channel;
+              baseTransaction.paymentMethod = details.paymentMethod || (details.channel === 'bank_transfer' ? 'Bank Transfer' : undefined);
+              baseTransaction.country = formatCountryForReceipt(details.country || (details.channel === 'bank_transfer' ? 'NG' : undefined));
+              baseTransaction.bank = virtualAccount.bankName || details.bankAccount?.bankName;
+              baseTransaction.accountNumber = virtualAccount.accountNumber || details.bankAccount?.accountNumber;
+              baseTransaction.accountName = virtualAccount.accountName || details.bankAccount?.accountName;
             } else if (transactionType === 'convert') {
               baseTransaction.recipientName = details.metadata?.toCurrency || details.currency;
             } else if (transactionType === 'billPayment') {
-              baseTransaction.billerType = details.provider?.name || details.category?.name;
-              baseTransaction.mobileNumber = details.accountNumber;
-              baseTransaction.plan = details.plan?.name;
+              baseTransaction.billerType = details.billerType || details.provider?.name || details.category?.name;
+              baseTransaction.mobileNumber = details.mobileNumber || details.accountNumber;
+              baseTransaction.plan = details.plan?.name || details.plan;
               baseTransaction.recipientName = details.accountName || details.description;
+            } else if (transactionType === 'p2p') {
+              baseTransaction.p2pType = details.p2pType || details.p2pOrder?.p2pType;
+              baseTransaction.price = details.price || details.p2pOrder?.price;
+              baseTransaction.totalQty = details.totalQty || (
+                details.p2pOrder?.cryptoAmount && details.p2pOrder?.cryptoCurrency
+                  ? `${details.p2pOrder.cryptoAmount} ${details.p2pOrder.cryptoCurrency}`
+                  : undefined
+              );
+              baseTransaction.transferAmount = details.transferAmount
+                ? details.transferAmount
+                : formattedAmount;
+              baseTransaction.merchantName = details.merchantName || details.p2pOrder?.peer?.name;
+              baseTransaction.merchantContact = details.merchantContact || details.p2pOrder?.peer?.email || details.p2pOrder?.peer?.phone;
+              baseTransaction.orderId = details.orderId || details.p2pOrder?.id;
+              baseTransaction.chatName = details.chatName || details.p2pOrder?.peer?.name;
+              baseTransaction.chatEmail = details.chatEmail || details.p2pOrder?.peer?.email;
             }
             
             if (transactionType === 'cryptoDeposit' || transactionType === 'cryptoWithdrawal') {
@@ -2022,7 +2052,7 @@ const Wallet = () => {
                                 if (firstCrypto) {
                                   return `${formatBalanceNoDecimals(firstCrypto.balance || firstCrypto.availableBalance || '0')} ${firstCrypto.currency || firstCrypto.symbol || 'BTC'}`;
                                 }
-                                return '0.00000 BTC';
+                                return '0.00000';
                               })()}
                             </ThemedText>
                           )}
@@ -2459,9 +2489,7 @@ const Wallet = () => {
                       {/* Mobile Money Option */}
                       <TouchableOpacity
                         onPress={() => {
-                          setShowFundWalletModal(false);
-                          // Navigate directly to Fund screen since we're already in Wallet stack
-                          (navigation as any).navigate('Fund');
+                          showWarningAlert('Under Maintenance', 'Mobile money funding is temporarily unavailable. Please use bank transfer.');
                         }}
                       >
                         <LinearGradient
@@ -2479,7 +2507,7 @@ const Wallet = () => {
                           </View>
                           <View style={styles.sendFundsTextContainer}>
                             <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
-                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via mobile moneyt</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Mobile money funding is under maintenance</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -2536,7 +2564,7 @@ const Wallet = () => {
                             <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
                           ) : (
                             <ThemedText style={styles.sendFundsBalanceAmount}>
-                              {fundWalletCryptoBalance?.formatted || (selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00000 BTC')}
+                              {fundWalletCryptoBalance?.formatted || (selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00000')}
                             </ThemedText>
                           )}
                         </View>

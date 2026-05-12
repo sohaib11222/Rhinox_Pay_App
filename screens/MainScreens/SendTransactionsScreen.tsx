@@ -91,6 +91,9 @@ const SendTransactionsScreen = () => {
 
     // Transform API data to UI format
     return sendTransactionsOnly.map((tx: any) => {
+      const metadata = tx.metadata || {};
+      const recipientInfoData = tx.recipientInfo || metadata.recipientInfo || {};
+
       // Format date
       const date = new Date(tx.createdAt);
       const formattedDate = date.toLocaleDateString('en-US', {
@@ -104,13 +107,13 @@ const SendTransactionsScreen = () => {
       const formattedAmountNGN = `N${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
       
       // Get recipient name from recipientInfo
-      const recipientName = tx.recipientInfo?.name || tx.description?.replace('Transfer ', '').replace(/ \d+ [A-Z]{3} to /, '') || 'Unknown';
+      const recipientName = recipientInfoData.name || recipientInfoData.accountName || tx.description?.replace('Transfer ', '').replace(/ \d+ [A-Z]{3} to /, '') || 'Recipient';
 
       // Map status
       let status: 'Successful' | 'Pending' | 'Failed' = 'Pending';
       if (tx.status === 'completed') status = 'Successful';
       else if (tx.status === 'failed') status = 'Failed';
-      else if (tx.status === 'pending') status = 'Pending';
+      else if (tx.status === 'pending' || tx.status === 'processing') status = 'Pending';
 
       // Map payment method
       let paymentMethod: 'Bank Transfer' | 'Mobile Money' = 'Bank Transfer';
@@ -129,9 +132,9 @@ const SendTransactionsScreen = () => {
         transferAmount: formattedAmountNGN,
         fee: `N${parseFloat(tx.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         paymentAmount: `N${parseFloat(tx.totalAmount || tx.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        country: tx.country || 'Nigeria',
-        bank: tx.paymentMethod || 'Bank Transfer',
-        accountNumber: tx.recipientInfo?.phone || tx.metadata?.recipientInfo?.phone || '',
+        country: tx.country || undefined,
+        bank: metadata.bankName || recipientInfoData.bankName || undefined,
+        accountNumber: metadata.accountNumber || recipientInfoData.accountNumber || recipientInfoData.phone || recipientInfoData.phoneNumber || '',
         accountName: recipientName,
         transactionId: tx.reference || String(tx.id),
         dateTime: date.toLocaleDateString('en-US', {
@@ -173,93 +176,6 @@ const SendTransactionsScreen = () => {
     };
   }, [withdrawalsData]);
 
-  // Mock data - Replace with API calls later (keeping for reference)
-  const mockSendTransactions: SendTransaction[] = [
-    {
-      id: '1',
-      recipientName: 'Adebisi Lateefat',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      transferAmount: 'N200,000',
-      fee: 'N20',
-      paymentAmount: 'N200,000',
-      country: 'Nigeria',
-      bank: 'Wema Bank',
-      accountNumber: '0123456789',
-      accountName: 'Opay',
-      transactionId: '12dwerkxywurcksc',
-      dateTime: 'Oct 16, 2025 - 07:22AM',
-    },
-    {
-      id: '2',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '3',
-      recipientName: 'Ibrahim Musa',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Pending',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '4',
-      recipientName: 'Chukwuemeka Nneka',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Failed',
-      paymentMethod: 'Bank Transfer',
-    },
-    {
-      id: '5',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '6',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '7',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-    {
-      id: '8',
-      recipientName: 'Ogunleye Funke',
-      amountNGN: 'N2,000,0000',
-      amountUSD: '$5,000.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-    },
-  ];
-
-  // Old mock summary data - removed, using API data now
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Successful':
@@ -286,6 +202,8 @@ const SendTransactionsScreen = () => {
   useEffect(() => {
     if (transactionDetailsData?.data && selectedTransaction) {
       const details = transactionDetailsData.data;
+      const metadata = details.metadata || {};
+      const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
       const status = details.status || selectedTransaction.status;
       
       // Update transaction with details from API
@@ -295,10 +213,10 @@ const SendTransactionsScreen = () => {
         fee: `N${parseFloat(details.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         paymentAmount: `N${parseFloat(details.totalAmount || details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         transactionId: details.reference || selectedTransaction.transactionId,
-        accountName: details.recipientInfo?.name || selectedTransaction.accountName,
-        accountNumber: details.recipientInfo?.phone || details.metadata?.recipientInfo?.phone || selectedTransaction.accountNumber,
+        accountName: recipientInfo.name || recipientInfo.accountName || metadata.accountName || selectedTransaction.accountName,
+        accountNumber: metadata.accountNumber || recipientInfo.accountNumber || recipientInfo.phone || recipientInfo.phoneNumber || selectedTransaction.accountNumber,
         country: details.country || selectedTransaction.country,
-        bank: details.paymentMethod || selectedTransaction.bank,
+        bank: metadata.bankName || recipientInfo.bankName || selectedTransaction.bank,
       };
 
       if (status === 'failed' || status === 'Failed') {

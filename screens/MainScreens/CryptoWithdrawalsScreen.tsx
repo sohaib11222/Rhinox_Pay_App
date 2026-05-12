@@ -31,7 +31,7 @@ interface CryptoWithdrawalTransaction {
   amountUSD: string;
   date: string;
   status: 'Successful' | 'Pending' | 'Failed';
-  paymentMethod: 'Bank Transfer' | 'Mobile Money';
+  paymentMethod?: 'Bank Transfer' | 'Mobile Money';
   // For receipt modal
   transferAmount?: string;
   fee?: string;
@@ -119,7 +119,7 @@ const CryptoWithdrawalsScreen = () => {
   const normalizeStatus = (status: string): 'Successful' | 'Pending' | 'Failed' => {
     const statusLower = status?.toLowerCase() || '';
     if (statusLower === 'completed' || statusLower === 'successful') return 'Successful';
-    if (statusLower === 'pending') return 'Pending';
+    if (statusLower === 'pending' || statusLower === 'processing') return 'Pending';
     if (statusLower === 'failed') return 'Failed';
     return 'Successful'; // Default
   };
@@ -183,7 +183,6 @@ const CryptoWithdrawalsScreen = () => {
         amountUSD: formatUSD(amount),
         date: formattedDate,
         status: normalizeStatus(tx.status),
-        paymentMethod: 'Bank Transfer', // Not applicable for crypto but keeping for compatibility
         transferAmount: `${amount} ${currency}`,
         fee: fee > 0 ? formatUSD(fee) : undefined,
         paymentAmount: `${amount} ${currency}`,
@@ -256,132 +255,6 @@ const CryptoWithdrawalsScreen = () => {
       setSelectedTransaction(updatedTransaction);
     }
   }, [transactionDetailsData, selectedTransaction]);
-
-  // Mock data - kept for reference but now using API data
-  const mockCryptoWithdrawalTransactions: CryptoWithdrawalTransaction[] = [
-    {
-      id: '1',
-      recipientName: '0x123...fcj2ifk3edw',
-      amountNGN: 'N2,550.50',
-      amountUSD: '$2,550.50',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      transferAmount: '0.25 ETH',
-      fee: '$2.50',
-      paymentAmount: '0.25 ETH',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.25 ETH',
-      amountUSDValue: '$2,550.50',
-      feeCrypto: '0.000001 ETH',
-      feeUSD: '$2.50',
-      receivingAddress: '0x123edfgtrwe457kslwltkwflelwlvld',
-      sendingAddress: '0x123edfgtrwe457kslwltkwflelwlvld',
-      txHash: '13ijksm219ef23e9fi3295h2nfi923rf9n92f9',
-      transactionId: '12dwerkxywurcksc',
-      dateTime: 'Oct 16, 2025 - 07:22 AM',
-    },
-    {
-      id: '2',
-      recipientName: '0x456...abc123def456',
-      amountNGN: 'N1,200.00',
-      amountUSD: '$1,200.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      cryptoType: 'Bitcoin',
-      network: 'Bitcoin',
-      quantity: '0.05 BTC',
-      amountUSDValue: '$1,200.00',
-      receivingAddress: '0x456edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '3',
-      recipientName: '0x789...xyz789ghi012',
-      amountNGN: 'N500.00',
-      amountUSD: '$500.00',
-      date: 'Oct 15,2025',
-      status: 'Pending',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'USDT',
-      network: 'Ethereum',
-      quantity: '500 USDT',
-      amountUSDValue: '$500.00',
-      receivingAddress: '0x789edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '4',
-      recipientName: '0x012...def456ghi789',
-      amountNGN: 'N3,000.00',
-      amountUSD: '$3,000.00',
-      date: 'Oct 15,2025',
-      status: 'Failed',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.3 ETH',
-      amountUSDValue: '$3,000.00',
-      receivingAddress: '0x012edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '5',
-      recipientName: '0x345...ghi789jkl012',
-      amountNGN: 'N800.00',
-      amountUSD: '$800.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.1 ETH',
-      amountUSDValue: '$800.00',
-      receivingAddress: '0x345edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '6',
-      recipientName: '0x678...jkl012mno345',
-      amountNGN: 'N1,500.00',
-      amountUSD: '$1,500.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'Bitcoin',
-      network: 'Bitcoin',
-      quantity: '0.03 BTC',
-      amountUSDValue: '$1,500.00',
-      receivingAddress: '0x678edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '7',
-      recipientName: '0x901...mno345pqr678',
-      amountNGN: 'N2,200.00',
-      amountUSD: '$2,200.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      cryptoType: 'USDT',
-      network: 'Ethereum',
-      quantity: '2,200 USDT',
-      amountUSDValue: '$2,200.00',
-      receivingAddress: '0x901edfgtrwe457kslwltkwflelwlvld',
-    },
-    {
-      id: '8',
-      recipientName: '0x234...pqr678stu901',
-      amountNGN: 'N950.00',
-      amountUSD: '$950.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      cryptoType: 'Ethereum',
-      network: 'Ethereum',
-      quantity: '0.12 ETH',
-      amountUSDValue: '$950.00',
-      receivingAddress: '0x234edfgtrwe457kslwltkwflelwlvld',
-    },
-  ];
-
 
   const getStatusColor = (status: string) => {
     switch (status) {

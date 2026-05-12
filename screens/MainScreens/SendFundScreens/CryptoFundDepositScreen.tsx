@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -18,7 +18,10 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetUSDTTokens, useGetDepositAddress, useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import * as Clipboard from 'expo-clipboard';
-import { showSuccessAlert } from '../../../utils/customAlert';
+import * as Sharing from 'expo-sharing';
+import * as MediaLibrary from 'expo-media-library';
+import { captureRef } from 'react-native-view-shot';
+import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import QRCode from 'react-native-qrcode-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -84,6 +87,9 @@ const CryptoFundDepositScreen = () => {
   const [selectedNetwork, setSelectedNetwork] = useState<string | null>(null);
   const [depositAddress, setDepositAddress] = useState<string | null>(null);
   const [copiedAddress, setCopiedAddress] = useState(false);
+  const [isDownloadingQR, setIsDownloadingQR] = useState(false);
+  const [isSharingQR, setIsSharingQR] = useState(false);
+  const qrCardRef = useRef<View>(null);
 
   // Fetch available tokens
   const {
@@ -127,12 +133,13 @@ const CryptoFundDepositScreen = () => {
   // Set default token - prioritize token from route params if provided
   useEffect(() => {
     if (!selectedToken && availableTokens.length > 0) {
-      if (routeParams?.currency) {
+      const routeCurrency = routeParams?.currency;
+      if (routeCurrency) {
         // Try to find token matching the currency from route params
         const matchingToken = availableTokens.find(
-          token => token.currency === routeParams.currency || 
-                   token.symbol === routeParams.currency ||
-                   token.currency?.toUpperCase() === routeParams.currency.toUpperCase()
+          token => token.currency === routeCurrency || 
+                   token.symbol === routeCurrency ||
+                   token.currency?.toUpperCase() === routeCurrency.toUpperCase()
         );
         if (matchingToken) {
           setSelectedToken(matchingToken);
@@ -304,6 +311,73 @@ const CryptoFundDepositScreen = () => {
       setCopiedAddress(true);
       showSuccessAlert('Success', 'Address copied to clipboard');
       setTimeout(() => setCopiedAddress(false), 2000);
+    }
+  };
+
+  const captureQRCodeImage = async () => {
+    if (!qrCardRef.current || !depositAddress) {
+      throw new Error('QR code is not ready yet');
+    }
+
+    return captureRef(qrCardRef, {
+      format: 'png',
+      quality: 1,
+      result: 'tmpfile',
+    });
+  };
+
+  const handleDownloadQRCode = async () => {
+    try {
+      setIsDownloadingQR(true);
+      const uri = await captureQRCodeImage();
+      const permission = await MediaLibrary.requestPermissionsAsync();
+
+      if (permission.status !== 'granted') {
+        showErrorAlert('Permission Needed', 'Please allow photo access to save the QR code.');
+        return;
+      }
+
+      const asset = await MediaLibrary.createAssetAsync(uri);
+      try {
+        const album = await MediaLibrary.getAlbumAsync('Rhinox Pay');
+        if (album) {
+          await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
+        } else {
+          await MediaLibrary.createAlbumAsync('Rhinox Pay', asset, false);
+        }
+      } catch (albumError) {
+        console.warn('[Crypto Deposit] QR saved without album:', albumError);
+      }
+
+      showSuccessAlert('Saved', 'QR code saved to your gallery.');
+    } catch (error: any) {
+      console.error('[Crypto Deposit] Failed to download QR code:', error);
+      showErrorAlert('Error', error?.message || 'Failed to download QR code.');
+    } finally {
+      setIsDownloadingQR(false);
+    }
+  };
+
+  const handleShareQRCode = async () => {
+    try {
+      setIsSharingQR(true);
+      const uri = await captureQRCodeImage();
+      const sharingAvailable = await Sharing.isAvailableAsync();
+
+      if (!sharingAvailable) {
+        showErrorAlert('Unavailable', 'Sharing is not available on this device.');
+        return;
+      }
+
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: `Share ${selectedToken?.currency || 'crypto'} deposit QR code`,
+      });
+    } catch (error: any) {
+      console.error('[Crypto Deposit] Failed to share QR code:', error);
+      showErrorAlert('Error', error?.message || 'Failed to share QR code.');
+    } finally {
+      setIsSharingQR(false);
     }
   };
 
@@ -675,7 +749,7 @@ const CryptoFundDepositScreen = () => {
               </View>
             ) : depositAddress ? (
               <>
-                <View style={styles.qrWhiteCard}>
+                <View ref={qrCardRef} collapsable={false} style={styles.qrWhiteCard}>
                   <ThemedText style={styles.qrDepositTitle}>Deposit {selectedToken?.currency}</ThemedText>
 
                   <View style={styles.qrCodeContainer}>
@@ -710,20 +784,26 @@ const CryptoFundDepositScreen = () => {
 
                 <View style={styles.qrModalButtons}>
                   <TouchableOpacity
-                    style={styles.downloadButton}
-                    onPress={() => {
-                      // Handle download QR code functionality
-                    }}
+                    style={[styles.downloadButton, isDownloadingQR && styles.qrActionButtonDisabled]}
+                    onPress={handleDownloadQRCode}
+                    disabled={isDownloadingQR || isSharingQR}
                   >
-                    <ThemedText style={styles.downloadButtonText}>Download</ThemedText>
+                    {isDownloadingQR ? (
+                      <ActivityIndicator size="small" color="#000000" />
+                    ) : (
+                      <ThemedText style={styles.downloadButtonText}>Download</ThemedText>
+                    )}
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.shareButton}
-                    onPress={() => {
-                      // Handle share QR code functionality
-                    }}
+                    style={[styles.shareButton, isSharingQR && styles.qrActionButtonDisabled]}
+                    onPress={handleShareQRCode}
+                    disabled={isDownloadingQR || isSharingQR}
                   >
-                    <ThemedText style={styles.shareButtonText}>Share</ThemedText>
+                    {isSharingQR ? (
+                      <ActivityIndicator size="small" color="#000000" />
+                    ) : (
+                      <ThemedText style={styles.shareButtonText}>Share</ThemedText>
+                    )}
                   </TouchableOpacity>
                 </View>
               </>
@@ -1196,6 +1276,9 @@ const styles = StyleSheet.create({
     paddingVertical: 18 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  qrActionButtonDisabled: {
+    opacity: 0.6,
   },
   shareButtonText: {
     fontSize: 14 * 1,

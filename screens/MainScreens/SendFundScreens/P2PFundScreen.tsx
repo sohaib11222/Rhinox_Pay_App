@@ -430,18 +430,14 @@ const P2PFundScreen = () => {
   // Removed mock data - using real API data from tradingOffers
 
   const assets: Asset[] = [
-    { id: '1', name: 'USDT', balance: '0.00001', icon: require('../../../assets/CurrencyBtc.png') },
-    { id: '2', name: 'Bitcoin', balance: '0.00001', icon: require('../../../assets/CurrencyBtc.png') },
-    { id: '3', name: 'Ethereum', balance: '10', icon: require('../../../assets/CurrencyBtc.png') },
+    { id: '1', name: 'USDT', balance: '0', icon: require('../../../assets/CurrencyBtc.png') },
   ];
 
   const banks: Bank[] = [
     { id: '1', name: 'All', type: 'all' },
-    { id: '2', name: 'Opay', type: 'bank' },
-    { id: '3', name: 'Palmpay', type: 'bank' },
-    { id: '4', name: 'Moniepoint', type: 'bank' },
-    { id: '5', name: 'Kudabank', type: 'bank' },
-    { id: '6', name: 'Chipper Cash', type: 'bank' },
+    { id: '2', name: 'Bank Transfer', type: 'bank' },
+    { id: '3', name: 'Mobile Money', type: 'mobile' },
+    { id: '4', name: 'RhinoxPay ID', type: 'rhinoxpay' },
   ];
 
   const filteredBanks = banks.filter((bank) => {

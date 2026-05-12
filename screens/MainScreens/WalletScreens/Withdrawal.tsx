@@ -265,7 +265,7 @@ const Withdrawal = () => {
       setShowSecurityModal(false);
       const status = response?.data?.status;
       if (status === 'processing' || status === 'pending') {
-        showWarningAlert('Withdrawal Processing', 'PalmPay has accepted your withdrawal. We will update the transaction status when the bank confirms it.');
+        showWarningAlert('Withdrawal Processing', 'Your withdrawal has been accepted. We will update the transaction status when the bank confirms it.');
       }
       setShowSuccessModal(true);
       // Fetch receipt
@@ -1213,31 +1213,31 @@ const Withdrawal = () => {
       {/* Transaction Receipt Modal */}
       <TransactionReceiptModal
         visible={showReceiptModal}
-        transaction={{
-          transactionType: 'withdrawal',
-          transferAmount: `${currency === 'NGN' ? 'N' : currency === 'KES' ? 'K' : currency === 'GHS' ? 'G' : currency}${amount.replace(/,/g, '')}`,
-          amountNGN: `${currency === 'NGN' ? 'N' : currency === 'KES' ? 'K' : currency === 'GHS' ? 'G' : currency}${amount.replace(/,/g, '')}`,
-          fee: receiptData?.fee || pendingTransactionData?.fee ? `${currency === 'NGN' ? 'N' : currency === 'KES' ? 'K' : currency === 'GHS' ? 'G' : currency}${parseFloat(receiptData?.fee || pendingTransactionData?.fee || '0').toLocaleString()}` : 'N0',
-          bank: selectedBank?.bankName || '',
-          accountNumber: selectedBank?.accountNumber || '',
-          accountName: selectedBank?.accountName || '',
-          country: selectedCountryName,
-          transactionId: receiptData?.transactionId || pendingTransactionData?.reference || 'N/A',
-          dateTime: receiptData?.date || pendingTransactionData?.createdAt ? new Date(receiptData?.date || pendingTransactionData?.createdAt).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }) : new Date().toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          paymentMethod: 'Bank Transfer',
-        }}
+        transaction={(() => {
+          const recipientInfo = receiptData?.recipientInfo || pendingTransactionData?.recipientInfo || {};
+          const dateValue = receiptData?.date || receiptData?.completedAt || receiptData?.createdAt || pendingTransactionData?.createdAt;
+          const symbol = currency === 'NGN' ? 'N' : currency === 'KES' ? 'K' : currency === 'GHS' ? 'G' : currency;
+          return {
+            transactionType: 'withdrawal',
+            transferAmount: `${symbol}${amount.replace(/,/g, '')}`,
+            amountNGN: `${symbol}${amount.replace(/,/g, '')}`,
+            fee: `${symbol}${parseFloat(receiptData?.fee || pendingTransactionData?.fee || '0').toLocaleString()}`,
+            bank: recipientInfo.bankName || selectedBank?.bankName,
+            accountNumber: recipientInfo.accountNumber || selectedBank?.accountNumber,
+            accountName: recipientInfo.accountName || selectedBank?.accountName,
+            country: receiptData?.country || selectedCountryName,
+            transactionId: receiptData?.reference || receiptData?.transactionId || pendingTransactionData?.reference,
+            dateTime: dateValue ? new Date(dateValue).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }) : undefined,
+            paymentMethod: receiptData?.paymentMethod || 'Bank Transfer',
+            status: receiptData?.status || pendingTransactionData?.status,
+          };
+        })()}
         onClose={() => {
           setShowReceiptModal(false);
         }}
@@ -1274,7 +1274,7 @@ const Withdrawal = () => {
                     style={styles.countryItem}
                     onPress={() => {
                       if ((country as any).code !== 'NG') {
-                        showWarningAlert('Unsupported Country', 'PalmPay withdrawals currently support Nigeria only.');
+                        showWarningAlert('Unsupported Country', 'Bank withdrawals currently support Nigeria only.');
                         return;
                       }
                       setSelectedCountry('NG');

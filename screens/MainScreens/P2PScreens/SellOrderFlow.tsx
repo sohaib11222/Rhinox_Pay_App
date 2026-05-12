@@ -67,7 +67,7 @@ const SellOrderFlow = () => {
   const [countdown, setCountdown] = useState(30); // 30 seconds countdown
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [reviewRating, setReviewRating] = useState<'positive' | 'negative' | null>(null);
-  const [reviewText, setReviewText] = useState('He is fast and reliable.');
+  const [reviewText, setReviewText] = useState('');
 
   // PIN states
   const [pin, setPin] = useState('');
@@ -206,12 +206,16 @@ const SellOrderFlow = () => {
     if (orderDetailsData?.data) {
       const order = orderDetailsData.data;
       const vendor = order.vendor || order.buyer || {};
+      const buyer = order.buyer || {};
       const paymentMethod = order.paymentMethod || {};
       
       // Format vendor name
       const vendorName = vendor.firstName && vendor.lastName
         ? `${vendor.firstName} ${vendor.lastName}`.trim()
         : vendor.firstName || vendor.lastName || 'Vendor';
+      const buyerName = buyer.firstName && buyer.lastName
+        ? `${buyer.firstName} ${buyer.lastName}`.trim()
+        : buyer.firstName || buyer.lastName || buyer.email || vendorName;
       
       // Format amount
       const fiatAmount = order.fiatAmount ? parseFloat(order.fiatAmount).toLocaleString('en-US', {
@@ -257,13 +261,14 @@ const SellOrderFlow = () => {
       return {
         vendorName,
         vendorAvatar: require('../../../assets/login/memoji.png'), // Default avatar
-        vendorStatus: 'Online', // TODO: Get from vendor data if available
-        vendorRating: '98%', // TODO: Get from vendor data if available
+        vendorStatus: order.vendor?.isOnline ? 'Online' : 'Offline',
+        vendorRating: order.vendor?.score ? `${parseFloat(order.vendor.score).toFixed(0)}%` : 'N/A',
         rate: order.price ? `N${parseFloat(order.price).toLocaleString('en-US', {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })}` : 'N0.00',
-        buyerName: vendorName,
+        buyerName,
+        buyerEmail: buyer.email || vendor.email,
         amountToBePaid: `N${fiatAmount}`,
         paymentAccount: paymentMethod.name || 'Bank Transfer',
         price: `N${parseFloat(order.price || '0').toLocaleString('en-US', {
@@ -291,11 +296,12 @@ const SellOrderFlow = () => {
       vendorRating: routeParams?.adDetails?.vendor?.score ? `${(parseFloat(routeParams.adDetails.vendor.score) * 20).toFixed(0)}%` : '0%',
       rate: routeParams?.adDetails?.price ? `N${parseFloat(routeParams.adDetails.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N0.00',
       buyerName: 'Buyer',
+      buyerEmail: routeParams?.adDetails?.vendor?.email,
       amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N0.00',
       paymentAccount: routeParams?.paymentMethod || 'Not Selected',
       price: routeParams?.adDetails?.price ? `N${parseFloat(routeParams.adDetails.price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N0.00',
       txId: routeParams?.orderId || 'N/A',
-      orderTime: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      orderTime: 'N/A',
       amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N0.00',
       bankName: 'N/A',
       accountNumber: 'N/A',
@@ -334,17 +340,11 @@ const SellOrderFlow = () => {
     }
   }, [currentStep]);
 
-  // Mock payment methods - TODO: Replace with API call
   const paymentMethods: PaymentMethod[] = [
     { id: '1', name: 'All', type: 'all' },
     { id: '2', name: 'RhinoxPay ID', type: 'rhinoxpay' },
     { id: '3', name: 'Bank Transfer', type: 'bank' },
     { id: '4', name: 'Mobile Money', type: 'mobile' },
-    { id: '5', name: 'Opay', type: 'bank' },
-    { id: '6', name: 'Palmpay', type: 'bank' },
-    { id: '7', name: 'Kuda Bank', type: 'bank' },
-    { id: '8', name: 'Access Bank', type: 'bank' },
-    { id: '9', name: 'Ec Bank', type: 'bank' },
   ];
 
   // Set default payment method if coming from AdDetails (after paymentMethods is defined)
@@ -815,7 +815,7 @@ const SellOrderFlow = () => {
                 {/* You will Pay */}
                 <View style={styles.receiveSection}>
                   <ThemedText style={styles.receiveLabel}>You will Pay</ThemedText>
-                  <ThemedText style={styles.payValue}>N10,000</ThemedText>
+                  <ThemedText style={styles.payValue}>{amount ? `N${amount}` : 'N0.00'}</ThemedText>
                 </View>
               </>
             )}
@@ -966,7 +966,7 @@ const SellOrderFlow = () => {
                   params: {
                     orderId: String(orderId),
                     chatName: orderData.buyerName,
-                    chatEmail: 'buyer@example.com',
+                    chatEmail: orderData.buyerEmail,
                     reason: 'P2P Transaction',
                     isP2PChat: true,
                   },

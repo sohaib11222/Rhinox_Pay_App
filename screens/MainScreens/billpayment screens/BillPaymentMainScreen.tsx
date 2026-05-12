@@ -47,7 +47,6 @@ interface RecentTransaction {
 const BillPaymentMainScreen = () => {
   const navigation = useNavigation();
 
-  // Mock data - Replace with API calls later
   const billPaymentCategories: BillPaymentCategory[] = [
     {
       id: '1',
@@ -64,31 +63,10 @@ const BillPaymentMainScreen = () => {
       iconType: 'image',
     },
     {
-      id: '3',
-      title: 'Electricity',
-      description: 'Pay your electricity bills with ease on Rhinoxpay',
-      icon: require('../../../assets/flash.png'),
-      iconType: 'image',
-    },
-    {
-      id: '4',
-      title: 'Cable TV',
-      description: 'Subscribe to your favorite cable TV plans',
-      icon: require('../../../assets/monitor.png'),
-      iconType: 'image',
-    },
-    {
       id: '5',
       title: 'Betting',
       description: 'Fund your betting account easily ',
       icon: require('../../../assets/SoccerBall.png'),
-      iconType: 'image',
-    },
-    {
-      id: '6',
-      title: 'Internet Subscription',
-      description: 'Subscribe on your internet \nrouters easily',
-      icon: require('../../../assets/WifiHigh.png'),
       iconType: 'image',
     },
   ];
@@ -386,6 +364,7 @@ const BillPaymentMainScreen = () => {
       const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
         'completed': 'Successful',
         'pending': 'Pending',
+        'processing': 'Pending',
         'failed': 'Failed',
       };
       const uiStatus = statusMap[status?.toLowerCase()] || selectedTransaction.status;

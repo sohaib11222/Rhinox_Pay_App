@@ -354,6 +354,7 @@ const DataRecharge = ({ route }: any) => {
       const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
         'completed': 'Successful',
         'pending': 'Pending',
+        'processing': 'Pending',
         'failed': 'Failed',
       };
       const uiStatus = statusMap[status?.toLowerCase()] || 'Pending';
@@ -376,7 +377,7 @@ const DataRecharge = ({ route }: any) => {
             })
           : selectedTransaction.date,
         status: uiStatus,
-        paymentMethod: details.paymentMethod || 'Mobile Money',
+        paymentMethod: details.paymentMethod,
         transferAmount: details.amount 
           ? `${details.currency || 'NGN'}${formatBalance(parseFloat(details.amount))}`
           : selectedTransaction.amount,

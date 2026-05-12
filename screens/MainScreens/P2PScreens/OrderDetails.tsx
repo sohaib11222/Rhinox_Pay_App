@@ -80,6 +80,7 @@ const OrderDetails = () => {
     const order = orderDetailsData.data;
     const vendor = order.vendor || {};
     const buyer = order.buyer || {};
+    const seller = order.seller || {};
     const paymentMethod = order.paymentMethod || {};
 
     // Determine user role by comparing current user ID with order participants
@@ -139,6 +140,13 @@ const OrderDetails = () => {
     const buyerName = buyer.name || 
       (buyer.firstName && buyer.lastName ? `${buyer.firstName} ${buyer.lastName}` : 
       buyer.firstName || buyer.lastName || 'Buyer');
+    const sellerName = seller.name ||
+      (seller.firstName && seller.lastName ? `${seller.firstName} ${seller.lastName}` :
+      seller.firstName || seller.lastName || 'Seller');
+    const peer = isUserBuyer ? seller : buyer;
+    const peerName = peer?.name ||
+      (peer?.firstName && peer?.lastName ? `${peer.firstName} ${peer.lastName}` :
+      peer?.firstName || peer?.lastName || peer?.email || (isUserBuyer ? sellerName : buyerName));
 
     // Format amounts
     const fiatAmount = order.fiatAmount 
@@ -194,6 +202,9 @@ const OrderDetails = () => {
       price: `${order.fiatCurrency || 'NGN'}${parseFloat(order.price || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
       vendorName,
       buyerName,
+      sellerName,
+      peerName,
+      peerEmail: peer?.email,
       paymentAccount,
       bankName,
       accountNumber,
@@ -669,7 +680,9 @@ const OrderDetails = () => {
                   params: {
                     orderId: orderId,
                     chatId: orderId,
-                    buyerName: orderData.buyerName,
+                    chatName: orderData.peerName,
+                    chatEmail: orderData.peerEmail,
+                    isP2PChat: true,
                   },
                 });
               }}

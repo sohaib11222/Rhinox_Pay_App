@@ -711,7 +711,7 @@ const CryptoAssetDetails = () => {
             network: selectedActivity.rawData?.metadata?.blockchain || assetData.name,
             quantity: selectedActivity.amount,
             dateTime: selectedActivity.date,
-            transactionId: selectedActivity.rawData?.reference || `TXN-${selectedActivity.id}`,
+            transactionId: selectedActivity.rawData?.reference || (selectedActivity.id ? String(selectedActivity.id) : undefined),
             amountNGN: selectedActivity.amount,
             receivingAddress: selectedActivity.rawData?.metadata?.toAddress,
             sendingAddress: selectedActivity.rawData?.metadata?.fromAddress,

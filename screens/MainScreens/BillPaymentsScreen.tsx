@@ -32,7 +32,7 @@ interface BillPaymentTransaction {
   amountUSD: string;
   date: string;
   status: 'Successful' | 'Pending' | 'Failed';
-  paymentMethod: 'Bank Transfer' | 'Mobile Money';
+  paymentMethod?: string;
   // For receipt modal
   transferAmount?: string;
   fee?: string;
@@ -156,6 +156,7 @@ const BillPaymentsScreen = () => {
       const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
         'completed': 'Successful',
         'pending': 'Pending',
+        'processing': 'Pending',
         'failed': 'Failed',
       };
       const uiStatus = statusMap[tx.status?.toLowerCase()] || 'Pending';
@@ -172,7 +173,7 @@ const BillPaymentsScreen = () => {
         amountUSD: currency === 'USD' ? formattedAmount : `$${formatBalance(amount * 0.001)}`, // Placeholder conversion
         date: date,
         status: uiStatus,
-        paymentMethod: tx.paymentMethod || 'Mobile Money',
+        paymentMethod: tx.paymentMethod,
         transferAmount: formattedAmount,
         fee: tx.fee ? `${currency}${formatBalance(tx.fee)}` : 'N0',
         paymentAmount: formattedAmount,
@@ -326,9 +327,9 @@ const BillPaymentsScreen = () => {
         transactionId: details.reference || selectedTransaction.transactionId,
         accountNumber: details.accountNumber || selectedTransaction.accountNumber,
         accountName: details.accountName || selectedTransaction.accountName,
-        billerType: details.provider?.code || details.provider?.name || selectedTransaction.billerType,
-        mobileNumber: details.accountNumber || selectedTransaction.mobileNumber,
-        plan: details.plan?.name || selectedTransaction.plan,
+        billerType: details.billerType || details.provider?.code || details.provider?.name || selectedTransaction.billerType,
+        mobileNumber: details.mobileNumber || details.accountNumber || selectedTransaction.mobileNumber,
+        plan: details.plan?.name || details.plan || selectedTransaction.plan,
         dateTime: details.createdAt
           ? new Date(details.createdAt).toLocaleString('en-US', {
               month: 'short',
@@ -345,6 +346,7 @@ const BillPaymentsScreen = () => {
       const statusMap: { [key: string]: 'Successful' | 'Pending' | 'Failed' } = {
         'completed': 'Successful',
         'pending': 'Pending',
+        'processing': 'Pending',
         'failed': 'Failed',
       };
       const uiStatus = statusMap[status?.toLowerCase()] || selectedTransaction.status;
@@ -562,7 +564,7 @@ const BillPaymentsScreen = () => {
         {showTypeDropdown && (
           <View style={[styles.dropdownContainer, { left: SCREEN_WIDTH * 0.047 + (SCREEN_WIDTH * 0.85 * 2/3) }]}>
             <View style={styles.dropdown}>
-              {['All', 'MTN', 'Airtel', 'GLO', '9mobile', 'DSTV', 'GOTV', 'EKEDC', 'PHED', 'Spectranet'].map((type) => (
+              {['All', 'Airtime', 'Data', 'Betting'].map((type) => (
                 <TouchableOpacity
                   key={type}
                   style={styles.dropdownItem}

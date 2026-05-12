@@ -344,7 +344,7 @@ const BuyOrder = () => {
       // Get vendor rating/score if available
       const vendorScore = order.vendor?.score 
         ? `${parseFloat(order.vendor.score).toFixed(0)}%`
-        : (order.vendor?.rating ? `${order.vendor.rating}%` : '98%');
+        : (order.vendor?.rating ? `${order.vendor.rating}%` : 'N/A');
       
       return {
         vendorName: vendorName,
@@ -384,7 +384,7 @@ const BuyOrder = () => {
       ? `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.name || 'User'
       : 'User';
 
-    // Fallback to route params or defaults - use ad details for vendor info
+    // Fallback to route params and loaded ad/payment details only. Do not fabricate order/payment data.
     const vendor = adDetailsData?.data?.vendor || {};
     const vendorName = vendor.name || 
       (vendor.firstName && vendor.lastName ? `${vendor.firstName} ${vendor.lastName}` : 
@@ -396,13 +396,15 @@ const BuyOrder = () => {
     // Get vendor rating/score from ad if available
     const vendorScore = adDetailsData?.data?.score 
       ? `${parseFloat(adDetailsData.data.score).toFixed(0)}%`
-      : '98%'; // Default fallback
+      : 'N/A';
     
     // Get vendor avatar if available (from vendor data or default)
     const vendorAvatar = vendor.avatar || vendor.profilePicture 
       ? { uri: vendor.avatar || vendor.profilePicture }
       : require('../../../assets/login/memoji.png');
     
+    const selectedMethodData = selectedPaymentMethod?.paymentMethodData || {};
+
     return {
       vendorName: vendorName,
       vendorAvatar: vendorAvatar,
@@ -410,20 +412,20 @@ const BuyOrder = () => {
       vendorRating: vendorScore,
       rate: adPrice,
       buyerName: currentUserName,
-      amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N25,000',
-      paymentAccount: routeParams?.paymentMethod || 'Bank Transfer',
-      price: adDetailsData?.data?.price ? `${adDetailsData.data.price} ${adDetailsData.data.fiatCurrency || 'NGN'}` : '1,500 NGN',
-      txId: '128DJ2I3I1DJKQKCM',
-      orderTime: 'Oct 16, 2025 - 07:22AM',
-      amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N20,000',
-      bankName: 'Opay',
-      accountNumber: '1234567890',
-      accountName: currentUserName,
-      usdtAmount: routeParams?.assetAmount || '15 USDT',
+      amountToBePaid: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N/A',
+      paymentAccount: routeParams?.paymentMethod || selectedPaymentMethod?.name || 'N/A',
+      price: adDetailsData?.data?.price ? `${adDetailsData.data.price} ${adDetailsData.data.fiatCurrency || 'NGN'}` : 'N/A',
+      txId: routeParams?.orderId || 'N/A',
+      orderTime: 'N/A',
+      amountToPay: routeParams?.amount ? `N${routeParams.amount.replace(/[^0-9]/g, '')}` : 'N/A',
+      bankName: selectedMethodData.bankName || 'N/A',
+      accountNumber: selectedMethodData.accountNumber || selectedMethodData.phoneNumber || 'N/A',
+      accountName: selectedMethodData.accountName || currentUserName,
+      usdtAmount: routeParams?.assetAmount || routeParams?.cryptoAmount || 'N/A',
       orderStatus: 'pending',
-      paymentMethodId: null,
+      paymentMethodId: selectedPaymentMethod?.id || null,
     };
-  }, [orderDetailsData?.data, routeParams, adDetailsData?.data, adPrice, currentUserData]);
+  }, [orderDetailsData?.data, routeParams, adDetailsData?.data, adPrice, currentUserData, selectedPaymentMethod]);
 
   // Set default payment method from route params if provided
   useEffect(() => {
@@ -1371,7 +1373,25 @@ const BuyOrder = () => {
           <ThemedText style={styles.statusText}>{getStepStatus()}</ThemedText>
           <View style={styles.amountSectionHeader}>
             <ThemedText style={styles.amountText}>{orderData.usdtAmount}</ThemedText>
-            <TouchableOpacity style={styles.openChatButton}>
+            <TouchableOpacity
+              style={styles.openChatButton}
+              onPress={() => {
+                if (!orderId) {
+                  showErrorAlert('Error', 'Order ID not available. Please wait for the order to be created.');
+                  return;
+                }
+                (navigation as any).navigate('Settings', {
+                  screen: 'ChatScreen',
+                  params: {
+                    orderId: String(orderId),
+                    chatName: orderData.vendorName,
+                    chatEmail: orderData.vendorEmail,
+                    reason: 'P2P Transaction',
+                    isP2PChat: true,
+                  },
+                });
+              }}
+            >
               <ThemedText style={styles.openChatText}>Open Chat</ThemedText>
               {currentStep === 2 && <View style={styles.chatNotificationDot} />}
             </TouchableOpacity>
@@ -1993,7 +2013,7 @@ const BuyOrder = () => {
                         style={[{ marginBottom: -1, width: 18, height: 16 }]}
                         resizeMode="cover"
                       />
-                      <ThemedText style={styles.balanceAmount}>N200,000</ThemedText>
+                      <ThemedText style={styles.balanceAmount}>N0.00</ThemedText>
                     </View>
                   </View>
                   <TouchableOpacity
@@ -2205,7 +2225,7 @@ const BuyOrder = () => {
             </View>
             <ThemedText style={styles.successTitle}>Complete</ThemedText>
             <ThemedText style={styles.successMessage}>
-              You have successfully sent N10,000 from your Rhinoxpay NGN wallet
+              Your payment was submitted successfully
             </ThemedText>
             <View style={styles.successModalButtons}>
               <TouchableOpacity style={styles.viewTransactionButton} onPress={handleSuccessModalClose}>

@@ -571,6 +571,7 @@ const PaymentSettings = () => {
     if (paymentMethodType === 'bank_account') {
       return accountType.trim() !== '' && 
              bankName.trim() !== '' && 
+             bankCode.trim() !== '' &&
              accountNumber.trim() !== '' && 
              accountNumber.length >= 8 &&
              accountName.trim() !== '' &&
@@ -587,7 +588,7 @@ const PaymentSettings = () => {
              currency.trim() !== '';
     }
     return false;
-  }, [paymentMethodType, accountType, bankName, accountNumber, accountName, phoneNumber, selectedProviderId, countryCode, currency]);
+  }, [paymentMethodType, accountType, bankName, bankCode, accountNumber, accountName, phoneNumber, selectedProviderId, countryCode, currency]);
 
   return (
     <View style={styles.container}>
@@ -1143,7 +1144,7 @@ const PaymentSettings = () => {
                   <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
                 )}
               </TouchableOpacity>
-              <TouchableOpacity
+              {false && <TouchableOpacity
                 style={styles.bankListItem}
                 onPress={() => handlePaymentTypeSelect('mobile_money')}
               >
@@ -1153,7 +1154,7 @@ const PaymentSettings = () => {
                 ) : (
                   <MaterialCommunityIcons name="checkbox-blank-outline" size={24 * SCALE} color="rgba(255, 255, 255, 0.3)" />
                 )}
-              </TouchableOpacity>
+              </TouchableOpacity>}
               <TouchableOpacity
                 style={styles.bankListItem}
                 onPress={() => handlePaymentTypeSelect('rhinoxpay_id')}

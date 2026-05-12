@@ -31,7 +31,7 @@ interface P2PTransaction {
   amountUSD: string;
   date: string;
   status: 'Successful' | 'Pending' | 'Failed';
-  paymentMethod: 'Bank Transfer' | 'Mobile Money';
+  paymentMethod?: string;
   // For receipt modal
   transferAmount?: string;
   fee?: string;
@@ -51,6 +51,9 @@ interface P2PTransaction {
   merchantContact?: string;
   reviewText?: string;
   hasLiked?: boolean;
+  orderId?: string;
+  chatName?: string;
+  chatEmail?: string;
 }
 
 const P2PTransactionsScreen = () => {
@@ -97,156 +100,88 @@ const P2PTransactionsScreen = () => {
     refreshDelay: 2000,
   });
 
-  // Map API data to P2PTransaction format, fallback to mock data
+  // Map API data to P2PTransaction format. Do not show placeholder transactions when API data is unavailable.
   const p2pTransactions: P2PTransaction[] = useMemo(() => {
     // If API data is available, map it to the expected format
     if (p2pTransactionsData?.data?.transactions || p2pTransactionsData?.data?.data) {
       const apiTransactions = p2pTransactionsData.data.transactions || p2pTransactionsData.data.data || [];
-      return apiTransactions.map((tx: any) => ({
-        id: tx.id || tx.transactionId || String(Math.random()),
-        recipientName: tx.recipientName || tx.merchantName || tx.p2pType || 'P2P Transaction',
-        amountNGN: tx.amountNGN || tx.amount || 'N0.00',
-        amountUSD: tx.amountUSD || tx.amountUSD || '$0.00',
-        date: tx.date || tx.createdAt || new Date().toLocaleDateString(),
-        status: tx.status || 'Pending',
-        paymentMethod: tx.paymentMethod || 'Bank Transfer',
-        transferAmount: tx.transferAmount || tx.amount,
-        fee: tx.fee || '0',
-        paymentAmount: tx.paymentAmount || tx.amount,
-        country: tx.country,
-        bank: tx.bank,
-        accountNumber: tx.accountNumber,
-        accountName: tx.accountName,
-        transactionId: tx.transactionId || tx.id,
-        dateTime: tx.dateTime || tx.createdAt,
-        p2pType: tx.p2pType || (tx.type === 'buy' ? 'Crypto Buy' : 'Crypto Sell'),
-        price: tx.price,
-        totalQty: tx.totalQty || tx.quantity,
-        txFee: tx.txFee || tx.fee,
-        merchantName: tx.merchantName || tx.recipientName,
-        merchantContact: tx.merchantContact,
-        reviewText: tx.reviewText,
-        hasLiked: tx.hasLiked,
-      }));
+      const normalizeStatus = (status?: string): 'Successful' | 'Pending' | 'Failed' => {
+        const statusLower = status?.toLowerCase();
+        if (statusLower === 'completed' || statusLower === 'successful' || statusLower === 'success') return 'Successful';
+        if (statusLower === 'failed' || statusLower === 'fail') return 'Failed';
+        return 'Pending';
+      };
+
+      const formatFiatAmount = (value?: string | number, currency = 'NGN') => {
+        if (value === undefined || value === null || value === '') return 'N0.00';
+        const raw = String(value);
+        if (/^[A-Z]{3}/.test(raw) || raw.startsWith('N') || raw.startsWith('₦') || raw.startsWith('$')) {
+          return raw;
+        }
+        const numeric = parseFloat(raw);
+        if (isNaN(numeric)) return raw;
+        const symbol = currency === 'NGN' ? 'N' : `${currency} `;
+        return `${symbol}${numeric.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      };
+
+      return apiTransactions.map((tx: any) => {
+        const metadata = tx.metadata || {};
+        const p2pOrder = tx.p2pOrder || tx.order || metadata.p2pOrder || {};
+        const peer = p2pOrder.peer || {};
+        const paymentMethod = p2pOrder.paymentMethod || {};
+        const orderId = tx.orderId || metadata.orderId || p2pOrder.id;
+        const peerName = tx.merchantName || tx.chatName || peer.name || tx.recipientName;
+        const peerEmail = tx.merchantContact || tx.chatEmail || peer.email || peer.phone;
+        const fiatCurrency = p2pOrder.fiatCurrency || tx.currency || 'NGN';
+        const fiatAmount = p2pOrder.fiatAmount || tx.transferAmount || tx.amountNGN || tx.amount;
+        const cryptoAmount = tx.totalQty || tx.quantity || (
+          p2pOrder.cryptoAmount && p2pOrder.cryptoCurrency
+            ? `${p2pOrder.cryptoAmount} ${p2pOrder.cryptoCurrency}`
+            : undefined
+        );
+
+        return {
+          id: tx.id || tx.transactionId || String(orderId || Math.random()),
+          recipientName: peerName || tx.p2pType || 'P2P Transaction',
+          amountNGN: formatFiatAmount(fiatAmount, fiatCurrency),
+          amountUSD: tx.amountUSD || cryptoAmount || '',
+          date: tx.date || tx.createdAt || '',
+          status: normalizeStatus(tx.status),
+          paymentMethod: tx.paymentMethod || paymentMethod.bankName || paymentMethod.provider?.name || paymentMethod.type,
+          transferAmount: formatFiatAmount(fiatAmount, fiatCurrency),
+          fee: tx.fee || '0',
+          paymentAmount: tx.paymentAmount || formatFiatAmount(fiatAmount, fiatCurrency),
+          country: tx.country,
+          bank: tx.bank || paymentMethod.bankName,
+          accountNumber: tx.accountNumber,
+          accountName: tx.accountName || paymentMethod.accountName,
+          transactionId: tx.transactionId || tx.reference || tx.id,
+          dateTime: tx.dateTime || tx.createdAt,
+          p2pType: tx.p2pType || p2pOrder.p2pType || (p2pOrder.userAction === 'sell' ? 'Crypto Sell' : 'Crypto Buy'),
+          price: tx.price || p2pOrder.price,
+          totalQty: cryptoAmount,
+          txFee: tx.txFee || tx.fee,
+          merchantName: peerName,
+          merchantContact: peerEmail,
+          reviewText: tx.reviewText,
+          hasLiked: tx.hasLiked,
+          orderId: orderId ? String(orderId) : undefined,
+          chatName: peerName,
+          chatEmail: peerEmail,
+        };
+      });
     }
-    
-    // Fallback to mock data if API data is not available
-    return [
-    {
-      id: '1',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N10,000',
-      amountUSD: '$25.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      transferAmount: 'N10,000',
-      fee: '0',
-      paymentAmount: 'N10,000',
-      p2pType: 'Crypto Sell',
-      price: '1,500 NGN',
-      totalQty: '5.2 USDT',
-      txFee: '0',
-      transactionId: '128DJ2I31IDJKQKCM',
-      dateTime: 'Oct 16, 2025 - 07:22AM',
-      merchantName: 'Qamar Malik',
-      merchantContact: 'chat',
-      reviewText: 'He is fast and reliable',
-      hasLiked: true,
-      bank: 'Wema Bank',
-      accountNumber: '0123456789',
-      accountName: 'Opay',
-    },
-    {
-      id: '2',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N5,000',
-      amountUSD: '$12.50',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      p2pType: 'Crypto Buy',
-      price: '1,500 NGN',
-      totalQty: '2.5 USDT',
-      merchantName: 'Adebisi Lateefat',
-    },
-    {
-      id: '3',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N15,000',
-      amountUSD: '$37.50',
-      date: 'Oct 15,2025',
-      status: 'Pending',
-      paymentMethod: 'Mobile Money',
-      p2pType: 'Crypto Sell',
-      merchantName: 'Ogunleye Funke',
-    },
-    {
-      id: '4',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N20,000',
-      amountUSD: '$50.00',
-      date: 'Oct 15,2025',
-      status: 'Failed',
-      paymentMethod: 'Bank Transfer',
-      p2pType: 'Crypto Buy',
-      merchantName: 'Ibrahim Musa',
-    },
-    {
-      id: '5',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N8,000',
-      amountUSD: '$20.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      p2pType: 'Crypto Sell',
-      merchantName: 'Chukwuemeka Nneka',
-    },
-    {
-      id: '6',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N12,000',
-      amountUSD: '$30.00',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      p2pType: 'Crypto Buy',
-      merchantName: 'Ogunleye Funke',
-    },
-    {
-      id: '7',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N7,500',
-      amountUSD: '$18.75',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Mobile Money',
-      p2pType: 'Crypto Sell',
-      merchantName: 'Ogunleye Funke',
-    },
-    {
-      id: '8',
-      recipientName: 'USDT Buy',
-      amountNGN: 'N9,000',
-      amountUSD: '$22.50',
-      date: 'Oct 15,2025',
-      status: 'Successful',
-      paymentMethod: 'Bank Transfer',
-      p2pType: 'Crypto Buy',
-      merchantName: 'Ogunleye Funke',
-    },
-    ];
+    return [];
   }, [p2pTransactionsData]);
 
   const summaryData = {
     incoming: {
-      ngn: '2,000,000.00',
-      usd: '$20,000',
+      ngn: '0.00',
+      usd: '$0.00',
     },
     outgoing: {
-      ngn: '500.00',
-      usd: '$0.001',
+      ngn: '0.00',
+      usd: '$0.00',
     },
   };
 

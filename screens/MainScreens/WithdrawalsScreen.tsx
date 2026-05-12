@@ -78,6 +78,7 @@ const WithdrawalsScreen = () => {
       case 'completed':
         return 'Successful';
       case 'pending':
+      case 'processing':
         return 'Pending';
       case 'failed':
         return 'Failed';
@@ -125,6 +126,8 @@ const WithdrawalsScreen = () => {
       const paymentMethod = mapPaymentMethodToUI(tx.channel, tx.paymentMethod);
       const amount = parseFloat(tx.amount || '0');
       const currency = tx.currency || 'NGN';
+      const metadata = tx.metadata || {};
+      const recipientInfo = tx.recipientInfo || metadata.recipientInfo || {};
       
       // Format amounts
       const amountFormatted = formatAmount(amount, currency);
@@ -145,8 +148,8 @@ const WithdrawalsScreen = () => {
 
       // Get recipient name from recipientInfo or description
       let recipientName = 'Unknown';
-      if (tx.recipientInfo?.name) {
-        recipientName = tx.recipientInfo.name;
+      if (recipientInfo.name || recipientInfo.accountName) {
+        recipientName = recipientInfo.name || recipientInfo.accountName;
       } else if (tx.description) {
         // Try to extract name from description like "Transfer 25 NGN to Name Hajah"
         const match = tx.description.match(/to\s+([^,]+)/i);
@@ -167,9 +170,9 @@ const WithdrawalsScreen = () => {
         fee: feeFormatted,
         paymentAmount: formatAmount(totalAmount, currency),
         country: tx.country || undefined,
-        bank: tx.metadata?.bankAccount?.bankName || undefined,
-        accountNumber: tx.metadata?.bankAccount?.accountNumber || undefined,
-        accountName: tx.metadata?.bankAccount?.accountName || tx.recipientInfo?.name || undefined,
+        bank: metadata.bankName || recipientInfo.bankName || undefined,
+        accountNumber: metadata.accountNumber || recipientInfo.accountNumber || recipientInfo.phoneNumber || undefined,
+        accountName: metadata.accountName || recipientInfo.accountName || recipientInfo.name || undefined,
         transactionId: tx.reference || String(tx.id),
         dateTime: dateTime,
       };

@@ -147,7 +147,7 @@ const AccountSecurity = () => {
   // 2FA Authenticator Modal States
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [authenticatorCode, setAuthenticatorCode] = useState('');
-  const authenticatorSetupCode = 'ADF1235678'; // TODO: Replace with API call
+  const authenticatorSetupCode = '';
 
   // Setup Pin Modal States
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -446,6 +446,10 @@ const AccountSecurity = () => {
   };
 
   const handleCopyCode = async () => {
+    if (!authenticatorSetupCode) {
+      showErrorAlert('Unavailable', 'Authenticator setup code is not available yet.');
+      return;
+    }
     try {
       await Clipboard.setStringAsync(authenticatorSetupCode);
       showSuccessAlert('Copied', 'Authenticator code copied to clipboard');
@@ -965,10 +969,11 @@ const AccountSecurity = () => {
 
                 {/* Code Display Box */}
                 <View style={styles.codeDisplayBox}>
-                  <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode}</ThemedText>
+                  <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode || 'Unavailable'}</ThemedText>
                   <TouchableOpacity
                     style={styles.copyCodeButton}
                     onPress={handleCopyCode}
+                    disabled={!authenticatorSetupCode}
                   >
                     <ThemedText style={styles.copyCodeButtonText}>Copy Code</ThemedText>
                   </TouchableOpacity>

@@ -30,7 +30,7 @@ interface FundTransaction {
   amountNGN: string;
   amountUSD: string;
   date: string;
-  status: 'Successful' | 'Pending' | 'Failed';
+  status: 'Successful' | 'Pending' | 'Failed' | 'Cancelled';
   paymentMethod?: 'Bank Transfer' | 'Mobile Money' | 'Conversion' | 'P2P Transaction';
   // For receipt modal
   transferAmount?: string;
@@ -78,14 +78,18 @@ const FundTransactionsScreen = () => {
   };
 
   // Map API status to UI status
-  const mapStatusToUI = (status: string): 'Successful' | 'Pending' | 'Failed' => {
+  const mapStatusToUI = (status: string): 'Successful' | 'Pending' | 'Failed' | 'Cancelled' => {
     switch (status?.toLowerCase()) {
       case 'completed':
         return 'Successful';
       case 'pending':
+      case 'processing':
         return 'Pending';
       case 'failed':
         return 'Failed';
+      case 'cancelled':
+      case 'canceled':
+        return 'Cancelled';
       default:
         return 'Pending';
     }
@@ -105,6 +109,11 @@ const FundTransactionsScreen = () => {
       default:
         return undefined;
     }
+  };
+
+  const formatCountryForReceipt = (country?: string | null) => {
+    if (!country) return undefined;
+    return country.toUpperCase() === 'NG' ? 'Nigeria' : country;
   };
 
   // Fetch deposits from API
@@ -163,15 +172,15 @@ const FundTransactionsScreen = () => {
         transferAmount: amountFormatted,
         fee: feeFormatted,
         paymentAmount: formatAmount(creditedAmount, currency),
-        country: tx.country || undefined,
-        bank: tx.bankAccount?.bankName || undefined,
-        accountNumber: tx.bankAccount?.accountNumber || undefined,
-        accountName: tx.bankAccount?.accountName || undefined,
+        country: formatCountryForReceipt(tx.country || (tx.channel === 'bank_transfer' ? 'NG' : undefined)),
+        bank: tx.virtualAccount?.bankName || tx.bankAccount?.bankName || undefined,
+        accountNumber: tx.virtualAccount?.accountNumber || tx.bankAccount?.accountNumber || undefined,
+        accountName: tx.virtualAccount?.accountName || tx.bankAccount?.accountName || undefined,
         transactionId: tx.reference || String(tx.id),
         dateTime: dateTime,
         fundingRoute: paymentMethod || tx.channel,
-        route: tx.provider?.name || undefined,
-        provider: tx.provider?.name || undefined,
+        route: paymentMethod || tx.channel,
+        provider: paymentMethod || tx.provider?.name || undefined,
       };
     });
   }, [depositsData?.data?.transactions]);
@@ -200,6 +209,8 @@ const FundTransactionsScreen = () => {
       case 'Pending':
         return '#ffa500'; // Orange
       case 'Failed':
+        return '#ff0000'; // Red
+      case 'Cancelled':
         return '#ff0000'; // Red
       default:
         return '#008000';

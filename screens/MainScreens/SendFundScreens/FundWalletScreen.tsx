@@ -71,8 +71,8 @@ const FundWalletScreen = () => {
         }, [navigation])
     );
 
-    const [balance, setBalance] = useState('200,000');
-    const [amount, setAmount] = useState('2,000,000');
+    const [balance, setBalance] = useState('0');
+    const [amount, setAmount] = useState('');
     const [selectedCountry, setSelectedCountry] = useState<number | null>(1);
     const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
     const [showCountryModal, setShowCountryModal] = useState(false);
@@ -88,10 +88,10 @@ const FundWalletScreen = () => {
 
     // Bank details
     const bankDetails = {
-        bankName: 'Gratuity Bank',
-        accountNumber: '1359131270',
-        accountName: 'Yellow card financial',
-        reference: '02443382711',
+        bankName: '',
+        accountNumber: '',
+        accountName: '',
+        reference: '',
     };
 
     // Countdown timer
@@ -672,7 +672,7 @@ const FundWalletScreen = () => {
                     paymentAmount: `N${amount.replace(/,/g, '')}`,
                     country: selectedCountryName,
                     recipientName: bankDetails.accountName,
-                    transactionId: `FW${Date.now().toString().slice(-10)}`,
+                    transactionId: undefined,
                     dateTime: new Date().toLocaleString('en-US', {
                         month: 'short',
                         day: 'numeric',

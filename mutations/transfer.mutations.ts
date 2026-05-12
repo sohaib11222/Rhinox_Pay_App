@@ -20,6 +20,7 @@ export interface InitiateTransferRequest {
   recipientUserId?: string;
   accountNumber?: string;
   bankName?: string;
+  bankCode?: string;
   providerId?: number; // Required for mobile_money channel (integer, not string)
   phoneNumber?: string; // Required for mobile_money channel
 }
@@ -46,11 +47,11 @@ export const useInitiateTransfer = (
 };
 
 /**
- * Verify and complete transfer with email code and PIN
+ * Verify and complete transfer with PIN
  */
 export interface VerifyTransferRequest {
   transactionId: number; // API expects integer
-  emailCode: string;
+  emailCode?: string; // Backward compatible for older screens; backend currently verifies PIN only.
   pin: string;
 }
 

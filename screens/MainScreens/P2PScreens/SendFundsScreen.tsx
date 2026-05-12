@@ -424,7 +424,6 @@ const SendFundsScreen = () => {
 
 
   const handleSecurityComplete = () => {
-    // Only require PIN, email code can be dummy value
     if (!pin || pin.length < 4) {
       showErrorAlert('Error', 'Please enter your PIN');
       return;
@@ -435,13 +434,10 @@ const SendFundsScreen = () => {
       return;
     }
 
-    // Use dummy email code if not provided (for testing/development)
-    const emailCodeToUse = emailCode || '000000';
-
     // Verify transfer with email code and PIN
     verifyMutation.mutate({
       transactionId: Number(pendingTransactionId),
-      emailCode: emailCodeToUse,
+      emailCode,
       pin: pin,
     });
   };
@@ -1238,24 +1234,28 @@ const SendFundsScreen = () => {
       {/* Transaction Receipt Modal */}
       <TransactionReceiptModal
         visible={showReceiptModal}
-        transaction={{
-          transactionType: 'send',
-          transactionTitle: `Send Funds - ${userName}`,
-          transferAmount: `N${amount.replace(/,/g, '')}`,
-          fee: 'N0',
-          paymentAmount: `N${amount.replace(/,/g, '')}`,
-          country: selectedCountryName,
-          recipientName: userName,
-          transactionId: `SF${Date.now().toString().slice(-10)}`,
-          dateTime: new Date().toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-          paymentMethod: 'RhinoxPay ID',
-        }}
+        transaction={(() => {
+          const dateValue = pendingTransactionData?.completedAt || pendingTransactionData?.createdAt;
+          return {
+            transactionType: 'send',
+            transactionTitle: `Send Funds - ${userName}`,
+            transferAmount: `N${amount.replace(/,/g, '')}`,
+            fee: pendingTransactionData?.fee ? `N${pendingTransactionData.fee}` : 'N0',
+            paymentAmount: pendingTransactionData?.totalAmount ? `N${pendingTransactionData.totalAmount}` : `N${amount.replace(/,/g, '')}`,
+            country: selectedCountryName,
+            recipientName: userName,
+            transactionId: pendingTransactionData?.reference || (pendingTransactionId ? String(pendingTransactionId) : undefined),
+            dateTime: dateValue ? new Date(dateValue).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            }) : undefined,
+            paymentMethod: pendingTransactionData?.paymentMethod || 'RhinoxPay ID',
+            status: pendingTransactionData?.status,
+          };
+        })()}
         onClose={handleReceiptClose}
       />
     </KeyboardAvoidingView>

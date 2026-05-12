@@ -24,7 +24,7 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetSupportChatDetails } from '../../../queries/support.queries';
 import { useSendSupportMessage, useMarkSupportMessagesRead } from '../../../mutations/support.mutations';
-import { useGetP2PChatMessages } from '../../../queries/p2p.queries';
+import { useGetP2PChatMessages, useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useSendP2PMessage, useMarkMessagesAsRead } from '../../../mutations/p2p.mutations';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { showErrorAlert, showWarningAlert, showAlert } from '../../../utils/customAlert';
@@ -44,7 +44,20 @@ interface Message {
 const ChatScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { chatName, chatEmail, reason, chatId, orderId, isP2PChat } = route.params as any;
+  const {
+    chatName,
+    chatEmail,
+    buyerName,
+    buyerEmail,
+    sellerName,
+    sellerEmail,
+    vendorName,
+    vendorEmail,
+    reason,
+    chatId,
+    orderId,
+    isP2PChat,
+  } = route.params as any;
   const [message, setMessage] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -53,6 +66,8 @@ const ChatScreen = () => {
   // Store image URIs for sent messages (keyed by message text + timestamp)
   const [sentImageMap, setSentImageMap] = useState<Map<string, string>>(new Map());
   const scrollViewRef = useRef<ScrollView>(null);
+  // Determine if this is a P2P chat
+  const isP2P = isP2PChat || !!orderId;
 
   // Get current user to determine if message is from current user
   const { data: currentUserData } = useGetCurrentUser();
@@ -64,9 +79,6 @@ const ChatScreen = () => {
       console.log('[ChatScreen] Current user ID:', currentUserId, 'Type:', typeof currentUserId);
     }
   }, [currentUserId, isP2P]);
-
-  // Determine if this is a P2P chat
-  const isP2P = isP2PChat || !!orderId;
 
   // Fetch support chat details with messages (for support chat)
   const {
@@ -85,6 +97,40 @@ const ChatScreen = () => {
     error: p2pChatMessagesError,
     refetch: refetchP2PChatMessages,
   } = useGetP2PChatMessages(isP2P && orderId ? orderId : '');
+
+  const {
+    data: p2pOrderDetailsData,
+  } = useGetP2POrderDetails(isP2P && orderId ? String(orderId) : '', {
+    enabled: !!(isP2P && orderId),
+  } as any);
+
+  const formatUserName = (user?: any) => {
+    if (!user) return '';
+    const name = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+    return name || user.name || user.email || '';
+  };
+
+  const p2pPeer = useMemo(() => {
+    if (!isP2P || !p2pOrderDetailsData?.data) return null;
+    const order = p2pOrderDetailsData.data;
+    const currentId = currentUserId != null ? Number(currentUserId) : null;
+    const candidates = [order.buyer, order.seller, order.vendor, order.user].filter(Boolean);
+    const peer = currentId != null
+      ? candidates.find((candidate: any) => Number(candidate.id) !== currentId)
+      : order.vendor || order.seller || order.buyer || order.user;
+
+    if (!peer) return null;
+
+    return {
+      name: formatUserName(peer),
+      email: peer.email || '',
+      reason: `P2P ${order.isUserSeller ? 'Sell' : 'Buy'} Order`,
+    };
+  }, [isP2P, p2pOrderDetailsData?.data, currentUserId]);
+
+  const displayChatName = p2pPeer?.name || chatName || buyerName || sellerName || vendorName || 'P2P Trader';
+  const displayChatEmail = p2pPeer?.email || chatEmail || buyerEmail || sellerEmail || vendorEmail || '';
+  const displayReason = p2pPeer?.reason || reason || (isP2P ? 'P2P Transaction' : 'Support Chat');
 
   // Poll for new P2P messages
   useEffect(() => {
@@ -471,7 +517,7 @@ const ChatScreen = () => {
   };
 
   const handleSendImage = async (imageUri: string) => {
-    if (!chatId) {
+    if (!isP2P && !chatId) {
       showErrorAlert('Error', 'Chat ID not found. Please try again.');
       return;
     }
@@ -594,7 +640,7 @@ const ChatScreen = () => {
           style={styles.headerAvatar}
         />
         <View style={styles.headerInfo}>
-          <ThemedText style={styles.headerName}>Rhinox Agent</ThemedText>
+          <ThemedText style={styles.headerName}>{isP2P ? displayChatName : 'Rhinox Agent'}</ThemedText>
           <ThemedText style={styles.headerStatus}>Online</ThemedText>
         </View>
       </View>
@@ -652,19 +698,19 @@ const ChatScreen = () => {
             <View style={styles.detailRow}>
               <ThemedText style={styles.detailLabel}>Name</ThemedText>
               <ThemedText style={styles.detailValue}>
-                {chatDetailsData?.data?.name || chatName || 'N/A'}
+                {isP2P ? displayChatName : (chatDetailsData?.data?.name || chatName || 'N/A')}
               </ThemedText>
             </View>
             <View style={styles.detailRow}>
               <ThemedText style={styles.detailLabel}>Email</ThemedText>
               <ThemedText style={styles.detailValue}>
-                {chatDetailsData?.data?.email || chatEmail || 'N/A'}
+                {isP2P ? (displayChatEmail || 'N/A') : (chatDetailsData?.data?.email || chatEmail || 'N/A')}
               </ThemedText>
             </View>
             <View style={styles.detailRow}>
               <ThemedText style={styles.detailLabel}>Reason</ThemedText>
               <ThemedText style={styles.detailValue}>
-                {chatDetailsData?.data?.reason || reason || 'N/A'}
+                {isP2P ? displayReason : (chatDetailsData?.data?.reason || reason || 'N/A')}
               </ThemedText>
             </View>
           </View>

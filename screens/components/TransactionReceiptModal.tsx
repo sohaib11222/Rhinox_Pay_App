@@ -40,7 +40,7 @@ interface TransactionReceiptModalProps {
     dateTime?: string;
     amountNGN?: string;
     // Transaction status
-    status?: 'Successful' | 'Pending' | 'Failed' | 'successful' | 'pending' | 'failed' | 'Completed' | 'completed';
+    status?: 'Successful' | 'Pending' | 'Failed' | 'Cancelled' | 'successful' | 'pending' | 'failed' | 'cancelled' | 'canceled' | 'Completed' | 'completed';
     // Fund transaction fields
     fundingRoute?: string;
     route?: string;
@@ -59,6 +59,9 @@ interface TransactionReceiptModalProps {
     txFee?: string;
     merchantName?: string;
     merchantContact?: string;
+    orderId?: string | number;
+    chatName?: string;
+    chatEmail?: string;
     reviewText?: string;
     hasLiked?: boolean;
     // Crypto deposit specific fields
@@ -174,7 +177,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
     if (transaction.transactionTitle.includes('Converted') || transaction.transactionTitle.includes('NGN to')) {
       return 'convert';
     }
-    if (transaction.transactionTitle.includes('Deposited') || transaction.paymentMethod === 'Mobile Money') {
+    if (transaction.transactionTitle.includes('Deposit') || transaction.transactionTitle.includes('Deposited') || transaction.paymentMethod === 'Mobile Money') {
       return 'deposit';
     }
     if (transaction.transactionTitle.includes('P2P') || transaction.p2pType) {
@@ -196,22 +199,89 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
   };
 
   const transactionType = getTransactionType();
-  const amount = transaction.transferAmount || transaction.amountNGN || 'N200,000';
+  const displayValue = (value?: string | number | null) => {
+    if (value === null || value === undefined || value === '') return 'N/A';
+    return String(value);
+  };
+
+  const copyIfAvailable = (value: string | undefined, label: string) => {
+    if (!value) {
+      showInfoAlert('Unavailable', `${label} is not available for this transaction`);
+      return;
+    }
+    copyToClipboard(value, label);
+  };
+
+  const handleOpenP2PChat = () => {
+    if (!transaction.orderId) {
+      showInfoAlert('Unavailable', 'Chat is not available for this transaction yet');
+      return;
+    }
+
+    onClose();
+    (navigation as any).navigate('Settings', {
+      screen: 'ChatScreen',
+      params: {
+        orderId: String(transaction.orderId),
+        chatName: transaction.chatName || transaction.merchantName || transaction.recipientName,
+        chatEmail: transaction.chatEmail || transaction.merchantContact,
+        reason: 'P2P Transaction',
+        isP2PChat: true,
+      },
+    });
+  };
+
+  const isBankTransferLike = () => {
+    const method = transaction.paymentMethod?.toLowerCase();
+    const route = (transaction.route || transaction.fundingRoute || '').toLowerCase();
+    const title = transaction.transactionTitle?.toLowerCase() || '';
+    return (
+      method === 'bank transfer' ||
+      route === 'bank transfer' ||
+      route === 'bank_transfer' ||
+      title.includes('bank transfer') ||
+      title.includes('palmpay virtual')
+    );
+  };
+
+  const displayPaymentMethod = (value?: string) => {
+    const lowerValue = value?.toLowerCase();
+    if (!lowerValue || ['failed', 'pending', 'processing', 'completed', 'successful', 'success'].includes(lowerValue)) {
+      if (isBankTransferLike()) return 'Bank Transfer';
+      return 'N/A';
+    }
+    return value;
+  };
+
+  const displayCountry = () => {
+    if (transaction.country) {
+      return transaction.country.toUpperCase() === 'NG' ? 'Nigeria' : transaction.country;
+    }
+    if (isBankTransferLike()) {
+      return 'Nigeria';
+    }
+    return undefined;
+  };
+
+  const amount = transaction.transferAmount || transaction.amountNGN || '0';
   
-  // Normalize status to 'Successful' | 'Pending' | 'Failed'
-  const normalizeStatus = (status?: string): 'Successful' | 'Pending' | 'Failed' => {
-    if (!status) return 'Successful'; // Default to successful if no status
+  // Normalize status to receipt states.
+  const normalizeStatus = (status?: string): 'Successful' | 'Pending' | 'Failed' | 'Cancelled' => {
+    if (!status) return 'Pending';
     const statusLower = status.toLowerCase();
     if (statusLower === 'completed' || statusLower === 'successful' || statusLower === 'success') {
       return 'Successful';
     }
-    if (statusLower === 'pending') {
+    if (statusLower === 'pending' || statusLower === 'processing') {
       return 'Pending';
     }
     if (statusLower === 'failed' || statusLower === 'fail') {
       return 'Failed';
     }
-    return 'Successful'; // Default
+    if (statusLower === 'cancelled' || statusLower === 'canceled' || statusLower === 'cancel') {
+      return 'Cancelled';
+    }
+    return 'Pending';
   };
 
   const transactionStatus = normalizeStatus(transaction.status);
@@ -219,42 +289,48 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
   // Get title text based on transaction type and status
   const getTitleText = () => {
     const statusText = transactionStatus === 'Successful' ? 'Successful' : 
-                      transactionStatus === 'Pending' ? 'Pending' : 'Failed';
+                      transactionStatus === 'Pending' ? 'Pending' :
+                      transactionStatus === 'Cancelled' ? 'Cancelled' : 'Failed';
     
     switch (transactionType) {
       case 'convert':
         return transactionStatus === 'Successful' ? `${amount} Converted` : 
-               transactionStatus === 'Pending' ? `Conversion Pending` : `Conversion Failed`;
+               transactionStatus === 'Pending' ? `Conversion Pending` :
+               transactionStatus === 'Cancelled' ? `Conversion Cancelled` : `Conversion Failed`;
       case 'deposit':
         return transactionStatus === 'Successful' ? `${amount} Deposited` : 
-               transactionStatus === 'Pending' ? `Deposit Pending` : `Deposit Failed`;
+               transactionStatus === 'Pending' ? `Deposit Pending` :
+               transactionStatus === 'Cancelled' ? `Deposit Cancelled` : `Deposit Failed`;
       case 'fund':
         return transactionStatus === 'Successful' ? `${amount} Received` : 
-               transactionStatus === 'Pending' ? `Receipt Pending` : `Receipt Failed`;
+               transactionStatus === 'Pending' ? `Receipt Pending` :
+               transactionStatus === 'Cancelled' ? `Receipt Cancelled` : `Receipt Failed`;
       case 'withdrawal':
         return transactionStatus === 'Successful' ? `Withdrawal Successful` : 
-               transactionStatus === 'Pending' ? `Withdrawal Pending` : `Withdrawal Failed`;
+               transactionStatus === 'Pending' ? `Withdrawal Pending` :
+               transactionStatus === 'Cancelled' ? `Withdrawal Cancelled` : `Withdrawal Failed`;
       case 'billPayment':
         return statusText;
       case 'p2p':
-        // Format: "20 USDT Sold" or "20 USDT Bought"
-        const cryptoAmount = transaction.totalQty || '20 USDT';
+        const cryptoAmount = transaction.totalQty || amount;
         const p2pAction = transaction.p2pType === 'Crypto Sell' ? 'Sold' : 'Bought';
         return transactionStatus === 'Successful' ? `${cryptoAmount} ${p2pAction}` : 
-               transactionStatus === 'Pending' ? `P2P Transaction Pending` : `P2P Transaction Failed`;
+               transactionStatus === 'Pending' ? `P2P Transaction Pending` :
+               transactionStatus === 'Cancelled' ? `P2P Transaction Cancelled` : `P2P Transaction Failed`;
       case 'cryptoDeposit':
-        // Format: "0.25 ETH Received"
-        const depositQuantity = transaction.quantity || '0.25 ETH';
+        const depositQuantity = transaction.quantity || amount;
         return transactionStatus === 'Successful' ? `${depositQuantity} Received` : 
-               transactionStatus === 'Pending' ? `Crypto Deposit Pending` : `Crypto Deposit Failed`;
+               transactionStatus === 'Pending' ? `Crypto Deposit Pending` :
+               transactionStatus === 'Cancelled' ? `Crypto Deposit Cancelled` : `Crypto Deposit Failed`;
       case 'cryptoWithdrawal':
-        // Format: "0.25 ETH Sent"
-        const withdrawalQuantity = transaction.quantity || '0.25 ETH';
+        const withdrawalQuantity = transaction.quantity || amount;
         return transactionStatus === 'Successful' ? `${withdrawalQuantity} Sent` : 
-               transactionStatus === 'Pending' ? `Crypto Withdrawal Pending` : `Crypto Withdrawal Failed`;
+               transactionStatus === 'Pending' ? `Crypto Withdrawal Pending` :
+               transactionStatus === 'Cancelled' ? `Crypto Withdrawal Cancelled` : `Crypto Withdrawal Failed`;
       default:
         return transactionStatus === 'Successful' ? `${amount} Sent` : 
-               transactionStatus === 'Pending' ? `Transaction Pending` : `Transaction Failed`;
+               transactionStatus === 'Pending' ? `Transaction Pending` :
+               transactionStatus === 'Cancelled' ? `Transaction Cancelled` : `Transaction Failed`;
     }
   };
 
@@ -265,11 +341,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
         case 'convert':
           return `Your conversion of ${amount} to Kenya Shiilings is being processed. Please wait for confirmation.`;
         case 'deposit':
-          return `Your deposit of ${amount} to your ${transaction.country || 'Kenya'} Wallet is being processed.`;
+          return `Your deposit of ${amount} to your ${displayCountry() || 'wallet'} is being processed.`;
         case 'fund':
-          return `Your receipt of ${amount} from ${transaction.route || 'Yellow Card'} is being processed.`;
+          return `Your receipt of ${amount} is being processed.`;
         case 'withdrawal':
-          return `Your withdrawal of ${amount} to ${transaction.accountName || transaction.recipientName || 'Opay'} is being processed.`;
+          return `Your withdrawal of ${amount} is being processed.`;
         case 'billPayment':
           return `Your bill payment is being processed. Please wait for confirmation.`;
         case 'p2p':
@@ -283,16 +359,39 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
       }
     }
     
+    if (transactionStatus === 'Cancelled') {
+      switch (transactionType) {
+        case 'convert':
+          return `Your conversion of ${amount} was cancelled.`;
+        case 'deposit':
+          return `Your deposit of ${amount} was cancelled.`;
+        case 'fund':
+          return `Your receipt of ${amount} was cancelled.`;
+        case 'withdrawal':
+          return `Your withdrawal of ${amount} was cancelled.`;
+        case 'billPayment':
+          return `Your bill payment was cancelled.`;
+        case 'p2p':
+          return `Your P2P transaction was cancelled.`;
+        case 'cryptoDeposit':
+          return `Your crypto deposit was cancelled.`;
+        case 'cryptoWithdrawal':
+          return `Your crypto withdrawal was cancelled.`;
+        default:
+          return `Your transaction was cancelled.`;
+      }
+    }
+
     if (transactionStatus === 'Failed') {
       switch (transactionType) {
         case 'convert':
           return `Your conversion of ${amount} to Kenya Shiilings has failed. Please try again or contact support.`;
         case 'deposit':
-          return `Your deposit of ${amount} to your ${transaction.country || 'Kenya'} Wallet has failed. Please try again.`;
+          return `Your deposit of ${amount} to your ${displayCountry() || 'wallet'} has failed. Please try again.`;
         case 'fund':
-          return `Your receipt of ${amount} from ${transaction.route || 'Yellow Card'} has failed. Please try again.`;
+          return `Your receipt of ${amount} has failed. Please try again.`;
         case 'withdrawal':
-          return `Your withdrawal of ${amount} to ${transaction.accountName || transaction.recipientName || 'Opay'} has failed. Please try again.`;
+          return `Your withdrawal of ${amount} has failed. Please try again.`;
         case 'billPayment':
           return `Your bill payment has failed. Please try again or contact support.`;
         case 'p2p':
@@ -311,11 +410,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
       case 'convert':
         return `Congratulations, You have successfully Converted ${amount} to Kenya Shiilings`;
       case 'deposit':
-        return `Congratulations, You have successfully deposited ${amount} to your ${transaction.country || 'Kenya'} Wallet`;
+        return `Congratulations, you have successfully deposited ${amount} to your ${displayCountry() || 'wallet'}`;
       case 'fund':
-        return `Congratulations, You have successfully sent ${amount} from ${transaction.route || 'Yellow Card'}`;
+        return `Congratulations, you have successfully received ${amount}.`;
       case 'withdrawal':
-        return `Congratulations, You have successfully withdrawn ${amount} to ${transaction.accountName || transaction.recipientName || 'Opay'}`;
+        return `Congratulations, you have successfully withdrawn ${amount}.`;
       case 'billPayment':
         // Format: "Congratulations, You have successfully Recharged 1.5 GB Data to 081245789"
         const billType = transaction.recipientName?.includes('Data') ? 'Recharged' : 
@@ -323,8 +422,8 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                         transaction.recipientName?.includes('Electricity') ? 'Paid' :
                         transaction.recipientName?.includes('Cable') ? 'Paid' :
                         transaction.recipientName?.includes('Internet') ? 'Paid' : 'Paid';
-        const planText = transaction.plan || '1.5 GB Data';
-        const mobileText = transaction.mobileNumber || '081245789';
+        const planText = transaction.plan || 'bill';
+        const mobileText = transaction.mobileNumber || transaction.accountNumber || 'recipient';
         // For Data and Airtime: "Recharged {plan} to {mobile}"
         // For others: "Paid {plan} to {mobile}"
         if (billType === 'Recharged') {
@@ -333,31 +432,30 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           return `Congratulations, You have successfully ${billType} ${planText} to ${mobileText}`;
         }
       case 'p2p':
-        // Format: "Congratulations, You have successfully Sold N20 USDT"
         const p2pAction = transaction.p2pType === 'Crypto Sell' ? 'Sold' : 'Bought';
-        const p2pAmount = transaction.totalQty || '20 USDT';
-        const p2pAmountNGN = transaction.transferAmount || transaction.amountNGN || 'N20';
+        const p2pAmount = transaction.totalQty || '';
+        const p2pAmountNGN = transaction.transferAmount || transaction.amountNGN || '';
         return `Congratulations, You have successfully ${p2pAction} ${p2pAmountNGN} ${p2pAmount}`;
       case 'cryptoDeposit':
-        // Format: "Congratulations, You have successfully received 0.25 ETH from Ox.....123fcj2ifk3edw"
-        const depositQty = transaction.quantity || '0.25 ETH';
-        const senderAddress = transaction.sendingAddress || transaction.recipientName || '0x...123fcj2ifk3edw';
+        const depositQty = transaction.quantity || amount;
+        const senderAddress = transaction.sendingAddress || transaction.recipientName || '';
         // Truncate address if too long
         const truncatedAddress = senderAddress.length > 20 
           ? `${senderAddress.substring(0, 3)}.....${senderAddress.substring(senderAddress.length - 11)}`
           : senderAddress;
         return `Congratulations, You have successfully received ${depositQty} from ${truncatedAddress}`;
       case 'cryptoWithdrawal':
-        // Format: "Congratulations, You have successfully sent 0.25 ETH to Ox.....123fcj2ifk3edw"
-        const withdrawalQty = transaction.quantity || '0.25 ETH';
-        const recipientAddress = transaction.receivingAddress || transaction.recipientName || '0x...123fcj2ifk3edw';
+        const withdrawalQty = transaction.quantity || amount;
+        const recipientAddress = transaction.receivingAddress || transaction.recipientName || '';
         // Truncate address if too long
         const truncatedRecipientAddress = recipientAddress.length > 20 
           ? `${recipientAddress.substring(0, 3)}.....${recipientAddress.substring(recipientAddress.length - 11)}`
           : recipientAddress;
         return `Congratulations, You have successfully sent ${withdrawalQty} to ${truncatedRecipientAddress}`;
       default:
-        return `Congratulations, You have successfully sent ${amount} to ${transaction.recipientName || 'Adebisi Lateefat'}`;
+        return transaction.recipientName
+          ? `Congratulations, you have successfully sent ${amount} to ${transaction.recipientName}`
+          : `Congratulations, your transaction of ${amount} was completed successfully`;
     }
   };
 
@@ -403,7 +501,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
             <View style={[
               styles.successIconCircle,
               transactionStatus === 'Pending' && styles.pendingIconCircle,
-              transactionStatus === 'Failed' && styles.failedIconCircle,
+              (transactionStatus === 'Failed' || transactionStatus === 'Cancelled') && styles.failedIconCircle,
             ]}>
               {transactionStatus === 'Successful' ? (
                 <Image
@@ -413,6 +511,8 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 />
               ) : transactionStatus === 'Pending' ? (
                 <MaterialCommunityIcons name="clock-outline" size={32 * SCALE} color="#FFFFFF" />
+              ) : transactionStatus === 'Cancelled' ? (
+                <MaterialCommunityIcons name="cancel" size={32 * SCALE} color="#FFFFFF" />
               ) : (
                 <MaterialCommunityIcons name="close-circle" size={32 * SCALE} color="#FFFFFF" />
               )}
@@ -423,7 +523,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
           <ThemedText style={[
             styles.successTitle,
             transactionStatus === 'Pending' && styles.pendingTitle,
-            transactionStatus === 'Failed' && styles.failedTitle,
+            (transactionStatus === 'Failed' || transactionStatus === 'Cancelled') && styles.failedTitle,
           ]}>
             {getTitleText()}
           </ThemedText>
@@ -442,7 +542,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   </View>
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
                     <ThemedText style={styles.detailLabel}>Fee</ThemedText>
-                    <ThemedText style={styles.detailValue}>{transaction.fee || 'Ksh20'}</ThemedText>
+                    <ThemedText style={styles.detailValue}>{displayValue(transaction.fee)}</ThemedText>
                   </View>
                   <View style={styles.detailRow}>
                     <ThemedText style={styles.detailLabel}>Credited Amount</ThemedText>
@@ -492,7 +592,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               </View>
               <View style={[styles.detailRow, styles.detailRowBorder]}>
                 <ThemedText style={styles.detailLabel}>Fee</ThemedText>
-                <ThemedText style={styles.detailValue}>{transaction.fee || 'N20'}</ThemedText>
+                <ThemedText style={styles.detailValue}>{displayValue(transaction.fee)}</ThemedText>
               </View>
               <View style={styles.detailRow}>
                 <ThemedText style={styles.detailLabel}>Payment Amount</ThemedText>
@@ -512,7 +612,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               </View>
               <View style={styles.detailRow}>
                 <ThemedText style={styles.detailLabel}>Fee</ThemedText>
-                <ThemedText style={styles.detailValue}>{transaction.fee || 'N0'}</ThemedText>
+                <ThemedText style={styles.detailValue}>{displayValue(transaction.fee)}</ThemedText>
               </View>
             </View>
           )}
@@ -522,13 +622,16 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
             <View style={styles.detailsCard}>
               <View style={[styles.detailRow, styles.detailRowBorder]}>
                 <ThemedText style={styles.detailLabel}>Merchant Name</ThemedText>
-                <ThemedText style={styles.detailValue}>{transaction.merchantName || transaction.recipientName || 'Qamar Malik'}</ThemedText>
+                <ThemedText style={styles.detailValue}>{displayValue(transaction.merchantName || transaction.recipientName)}</ThemedText>
               </View>
               <View style={styles.detailRow}>
                 <ThemedText style={styles.detailLabel}>Contact</ThemedText>
-                <TouchableOpacity style={styles.chatButton}>
+                <View style={styles.detailValueRow}>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.merchantContact)}</ThemedText>
+                <TouchableOpacity style={[styles.chatButton, { marginLeft: 8 * SCALE }]} onPress={handleOpenP2PChat}>
                   <ThemedText style={styles.chatButtonText}>Chat</ThemedText>
                 </TouchableOpacity>
+                </View>
               </View>
             </View>
           )}
@@ -539,34 +642,34 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Crypto Sent</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.cryptoType || 'Ethereum'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.cryptoType)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Network</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.network || 'Ethereum'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.network)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Quantity</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.quantity || '0.25 ETH'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.quantity)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Amount</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.amountUSDValue || '$2,550.50'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.amountUSDValue)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Fee</ThemedText>
                   <ThemedText style={styles.detailValue}>
-                    {transaction.feeCrypto || '0.000001 ETH'} ({transaction.feeUSD || '$2.50'})
+                    {displayValue(transaction.feeCrypto)} ({displayValue(transaction.feeUSD)})
                   </ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Receiving Address</ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {transaction.receivingAddress || '0x123edfgtrwe457kslwltkwflelwlvld'}
+                      {displayValue(transaction.receivingAddress)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.receivingAddress || '0x123edfgtrwe457kslwltkwflelwlvld', 'Receiving Address')}
+                      onPress={() => copyIfAvailable(transaction.receivingAddress, 'Receiving Address')}
                       style={{ marginLeft: 8 * SCALE }}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
@@ -577,10 +680,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   <ThemedText style={styles.detailLabel}>Sending Address</ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {transaction.sendingAddress || '0x123edfgtrwe457kslwltkwflelwlvld'}
+                      {displayValue(transaction.sendingAddress)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.sendingAddress || '0x123edfgtrwe457kslwltkwflelwlvld', 'Sending Address')}
+                      onPress={() => copyIfAvailable(transaction.sendingAddress, 'Sending Address')}
                       style={{ marginLeft: 8 * SCALE }}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
@@ -591,10 +694,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   <ThemedText style={styles.detailLabel}>Tx Hash</ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {transaction.txHash || '13ijksm219ef23e9fi3295h2nfi923rf9n92f9'}
+                      {displayValue(transaction.txHash)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.txHash || '13ijksm219ef23e9fi3295h2nfi923rf9n92f9', 'Transaction Hash')}
+                      onPress={() => copyIfAvailable(transaction.txHash, 'Transaction Hash')}
                       style={{ marginLeft: 8 * SCALE }}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
@@ -605,10 +708,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   <ThemedText style={styles.detailLabel}>Transaction Id</ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {transaction.transactionId || '12dwerkxywurcksc'}
+                      {displayValue(transaction.transactionId)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.transactionId || '12dwerkxywurcksc', 'Transaction ID')}
+                      onPress={() => copyIfAvailable(transaction.transactionId, 'Transaction ID')}
                       style={{ marginLeft: 8 * SCALE }}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
@@ -617,26 +720,26 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 </View>
                 <View style={styles.detailRow}>
                   <ThemedText style={styles.detailLabel}>Date</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22 AM'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.dateTime)}</ThemedText>
                 </View>
               </>
             ) : transactionType === 'p2p' ? (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>P2P Type</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.p2pType || 'Crypto Sell'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.p2pType)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Amount</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.transferAmount || transaction.amountNGN || '10,000 NGN'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.transferAmount || transaction.amountNGN)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Price</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.price || '1,500 NGN'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.price)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Total Qty</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.totalQty || '5.2 USDT'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.totalQty)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Tx Fee</ThemedText>
@@ -647,37 +750,37 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Biller Type</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.billerType || 'MTN'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.billerType)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Mobile Number</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.mobileNumber || '08012456789'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.mobileNumber)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Plan</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.plan || '1.5 GB for 30 Days'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.plan)}</ThemedText>
                 </View>
               </>
             ) : (
               <View style={[styles.detailRow, styles.detailRowBorder]}>
                 <ThemedText style={styles.detailLabel}>Country</ThemedText>
-                <ThemedText style={styles.detailValue}>{transaction.country || 'Nigeria'}</ThemedText>
+                <ThemedText style={styles.detailValue}>{displayValue(displayCountry())}</ThemedText>
               </View>
             )}
-            {(transactionType === 'send' || transactionType === 'withdrawal') && (
+            {(transactionType === 'send' || transactionType === 'withdrawal' || ((transactionType === 'fund' || transactionType === 'deposit') && (transaction.bank || transaction.accountNumber || transaction.accountName))) && (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Bank</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.bank || 'Wema Bank'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.bank)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Account Number</ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {transaction.accountNumber || '0123456789'}
+                      {displayValue(transaction.accountNumber)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.accountNumber || '0123456789', 'Account Number')}
+                      onPress={() => copyIfAvailable(transaction.accountNumber, 'Account Number')}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
                     </TouchableOpacity>
@@ -685,7 +788,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Account Name</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.accountName || 'Opay'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.accountName)}</ThemedText>
                 </View>
               </>
             )}
@@ -697,11 +800,11 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Funding Route</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.fundingRoute || 'Bank Transfer'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.fundingRoute)}</ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Route</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.route || 'Yellow Card'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.route)}</ThemedText>
                 </View>
               </>
             )}
@@ -709,7 +812,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Provider</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.provider || 'MTN'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.provider)}</ThemedText>
                 </View>
               </>
             )}
@@ -728,10 +831,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   <View style={styles.detailValueRow}>
                     <MaterialCommunityIcons name="lock" size={12 * SCALE} color="rgba(255, 255, 255, 0.5)" style={{ marginRight: 4 * SCALE }} />
                     <ThemedText style={styles.detailValue}>
-                      {transaction.transactionId || '128DJ2I31IDJKQKCM'}
+                      {displayValue(transaction.transactionId)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.transactionId || '128DJ2I31IDJKQKCM', 'Transaction ID')}
+                      onPress={() => copyIfAvailable(transaction.transactionId, 'Transaction ID')}
                       style={{ marginLeft: 8 * SCALE }}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
@@ -741,7 +844,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Payment method</ThemedText>
                   <View style={styles.detailValueRow}>
-                    <ThemedText style={styles.detailValue}>{transaction.paymentMethod || 'Bank Transfer'}</ThemedText>
+                    <ThemedText style={styles.detailValue}>{displayPaymentMethod(transaction.paymentMethod)}</ThemedText>
                     <TouchableOpacity style={{ marginLeft: 8 * SCALE }}>
                       <ThemedText style={styles.viewAccountLink}>View Account</ThemedText>
                     </TouchableOpacity>
@@ -749,7 +852,7 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 </View>
                 <View style={styles.detailRow}>
                   <ThemedText style={styles.detailLabel}>Order time</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22AM'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.dateTime)}</ThemedText>
                 </View>
               </>
             ) : (transactionType === 'cryptoDeposit' || transactionType === 'cryptoWithdrawal') ? (
@@ -761,10 +864,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   <ThemedText style={styles.detailLabel}>Transaction Id</ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {transaction.transactionId || '12dwerkxywurcksc'}
+                      {displayValue(transaction.transactionId)}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyToClipboard(transaction.transactionId || '12dwerkxywurcksc', 'Transaction ID')}
+                      onPress={() => copyIfAvailable(transaction.transactionId, 'Transaction ID')}
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
                     </TouchableOpacity>
@@ -779,12 +882,12 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 {(transactionType === 'send' || transactionType === 'deposit' || transactionType === 'withdrawal') && (
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
                     <ThemedText style={styles.detailLabel}>Payment Method</ThemedText>
-                    <ThemedText style={styles.detailValue}>{transaction.paymentMethod || 'Bank Transfer'}</ThemedText>
+                    <ThemedText style={styles.detailValue}>{displayPaymentMethod(transaction.paymentMethod)}</ThemedText>
                   </View>
                 )}
                 <View style={styles.detailRow}>
                   <ThemedText style={styles.detailLabel}>Date</ThemedText>
-                  <ThemedText style={styles.detailValue}>{transaction.dateTime || 'Oct 16, 2025 - 07:22AM'}</ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(transaction.dateTime)}</ThemedText>
                 </View>
               </>
             )}

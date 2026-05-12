@@ -35,16 +35,7 @@ const SCALE = 0.9;
 
 // Currency mapping based on country code
 const getCurrencyFromCountryCode = (countryCode: string): string => {
-  const currencyMap: { [key: string]: string } = {
-    'NG': 'NGN',
-    'KE': 'KES',
-    'GH': 'GHS',
-    'ZA': 'ZAR',
-    'BW': 'BWP',
-    'TZ': 'TZS',
-    'UG': 'UGX',
-  };
-  return currencyMap[countryCode] || 'KES';
+  return 'NGN';
 };
 
 const Fund = () => {
@@ -126,11 +117,7 @@ const Fund = () => {
 
   // Get currency symbol based on country
   const getCurrencySymbol = () => {
-    if (selectedCountry === 'KE') return 'Ksh';
-    if (selectedCountry === 'NG') return 'N';
-    if (selectedCountry === 'GH') return 'GHC';
-    if (selectedCountry === 'ZA') return 'R';
-    return 'Ksh';
+    return 'N';
   };
 
   const currencySymbol = getCurrencySymbol();
@@ -179,6 +166,11 @@ const Fund = () => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
     if (isNaN(num)) return '0';
     return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  const formatDepositAccountName = (name?: string) => {
+    if (!name) return 'N/A';
+    return name.replace(/\s*\(Pay\s+NGN\s+[\d,.]+\)\s*/i, '').trim();
   };
 
   // Fetch countries from API
@@ -327,13 +319,13 @@ const Fund = () => {
       }
       
       if (selectedChannel === 'bank_transfer') {
+        const virtualAccount = data?.data?.virtualAccount || {};
         setBankDetails({
-          ...(data?.data?.virtualAccount || {}),
+          ...virtualAccount,
           reference: data?.data?.reference,
           merchantOrderId: data?.data?.merchantOrderId,
           orderNo: data?.data?.orderNo,
         });
-        showSuccessAlert('Deposit Created', 'Transfer the exact amount to the PalmPay virtual account shown below. Your wallet will be credited automatically after payment is confirmed.');
       } else {
         // For mobile money, show PIN modal directly
         setShowPinModal(true);
@@ -532,7 +524,6 @@ const Fund = () => {
 
     if (selectedChannel === 'bank_transfer') {
       if (pendingTransactionData?.virtualAccount) {
-        showSuccessAlert('Deposit Pending', 'Your PalmPay virtual account is active for this deposit. Complete the bank transfer and wait for automatic confirmation.');
         return;
       }
       // For bank transfer, initiate deposit to get reference
@@ -758,7 +749,7 @@ const Fund = () => {
             </View>
             <TouchableOpacity
               style={styles.countrySelector}
-              onPress={() => setShowCountryModal(true)}
+              onPress={() => showInfoAlert('Nigeria Only', 'Bank transfer deposits currently support NGN in Nigeria only.')}
               disabled={isLoadingCountries}
             >
               {isLoadingCountries ? (
@@ -889,7 +880,7 @@ const Fund = () => {
                       <ThemedText style={styles.retryButtonText}>Retry</ThemedText>
                     </TouchableOpacity>
                   </View>
-                ) : bankDetails ? (
+                ) : bankDetails?.accountNumber ? (
                   <View style={styles.bankDetailsCardInline}>
                     <View style={[styles.bankDetailRowInline, { borderTopRightRadius: 10 * SCALE, borderTopLeftRadius: 10 * SCALE }]}>
                       <ThemedText style={styles.bankDetailLabelInline}>Bank Name</ThemedText>
@@ -912,8 +903,8 @@ const Fund = () => {
                     <View style={styles.bankDetailRowInline}>
                       <ThemedText style={styles.bankDetailLabelInline}>Account Name</ThemedText>
                       <View style={styles.bankDetailValueRowInline}>
-                        <ThemedText style={styles.bankDetailValueInline}>{bankDetails.accountName || 'N/A'}</ThemedText>
-                        <TouchableOpacity onPress={() => copyToClipboard(bankDetails.accountName || '')}>
+                        <ThemedText style={styles.bankDetailValueInline}>{formatDepositAccountName(bankDetails.accountName)}</ThemedText>
+                        <TouchableOpacity onPress={() => copyToClipboard(formatDepositAccountName(bankDetails.accountName))}>
                           <MaterialCommunityIcons name="content-copy" size={16 * SCALE} color="#FFFFFF" />
                         </TouchableOpacity>
                       </View>
@@ -933,7 +924,14 @@ const Fund = () => {
                       <View style={[styles.bankDetailRowInline, { borderBottomRightRadius: 10 * SCALE, borderBottomLeftRadius: 10 * SCALE }]} />
                     )}
                   </View>
-                ) : null}
+                ) : (
+                  <View style={[styles.inputField, { justifyContent: 'center', alignItems: 'center', paddingVertical: 20 }]}>
+                    <MaterialCommunityIcons name="bank-plus" size={24 * SCALE} color="#A9EF45" />
+                    <ThemedText style={[styles.inputLabel, { marginTop: 10, textAlign: 'center' }]}>
+                      Enter an amount to generate bank transfer details for this deposit.
+                    </ThemedText>
+                  </View>
+                )}
               </>
             ) : (
               <>
@@ -1044,7 +1042,7 @@ const Fund = () => {
           ) : (
             <ThemedText style={styles.proceedButtonText}>
               {selectedChannel === 'bank_transfer' 
-                ? (pendingTransactionData?.virtualAccount ? 'Deposit Pending' : 'Create PalmPay Account')
+                ? (pendingTransactionData?.virtualAccount ? 'Waiting for Payment' : 'Proceed')
                 : 'Proceed'}
             </ThemedText>
           )}
@@ -1375,7 +1373,7 @@ const Fund = () => {
           provider: successTransactionData?.provider || providers.find((p) => p.id === selectedProvider)?.name || '',
           accountName: successTransactionData?.accountName || accountName,
           country: successTransactionData?.country || selectedCountryName,
-          transactionId: successTransactionData?.transactionId || '12dwerkxywurcksc',
+          transactionId: successTransactionData?.transactionId,
           dateTime: new Date().toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',

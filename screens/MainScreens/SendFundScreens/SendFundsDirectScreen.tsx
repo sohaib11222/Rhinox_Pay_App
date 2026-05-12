@@ -16,18 +16,17 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import * as Clipboard from 'expo-clipboard';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetTransferEligibility, useGetTransferReceipt } from '../../../queries/transfer.queries';
-import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
+import { useGetPaymentSettingsBanks } from '../../../queries/paymentSettings.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
-import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 
@@ -48,16 +47,11 @@ interface PaymentMethod {
   id: string;
   name: string;
   type: string;
-}
-
-interface RecentTransaction {
-  id: string;
-  name: string;
-  accountNumber: string;
-  bank: string;
-  country: string;
-  date: string;
-  avatar: any;
+  numericId?: number;
+  bankCode?: string;
+  accountNumber?: string;
+  accountName?: string;
+  rawData?: any;
 }
 
 const SendFundsDirectScreen = () => {
@@ -115,19 +109,14 @@ const SendFundsDirectScreen = () => {
   const [showCountryModal, setShowCountryModal] = useState(false);
   const [showSummaryModal, setShowSummaryModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
-  const [showSecurityModal, setShowSecurityModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [pin, setPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
-  const [emailCode, setEmailCode] = useState('');
-  const [authenticatorCode, setAuthenticatorCode] = useState('');
-  const [isAuthenticatorSetup, setIsAuthenticatorSetup] = useState(false);
-  const [show2FAModal, setShow2FAModal] = useState(false);
-  const [authenticatorSetupCode] = useState('ADF1235678'); // TODO: Replace with API call
   const [transactionId, setTransactionId] = useState<number | null>(null);
   const [searchBankQuery, setSearchBankQuery] = useState('');
   const [transferData, setTransferData] = useState<any>(null); // Store transfer initiation response
+  const [verifiedTransferKey, setVerifiedTransferKey] = useState('');
 
   // Check transfer eligibility
   const {
@@ -136,11 +125,15 @@ const SendFundsDirectScreen = () => {
     refetch: refetchEligibility,
   } = useGetTransferEligibility();
 
-  // Fetch bank accounts (payment methods) from API
+  // Fetch PalmPay-supported banks for NGN withdrawals.
   const {
-    data: paymentMethodsData,
-    isLoading: isLoadingPaymentMethods,
-  } = useGetPaymentMethods({ type: 'bank_account' });
+    data: banksData,
+    isLoading: isLoadingBanks,
+    refetch: refetchBanks,
+  } = useGetPaymentSettingsBanks({
+    countryCode: selectedCountryCode,
+    currency: selectedCurrency,
+  });
 
   // Fetch countries from API
   const {
@@ -165,23 +158,22 @@ const SendFundsDirectScreen = () => {
     }
   );
 
-  // Transform payment methods from API
+  // Transform PalmPay bank list from API
   const paymentMethods: PaymentMethod[] = useMemo(() => {
-    if (!paymentMethodsData?.data || !Array.isArray(paymentMethodsData.data)) {
+    if (!banksData?.data || !Array.isArray(banksData.data)) {
       return [];
     }
-    return paymentMethodsData.data
-      .filter((method: any) => method.type === 'bank_account')
-      .map((method: any) => ({
-        id: String(method.id),
-        name: method.bankName || 'Unknown Bank',
-        type: method.type,
-        numericId: method.id,
-        accountNumber: method.accountNumber,
-        accountName: method.accountName,
-        rawData: method,
-      }));
-  }, [paymentMethodsData?.data]);
+    return banksData.data.map((bank: any, index: number) => {
+      const bankCode = bank.bankCode || bank.code || '';
+      return {
+        id: String(bankCode || index + 1),
+        name: bank.bankName || bank.name || 'Unknown Bank',
+        type: 'bank_account',
+        bankCode,
+        rawData: bank,
+      };
+    });
+  }, [banksData?.data]);
 
   // Filter payment methods by search query
   const filteredPaymentMethods = useMemo(() => {
@@ -269,8 +261,12 @@ const SendFundsDirectScreen = () => {
       if (transactionId) {
         setTransactionId(transactionId);
         setTransferData(data?.data);
+        if (data?.data?.recipientInfo?.accountName) {
+          setAccountName(data.data.recipientInfo.accountName);
+        }
+        setVerifiedTransferKey(bankTransferKey);
+        setPin('');
         setShowSummaryModal(false);
-        setShowPinModal(true);
       } else {
         showErrorAlert('Error', 'Transaction ID not found in response');
       }
@@ -285,10 +281,12 @@ const SendFundsDirectScreen = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['wallets', 'balances'] });
       queryClient.invalidateQueries({ queryKey: ['home'] });
-      setShowSecurityModal(false);
+      setShowPinModal(false);
+      setPin('');
       setShowSuccessModal(true);
     },
     onError: (error: any) => {
+      setPin('');
       showErrorAlert('Error', error?.message || 'Failed to verify transfer');
     },
   });
@@ -303,21 +301,45 @@ const SendFundsDirectScreen = () => {
     }
   }, [eligibilityData?.data]);
 
-  const recentTransactions: RecentTransaction[] = [
-    { id: '1', name: 'Adebisi Lateefat', accountNumber: '1234567890', bank: 'Access Bank', country: 'Nigeria', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-    { id: '2', name: 'Akor Samuel', accountNumber: '0987654321', bank: 'Opay', country: 'Ghana', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-    { id: '3', name: 'Teslim Olamide', accountNumber: '1122334455', bank: 'Kuda Bank', country: 'Nigeria', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-    { id: '4', name: 'Ufondu Chike', accountNumber: '5566778899', bank: 'Palmpay', country: 'Nigeria', date: 'Oct 16, 2025', avatar: require('../../../assets/Frame 2398.png') },
-  ];
-
   const quickAmounts = ['20%', '50%', '75%', '100%'];
+  const formatCurrencyAmount = (value?: string | number | null) => {
+    const numericValue = parseFloat(String(value ?? '0').replace(/,/g, ''));
+    const safeValue = isNaN(numericValue) ? 0 : numericValue;
+    return `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${safeValue.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+  const displayedFee = formatCurrencyAmount(transferData?.fee ?? 0);
+  const displayedTotal = transferData?.totalDeduction
+    ? formatCurrencyAmount(transferData.totalDeduction)
+    : formatCurrencyAmount(amount || 0);
+  const bankTransferKey = useMemo(() => {
+    return [
+      selectedBank?.bankCode || '',
+      accountNumber.replace(/\D/g, ''),
+      amount.replace(/,/g, ''),
+      selectedCurrency,
+      selectedCountryCode,
+    ].join('|');
+  }, [accountNumber, amount, selectedBank?.bankCode, selectedCountryCode, selectedCurrency]);
+  const hasVerifiedTransfer = Boolean(transactionId && accountName && verifiedTransferKey === bankTransferKey);
+  const recentTransactions: Array<{
+    id: string;
+    name: string;
+    accountNumber: string;
+    bank: string;
+    country: string;
+    date: string;
+    avatar: any;
+  }> = [];
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
     try {
       await Promise.all([
         refetchEligibility(),
-        // Refetch payment methods, countries, and balances if needed
+        refetchBanks(),
       ]);
       console.log('[SendFundsDirect] Data refreshed successfully');
     } catch (error) {
@@ -334,15 +356,18 @@ const SendFundsDirectScreen = () => {
     const numericValue = quickAmount.replace('%', '');
     const balanceNum = parseFloat(balance.replace(/,/g, ''));
     const calculatedAmount = (balanceNum * parseFloat(numericValue)) / 100;
+    setTransactionId(null);
+    setTransferData(null);
+    setVerifiedTransferKey('');
     setAmount(calculatedAmount.toLocaleString('en-US', { maximumFractionDigits: 0 }));
   };
 
   const handleAccountNumberChange = (text: string) => {
     setAccountNumber(text);
-    // TODO: Fetch account name from API based on account number and bank
-    if (text.length >= 10 && selectedBank) {
-      setAccountName('Qamardeen Abdul Malik');
-    } else {
+    setTransactionId(null);
+    setTransferData(null);
+    setVerifiedTransferKey('');
+    if (!selectedBank || text !== selectedBank.accountNumber) {
       setAccountName('');
     }
   };
@@ -354,6 +379,10 @@ const SendFundsDirectScreen = () => {
   const handleApplyBank = () => {
     if (tempSelectedBank) {
       setSelectedBank(tempSelectedBank);
+      setAccountName('');
+      setTransactionId(null);
+      setTransferData(null);
+      setVerifiedTransferKey('');
       setTempSelectedBank(null);
       setShowBankModal(false);
     }
@@ -366,27 +395,24 @@ const SendFundsDirectScreen = () => {
            !isNaN(numericAmount) &&
            numericAmount > 0 &&
            accountNumber.trim() !== '' &&
-           accountName.trim() !== '' &&
            selectedBank !== null;
-  }, [amount, accountNumber, accountName, selectedBank]);
+  }, [amount, accountNumber, selectedBank]);
 
   const handleProceed = () => {
     if (!isFormValid) {
       showErrorAlert('Validation Error', 'Please fill in all required fields');
       return;
     }
-    if (accountNumber && accountName && selectedBank) {
-      setShowSummaryModal(true);
-    }
-  };
 
-  const handleSummaryProceed = () => {
-    // Initiate transfer
+    if (hasVerifiedTransfer) {
+      setPin('');
+      setShowPinModal(true);
+      return;
+    }
+
     const numericAmount = amount.replace(/,/g, '');
-    const numericBankId = selectedBank?.numericId || parseInt(selectedBank?.id || '0', 10);
-    
-    if (!numericBankId) {
-      showErrorAlert('Error', 'Invalid bank account selected');
+    if (!selectedBank?.bankCode) {
+      showErrorAlert('Error', 'Invalid bank selected');
       return;
     }
 
@@ -395,7 +421,28 @@ const SendFundsDirectScreen = () => {
       currency: selectedCurrency,
       countryCode: selectedCountryCode,
       channel: 'bank_account',
-      paymentMethodId: numericBankId,
+      bankCode: selectedBank.bankCode,
+      bankName: selectedBank.name,
+      accountNumber: accountNumber.replace(/\D/g, ''),
+    });
+  };
+
+  const handleSummaryProceed = () => {
+    // Initiate transfer
+    const numericAmount = amount.replace(/,/g, '');
+    if (!selectedBank?.bankCode) {
+      showErrorAlert('Error', 'Invalid bank selected');
+      return;
+    }
+
+    initiateTransferMutation.mutate({
+      amount: numericAmount,
+      currency: selectedCurrency,
+      countryCode: selectedCountryCode,
+      channel: 'bank_account',
+      bankCode: selectedBank.bankCode,
+      bankName: selectedBank.name,
+      accountNumber: accountNumber.replace(/\D/g, ''),
     });
   };
 
@@ -410,10 +457,8 @@ const SendFundsDirectScreen = () => {
       setPin(newPin);
 
       if (newPin.length === 5) {
-        // Auto proceed to security verification
         setTimeout(() => {
-          setShowPinModal(false);
-          setShowSecurityModal(true);
+          handlePinVerification(newPin);
         }, 300);
       }
     }
@@ -423,49 +468,20 @@ const SendFundsDirectScreen = () => {
     setPin(pin.slice(0, -1));
   };
 
-  const handleSecurityComplete = () => {
+  const handlePinVerification = (pinValue = pin) => {
     if (!transactionId) {
       showErrorAlert('Error', 'Transaction ID not found');
       return;
     }
-    // Only require PIN, email code and authenticator code are optional
-    if (!pin || pin.length !== 5) {
+    if (!pinValue || pinValue.length !== 5) {
       showErrorAlert('Validation Error', 'Please enter a valid 5-digit PIN');
       return;
     }
 
-    // Use dummy values if email code or authenticator code not provided
-    const emailCodeToUse = emailCode || '00000';
-    const authenticatorCodeToUse = authenticatorCode || '00000';
-
-    // Verify transfer
     verifyTransferMutation.mutate({
       transactionId: transactionId,
-      emailCode: emailCodeToUse,
-      pin: pin,
+      pin: pinValue,
     });
-  };
-
-  const handleSetupAuthenticator = () => {
-    setShow2FAModal(true);
-  };
-
-  const handleCopyAuthenticatorCode = async () => {
-    try {
-      await Clipboard.setStringAsync(authenticatorSetupCode);
-      showSuccessAlert('Copied', 'Authenticator code copied to clipboard');
-    } catch (error) {
-      showErrorAlert('Error', 'Failed to copy code');
-    }
-  };
-
-  const handleProceed2FA = () => {
-    // TODO: Implement API call to verify and save 2FA
-    if (authenticatorCode.length > 0) {
-      setIsAuthenticatorSetup(true);
-      setShow2FAModal(false);
-      // Don't clear authenticatorCode as it should remain in the security modal
-    }
   };
 
   const handleViewTransaction = () => {
@@ -564,7 +580,7 @@ const SendFundsDirectScreen = () => {
               ) : (
                 <>
                   {(() => {
-                    const country = countries.find(c => c.id === selectedCountry);
+                    const country: any = countries.find((c: any) => c.id === selectedCountry);
                     const flagSource = country?.flagUrl 
                       ? { uri: country.flagUrl }
                       : country?.flag || require('../../../assets/login/nigeria-flag.png');
@@ -597,6 +613,9 @@ const SendFundsDirectScreen = () => {
                   // Remove commas and format
                   const numericValue = text.replace(/,/g, '');
                   if (numericValue === '' || /^\d+$/.test(numericValue)) {
+                    setTransactionId(null);
+                    setTransferData(null);
+                    setVerifiedTransferKey('');
                     setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
                   }
                 }}
@@ -666,7 +685,9 @@ const SendFundsDirectScreen = () => {
             {initiateTransferMutation.isPending || isLoadingEligibility ? (
               <ActivityIndicator size="small" color="#000000" />
             ) : (
-              <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
+              <ThemedText style={styles.proceedButtonText}>
+                {hasVerifiedTransfer ? 'Proceed' : 'Verify Account'}
+              </ThemedText>
             )}
           </TouchableOpacity>
         </View>
@@ -679,38 +700,37 @@ const SendFundsDirectScreen = () => {
             resizeMode="cover"
           />
           <ThemedText style={styles.feeText}>
-            Fee : {transferData?.fee 
-              ? `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${parseFloat(transferData.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : 'Calculating...'}
+            Fee : {displayedFee}
           </ThemedText>
         </View>
 
-        {/* Recent Transactions Card */}
-        <View style={styles.recentTransactionsCard}>
-          <View style={styles.recentTransactionsHeader}>
-            <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
-            <TouchableOpacity>
-              <ThemedText style={styles.viewAllText}>View All</ThemedText>
-            </TouchableOpacity>
-          </View>
+        {recentTransactions.length > 0 && (
+          <View style={styles.recentTransactionsCard}>
+            <View style={styles.recentTransactionsHeader}>
+              <ThemedText style={styles.recentTransactionsTitle}>Recent Transactions</ThemedText>
+              <TouchableOpacity>
+                <ThemedText style={styles.viewAllText}>View All</ThemedText>
+              </TouchableOpacity>
+            </View>
 
-          <View style={styles.transactionsList}>
-            {recentTransactions.map((transaction) => (
-              <View key={transaction.id} style={styles.transactionItem}>
-                <Image source={transaction.avatar} style={styles.transactionIcon} resizeMode="cover" />
-                <View style={styles.transactionDetails}>
-                  <ThemedText style={styles.transactionPhone}>{transaction.name}</ThemedText>
-                  <View style={styles.transactionMeta}>
-                    <ThemedText style={styles.transactionPlan}>{transaction.accountNumber} • {transaction.bank}</ThemedText>
+            <View style={styles.transactionsList}>
+              {recentTransactions.map((transaction) => (
+                <View key={transaction.id} style={styles.transactionItem}>
+                  <Image source={transaction.avatar} style={styles.transactionIcon} resizeMode="cover" />
+                  <View style={styles.transactionDetails}>
+                    <ThemedText style={styles.transactionPhone}>{transaction.name}</ThemedText>
+                    <View style={styles.transactionMeta}>
+                      <ThemedText style={styles.transactionPlan}>{transaction.accountNumber} • {transaction.bank}</ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <ThemedText style={styles.transactionDate}>Last Transfer: {transaction.date}</ThemedText>
                   </View>
                 </View>
-                <View style={styles.transactionRight}>
-                  <ThemedText style={styles.transactionDate}>Last Transfer: {transaction.date}</ThemedText>
-                </View>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -739,7 +759,7 @@ const SendFundsDirectScreen = () => {
               </View>
             ) : (
               <ScrollView style={styles.modalList}>
-                {countries.map((country) => {
+                {countries.map((country: any) => {
                   const flagSource = country.flagUrl 
                     ? { uri: country.flagUrl }
                     : country.flag;
@@ -753,6 +773,12 @@ const SendFundsDirectScreen = () => {
                         setSelectedCountryName(country.name);
                         setSelectedCountryCode(country.code);
                         setSelectedCurrency(getCurrencyFromCountryCode(country.code));
+                        setSelectedBank(null);
+                        setTempSelectedBank(null);
+                        setAccountName('');
+                        setTransactionId(null);
+                        setTransferData(null);
+                        setVerifiedTransferKey('');
                         setShowCountryModal(false);
                       }}
                     >
@@ -809,11 +835,11 @@ const SendFundsDirectScreen = () => {
               />
             </View>
 
-            {isLoadingPaymentMethods ? (
+            {isLoadingBanks ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ActivityIndicator size="small" color="#A9EF45" />
                 <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
-                  Loading bank accounts...
+                  Loading banks...
                 </ThemedText>
               </View>
             ) : filteredPaymentMethods.length > 0 ? (
@@ -836,7 +862,7 @@ const SendFundsDirectScreen = () => {
             ) : (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', paddingHorizontal: 20 }}>
-                  {searchBankQuery ? 'No bank accounts found' : 'No bank accounts available. Please add one in Payment Settings.'}
+                  {searchBankQuery ? 'No banks found' : 'No banks available for this currency.'}
                 </ThemedText>
               </View>
             )}
@@ -932,24 +958,22 @@ const SendFundsDirectScreen = () => {
                   <ThemedText style={styles.summaryDetailLabel}>Account Number</ThemedText>
                   <ThemedText style={styles.summaryDetailValue}>{accountNumber}</ThemedText>
                 </View>
-                <View style={styles.summaryDetailRow}>
-                  <ThemedText style={styles.summaryDetailLabel}>Account Name</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>{accountName}</ThemedText>
-                </View>
+                {accountName ? (
+                  <View style={styles.summaryDetailRow}>
+                    <ThemedText style={styles.summaryDetailLabel}>Account Name</ThemedText>
+                    <ThemedText style={styles.summaryDetailValue}>{accountName}</ThemedText>
+                  </View>
+                ) : null}
                 <View style={styles.summaryDetailRow}>
                   <ThemedText style={styles.summaryDetailLabel}>Fee</ThemedText>
                   <ThemedText style={styles.summaryDetailValue}>
-                    {transferData?.fee 
-                      ? `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${parseFloat(transferData.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : 'Calculating...'}
+                    {displayedFee}
                   </ThemedText>
                 </View>
                 <View style={[styles.summaryDetailRow, {borderBottomRightRadius: 10, borderBottomLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                   <ThemedText style={styles.summaryDetailLabel}>Total</ThemedText>
                   <ThemedText style={styles.summaryDetailValue}>
-                    {transferData?.totalDeduction 
-                      ? `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${parseFloat(transferData.totalDeduction).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                      : `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${amount.replace(/,/g, '')}.00`}
+                    {displayedTotal}
                   </ThemedText>
                 </View>
               </View>
@@ -958,7 +982,7 @@ const SendFundsDirectScreen = () => {
             <TouchableOpacity
               style={[
                 styles.summaryProceedButton,
-                initiateTransferMutation.isPending && styles.summaryProceedButtonDisabled
+                initiateTransferMutation.isPending && styles.proceedButtonDisabled
               ]}
               onPress={handleSummaryProceed}
               disabled={initiateTransferMutation.isPending}
@@ -1138,172 +1162,6 @@ const SendFundsDirectScreen = () => {
         </View>
       </Modal>
 
-      {/* Security Verification Modal */}
-      <Modal
-        visible={showSecurityModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowSecurityModal(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        >
-          <View style={styles.securityModalContentBottom}>
-            <View style={styles.securityModalHeader}>
-              <ThemedText style={styles.securityModalTitle}>Security Verification</ThemedText>
-              <TouchableOpacity onPress={() => setShowSecurityModal(false)}>
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              style={styles.securityModalScrollView}
-              contentContainerStyle={styles.securityModalScrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-            >
-              <View style={styles.securityIconContainer}>
-                <View style={styles.securityIconCircle}>
-                  <Image
-                    source={require('../../../assets/Group 49.png')}
-                    style={styles.securityIcon}
-                    resizeMode="contain"
-                  />
-                </View>
-              </View>
-
-              <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
-              <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
-
-              <View style={styles.securityInputWrapper}>
-                <ThemedText style={styles.securityInputLabel}>Email Code (Optional)</ThemedText>
-                <View style={styles.securityInputField}>
-                  <TextInput
-                    style={styles.securityInput}
-                    placeholder="Input Code sent to your email (optional)"
-                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                    value={emailCode}
-                    onChangeText={setEmailCode}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              {/* Remove authenticator requirement - always show as optional */}
-              <View style={styles.securityInputWrapper}>
-                <ThemedText style={styles.securityInputLabel}>Authenticator App Code (Optional)</ThemedText>
-                <View style={styles.securityInputField}>
-                  <TextInput
-                    style={styles.securityInput}
-                    placeholder="Input Code from your authenticator app (optional)"
-                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                    value={authenticatorCode}
-                    onChangeText={setAuthenticatorCode}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-
-              <TouchableOpacity
-                style={[
-                  styles.proceedButton,
-                  (!pin || pin.length !== 5 || verifyTransferMutation.isPending) && styles.proceedButtonDisabled
-                ]}
-                onPress={handleSecurityComplete}
-                disabled={!pin || pin.length !== 5 || verifyTransferMutation.isPending}
-              >
-                {verifyTransferMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#000000" />
-                ) : (
-                  <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* 2FA Authenticator Setup Modal */}
-      <Modal
-        visible={show2FAModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShow2FAModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Setup Authenticator</ThemedText>
-              <TouchableOpacity onPress={() => setShow2FAModal(false)}>
-                <MaterialCommunityIcons name="close-circle" size={24 * SCALE} color="#FFF" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Authenticator Icon */}
-            <View style={styles.authenticatorIconContainer}>
-              <View style={styles.authenticatorIconCircle}>
-                <Image
-                  source={require('../../../assets/Group 49.png')}
-                  style={[{ marginBottom: -1, width: 120, height: 120 }]}
-                  resizeMode="cover"
-                />
-              </View>
-            </View>
-
-            {/* Authenticator Setup Section */}
-            <View style={styles.authenticatorSetupSection}>
-              <ThemedText style={styles.authenticatorSetupTitle}>Authenticator Setup</ThemedText>
-              <ThemedText style={styles.authenticatorSetupSubtitle}>
-                Paste the code below in your authenticator app
-              </ThemedText>
-
-              {/* Code Display Box */}
-              <View style={styles.codeDisplayBox}>
-                <ThemedText style={styles.codeDisplayText}>{authenticatorSetupCode}</ThemedText>
-                <TouchableOpacity
-                  style={styles.copyCodeButton}
-                  onPress={handleCopyAuthenticatorCode}
-                >
-                  <ThemedText style={styles.copyCodeButtonText}>Copy Code</ThemedText>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Authenticator Code Input */}
-            <View style={styles.modalSection}>
-              <ThemedText style={[styles.modalSectionTitle, {marginTop:-20}]}>Authenticator Code</ThemedText>
-              <View style={styles.modalInputWrapper}>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Input Code from your authenticator app"
-                  placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                  value={authenticatorCode}
-                  onChangeText={setAuthenticatorCode}
-                  keyboardType="number-pad"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View>
-            </View>
-
-            {/* Proceed Button */}
-            <TouchableOpacity
-              style={[
-                styles.modalActionButton,
-                authenticatorCode.length === 0 && styles.modalButtonDisabled,
-              ]}
-              onPress={handleProceed2FA}
-              disabled={authenticatorCode.length === 0}
-            >
-              <ThemedText style={styles.modalActionButtonText}>Proceed</ThemedText>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* Transaction Success Modal */}
       <TransactionSuccessModal
         visible={showSuccessModal}
@@ -1320,38 +1178,41 @@ const SendFundsDirectScreen = () => {
       {receiptData?.data && (
         <TransactionReceiptModal
           visible={showReceiptModal && !isLoadingReceipt}
-          transaction={{
-            transactionType: 'send',
-            transactionTitle: `Send Funds - ${receiptData.data.recipientInfo?.accountName || accountName}`,
-            transferAmount: `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${parseFloat(receiptData.data.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            fee: receiptData.data.fee 
-              ? `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${parseFloat(receiptData.data.fee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : 'N0',
-            paymentAmount: receiptData.data.totalAmount 
-              ? `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${parseFloat(receiptData.data.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-              : `${selectedCurrency === 'NGN' ? '₦' : selectedCurrency}${amount.replace(/,/g, '')}`,
-            country: selectedCountryName,
-            recipientName: receiptData.data.recipientInfo?.accountName || accountName,
-            bank: receiptData.data.recipientInfo?.bankName || selectedBank?.name || '',
-            accountNumber: receiptData.data.recipientInfo?.accountNumber || accountNumber,
-            transactionId: receiptData.data.reference || receiptData.data.transactionId || `TRF-${transactionId}`,
-            dateTime: receiptData.data.date || receiptData.data.completedAt || receiptData.data.createdAt
-              ? new Date(receiptData.data.date || receiptData.data.completedAt || receiptData.data.createdAt).toLocaleString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : new Date().toLocaleString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }),
-            paymentMethod: 'Bank Transfer',
-          }}
+          transaction={(() => {
+            const details = receiptData.data;
+            const metadata = details.metadata || {};
+            const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
+            const currency = details.currency || selectedCurrency;
+            const symbol = currency === 'NGN' ? '₦' : currency;
+            const dateValue = details.date || details.completedAt || details.createdAt;
+
+            return {
+              transactionType: 'send',
+              transactionTitle: `Send Funds - ${recipientInfo.accountName || recipientInfo.name || accountName || 'Recipient'}`,
+              transferAmount: `${symbol}${parseFloat(details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              fee: `${symbol}${parseFloat(details.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              paymentAmount: details.totalAmount
+                ? `${symbol}${parseFloat(details.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : undefined,
+              country: details.country || selectedCountryName,
+              recipientName: recipientInfo.accountName || recipientInfo.name || accountName,
+              accountName: recipientInfo.accountName || recipientInfo.name || accountName,
+              bank: metadata.bankName || recipientInfo.bankName || selectedBank?.name,
+              accountNumber: metadata.accountNumber || recipientInfo.accountNumber || accountNumber,
+              transactionId: details.reference || details.transactionId || (transactionId ? String(transactionId) : undefined),
+              dateTime: dateValue
+                ? new Date(dateValue).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : undefined,
+              paymentMethod: details.paymentMethod || 'Bank Transfer',
+              status: details.status,
+            };
+          })()}
           onClose={handleReceiptClose}
         />
       )}

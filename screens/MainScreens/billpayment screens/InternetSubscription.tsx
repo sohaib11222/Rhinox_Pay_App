@@ -47,6 +47,11 @@ const InternetSubscription = ({ route }: any) => {
   const navigation = useNavigation();
 
   useEffect(() => {
+    showWarningAlert('Unavailable', 'Internet subscription payments are not supported right now.');
+    navigation.goBack();
+  }, [navigation]);
+
+  useEffect(() => {
     showWarningAlert('Under Maintenance', 'This bill payment service is temporarily unavailable.', () => {
       (navigation as any).goBack?.();
     });

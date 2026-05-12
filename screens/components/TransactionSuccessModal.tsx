@@ -36,19 +36,22 @@ const TransactionSuccessModal: React.FC<TransactionSuccessModalProps> = ({
   // Format success message based on transaction type
   const getSuccessMessage = () => {
     if (transaction.transactionType === 'deposit') {
-      const amount = transaction.amount || 'N2,000';
-      const country = transaction.country || 'Nigeria';
-      return `Congratulations, You have successfully deposited ${amount} to your ${country} Wallet`;
+      return transaction.amount
+        ? `Congratulations, you have successfully deposited ${transaction.amount} to your wallet`
+        : 'Congratulations, your deposit was completed successfully';
     }
     if (transaction.transactionType === 'airtime' || transaction.transactionType === 'billPayment') {
-      const amount = transaction.amount || 'N2,000';
-      const network = transaction.networkProvider || 'MTN';
-      const mobile = transaction.mobileNumber || '081234578';
-      return `Congratulations, you have successfully recharged ${amount} ${network} on ${mobile}`;
+      const details = [transaction.amount, transaction.networkProvider, transaction.mobileNumber]
+        .filter(Boolean)
+        .join(' ');
+      return details
+        ? `Congratulations, your bill payment was completed successfully: ${details}`
+        : 'Congratulations, your bill payment was completed successfully';
     }
     if (transaction.transactionType === 'send') {
-      const amount = transaction.amount || 'N2,000';
-      return `You have successfully sent ${amount} from your Rhinoxpay NGN wallet`;
+      return transaction.amount
+        ? `You have successfully sent ${transaction.amount} from your wallet`
+        : 'Your transfer was completed successfully';
     }
     return 'Transaction completed successfully';
   };

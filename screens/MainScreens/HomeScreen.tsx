@@ -24,7 +24,9 @@ import { useGetHomeData, useGetHomeTransactions } from '../../queries/home.queri
 import { useGetWalletBalances } from '../../queries/wallet.queries';
 import { useGetVirtualAccounts } from '../../queries/crypto.queries';
 import { useGetCountries } from '../../queries/country.queries';
+import { useGetTransactionDetails } from '../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
+import { showWarningAlert } from '../../utils/customAlert';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
@@ -70,12 +72,7 @@ const HomeScreen = () => {
   const [sendFundsSelectedCountryName, setSendFundsSelectedCountryName] = useState('Nigeria');
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>({
-    id: '1',
-    name: 'Bitcoin',
-    balance: '0.00001',
-    icon: require('../../assets/CurrencyBtc.png'),
-  });
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>(null);
   const [showFundWalletModal, setShowFundWalletModal] = useState(false);
   const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
@@ -84,6 +81,7 @@ const HomeScreen = () => {
   const [fundWalletSelectedCountry, setFundWalletSelectedCountry] = useState<string>('NG');
   const [fundWalletSelectedCountryName, setFundWalletSelectedCountryName] = useState('Nigeria');
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [selectedFiatCurrency, setSelectedFiatCurrency] = useState<string>('NGN'); // Default to NGN
   const [showFiatWalletModal, setShowFiatWalletModal] = useState(false);
@@ -163,6 +161,14 @@ const HomeScreen = () => {
   const activeWalletsCount = homeDataResponse?.activeWalletsCount || 0;
   const activeCryptoWalletsCount = homeDataResponse?.activeCryptoWalletsCount || 0;
   const recentTransactionsCount = homeDataResponse?.recentTransactionsCount || 0;
+
+  const { data: selectedTransactionDetailsData } = useGetTransactionDetails(
+    selectedTransactionId || 0,
+    {
+      queryKey: ['transaction-history', 'details', selectedTransactionId],
+      enabled: !!selectedTransactionId && showReceiptModal,
+    }
+  );
 
   // Calculate Fiat and Crypto balances from wallets
   const fiatWallets = allFiatWallets;
@@ -426,6 +432,10 @@ const HomeScreen = () => {
     return 'arrow-up-circle';
   };
 
+  const sanitizeTransactionText = (value?: string) => {
+    return (value || '').replace(/PalmPay virtual(?: account)?/gi, 'bank transfer');
+  };
+
   // Transform API transactions to UI format
   const allTransactions = useMemo(() => {
     const transactionsList: any[] = [];
@@ -443,7 +453,7 @@ const HomeScreen = () => {
         
         transactionsList.push({
           id: tx.id,
-          title: tx.description || tx.type || 'Transaction',
+          title: sanitizeTransactionText(tx.description || tx.type || 'Transaction'),
           subtitle: tx.status || 'Completed',
           amount: tx.formattedAmount || `${tx.isPositive ? '+' : ''}${tx.currencySymbol || ''}${formatBalance(tx.amount)}`,
           date: date,
@@ -468,7 +478,7 @@ const HomeScreen = () => {
         
         transactionsList.push({
           id: tx.id,
-          title: tx.description || tx.type || 'Crypto Transaction',
+          title: sanitizeTransactionText(tx.description || tx.type || 'Crypto Transaction'),
           subtitle: tx.status || 'Completed',
           amount: tx.formattedAmount || `${tx.isPositive ? '+' : ''}${formatBalance(tx.amount)} ${tx.currency}`,
           date: date,
@@ -528,9 +538,10 @@ const HomeScreen = () => {
       // Extract recipient name from transaction
       const recipientName = 
         tx.rawData?.recipientInfo?.name ||
+        tx.rawData?.recipientInfo?.accountName ||
         tx.rawData?.description?.replace(/Transfer \d+ [A-Z]{3} to /, '') ||
         tx.title?.replace('Transfer ', '').replace(/ \d+ [A-Z]{3} to /, '') ||
-        'Unknown User';
+        'Recipient';
       
       // Get currency from transaction
       const currency = tx.rawData?.currency || 
@@ -573,6 +584,86 @@ const HomeScreen = () => {
     refreshDelay: 2000,
   });
 
+  const formatCountryForReceipt = (country?: string | null) => {
+    if (!country) return undefined;
+    return country.toUpperCase() === 'NG' ? 'Nigeria' : country;
+  };
+
+  const mapHomeTransactionType = (tx: any) => {
+    const source = `${tx.title || ''} ${tx.rawData?.type || ''} ${tx.rawData?.channel || ''} ${tx.rawData?.description || ''}`.toLowerCase();
+    if (source.includes('p2p')) return 'p2p' as const;
+    if (source.includes('bill')) return 'billPayment' as const;
+    if (source.includes('deposit') || source.includes('fund') || source.includes('bank_transfer')) return 'fund' as const;
+    if (source.includes('convert')) return 'convert' as const;
+    return 'send' as const;
+  };
+
+  useEffect(() => {
+    if (!selectedTransactionDetailsData?.data || !selectedTransaction) return;
+
+    const details = selectedTransactionDetailsData.data;
+    const metadata = details.metadata || {};
+    const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
+    const virtualAccount = details.virtualAccount || {};
+    const bankAccount = details.bankAccount || {};
+    const transactionType = mapHomeTransactionType({
+      ...selectedTransaction,
+      rawData: details,
+      title: details.description || selectedTransaction.transactionTitle,
+    });
+    const currency = details.currency || 'NGN';
+    const symbol = currency === 'NGN' ? '₦' : currency;
+    const amount = `${symbol}${parseFloat(details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const dateValue = details.completedAt || details.createdAt;
+
+    setSelectedTransaction({
+      ...selectedTransaction,
+      transactionType,
+      transactionTitle: sanitizeTransactionText(details.description || details.normalizedType || selectedTransaction.transactionTitle),
+      amountNGN: amount,
+      transferAmount: amount,
+      paymentAmount: details.totalAmount
+        ? `${symbol}${parseFloat(details.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        : amount,
+      fee: `${symbol}${parseFloat(details.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      country: formatCountryForReceipt(details.country || (details.channel === 'bank_transfer' ? 'NG' : undefined)),
+      bank: virtualAccount.bankName || bankAccount.bankName || metadata.bankName || recipientInfo.bankName,
+      accountNumber: virtualAccount.accountNumber || bankAccount.accountNumber || metadata.accountNumber || recipientInfo.accountNumber,
+      accountName: virtualAccount.accountName || bankAccount.accountName || metadata.accountName || recipientInfo.accountName || recipientInfo.name,
+      recipientName: recipientInfo.name || recipientInfo.accountName || virtualAccount.accountName || selectedTransaction.recipientName,
+      transactionId: details.reference || (details.id ? String(details.id) : selectedTransaction.transactionId),
+      paymentMethod: details.paymentMethod || (details.channel === 'bank_transfer' ? 'Bank Transfer' : selectedTransaction.paymentMethod),
+      p2pType: details.p2pType || details.p2pOrder?.p2pType || selectedTransaction.p2pType,
+      price: details.price || details.p2pOrder?.price || selectedTransaction.price,
+      totalQty: details.totalQty || (
+        details.p2pOrder?.cryptoAmount && details.p2pOrder?.cryptoCurrency
+          ? `${details.p2pOrder.cryptoAmount} ${details.p2pOrder.cryptoCurrency}`
+          : selectedTransaction.totalQty
+      ),
+      merchantName: details.merchantName || details.p2pOrder?.peer?.name || selectedTransaction.merchantName,
+      merchantContact: details.merchantContact || details.p2pOrder?.peer?.email || details.p2pOrder?.peer?.phone || selectedTransaction.merchantContact,
+      orderId: details.orderId || details.p2pOrder?.id || selectedTransaction.orderId,
+      chatName: details.chatName || details.p2pOrder?.peer?.name || selectedTransaction.chatName,
+      chatEmail: details.chatEmail || details.p2pOrder?.peer?.email || selectedTransaction.chatEmail,
+      billerType: details.billerType || details.provider?.name || details.category?.name || selectedTransaction.billerType,
+      mobileNumber: details.mobileNumber || details.accountNumber || selectedTransaction.mobileNumber,
+      plan: details.plan?.name || details.plan || selectedTransaction.plan,
+      fundingRoute: transactionType === 'fund' ? (details.paymentMethod || 'Bank Transfer') : selectedTransaction.fundingRoute,
+      route: transactionType === 'fund' ? (details.paymentMethod || 'Bank Transfer') : selectedTransaction.route,
+      provider: transactionType === 'fund' ? (details.paymentMethod || 'Bank Transfer') : selectedTransaction.provider,
+      dateTime: dateValue
+        ? new Date(dateValue).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : selectedTransaction.dateTime,
+      status: details.status || selectedTransaction.status,
+    });
+  }, [selectedTransactionDetailsData?.data, selectedTransactionId]);
+
   // Close dropdown when scrolling
   const handleScroll = () => {
     if (showFilterDropdown) {
@@ -582,25 +673,49 @@ const HomeScreen = () => {
 
   // Handle transaction press - map simple transaction data to modal format
   const handleTransactionPress = (transaction: typeof transactions[0]) => {
+    const rawData = transaction.rawData || {};
+    const virtualAccount = rawData.virtualAccount || {};
+    const bankAccount = rawData.bankAccount || {};
+    const transactionType = mapHomeTransactionType(transaction);
     // Map the simple transaction data to the format expected by TransactionReceiptModal
     const mappedTransaction = {
       transactionTitle: transaction.title,
-      transactionId: `TXN-${transaction.id}-${Date.now()}`,
+      transactionId: rawData.reference || (transaction.id ? String(transaction.id) : undefined),
       dateTime: transaction.date,
       amountNGN: transaction.amount,
       status: transaction.status,
-      transactionType: transaction.title.includes('Fund') ? 'fund' as const : 
-                      transaction.title.includes('NGN to') || transaction.title.includes('Convert') ? 'convert' as const :
-                      'send' as const,
-      // Add default values for other fields
-      recipientName: transaction.title.includes('Fund') ? 'Bank Account' : 'Recipient',
+      transactionType,
+      recipientName: rawData.recipientInfo?.name || rawData.recipientInfo?.accountName || virtualAccount.accountName || rawData.accountName,
+      accountName: virtualAccount.accountName || bankAccount.accountName || rawData.recipientInfo?.accountName || rawData.recipientInfo?.name || rawData.accountName,
+      accountNumber: virtualAccount.accountNumber || bankAccount.accountNumber || rawData.metadata?.accountNumber || rawData.recipientInfo?.accountNumber || rawData.accountNumber,
+      bank: virtualAccount.bankName || bankAccount.bankName || rawData.metadata?.bankName || rawData.recipientInfo?.bankName || rawData.bankName,
+      country: formatCountryForReceipt(rawData.country || (rawData.channel === 'bank_transfer' ? 'NG' : undefined)),
       transferAmount: transaction.amount,
       fee: '0.00',
       paymentAmount: transaction.amount,
-      paymentMethod: transaction.subtitle || 'Bank Transfer',
+      paymentMethod: rawData.paymentMethod || (rawData.channel === 'bank_transfer' ? 'Bank Transfer' : undefined),
+      p2pType: rawData.p2pType || rawData.p2pOrder?.p2pType,
+      price: rawData.price || rawData.p2pOrder?.price,
+      totalQty: rawData.totalQty || (
+        rawData.p2pOrder?.cryptoAmount && rawData.p2pOrder?.cryptoCurrency
+          ? `${rawData.p2pOrder.cryptoAmount} ${rawData.p2pOrder.cryptoCurrency}`
+          : undefined
+      ),
+      merchantName: rawData.merchantName || rawData.p2pOrder?.peer?.name,
+      merchantContact: rawData.merchantContact || rawData.p2pOrder?.peer?.email || rawData.p2pOrder?.peer?.phone,
+      orderId: rawData.orderId || rawData.metadata?.orderId || rawData.p2pOrder?.id,
+      chatName: rawData.chatName || rawData.p2pOrder?.peer?.name,
+      chatEmail: rawData.chatEmail || rawData.p2pOrder?.peer?.email,
+      billerType: rawData.billerType || rawData.provider?.name || rawData.category?.name || rawData.metadata?.providerName,
+      mobileNumber: rawData.mobileNumber || rawData.accountNumber || rawData.metadata?.accountNumber,
+      plan: rawData.plan?.name || rawData.plan || rawData.metadata?.itemName,
+      fundingRoute: transactionType === 'fund' ? (rawData.paymentMethod || 'Bank Transfer') : undefined,
+      route: transactionType === 'fund' ? (rawData.paymentMethod || 'Bank Transfer') : undefined,
+      provider: transactionType === 'fund' ? (rawData.paymentMethod || 'Bank Transfer') : undefined,
     };
     
     setSelectedTransaction(mappedTransaction);
+    setSelectedTransactionId(Number(transaction.id) || null);
     setShowReceiptModal(true);
   };
 
@@ -913,7 +1028,7 @@ const HomeScreen = () => {
                 <Image
                   source={item.image}
                   style={styles.promoBannerImage}
-                  resizeMode="cover"
+                  resizeMode="contain"
                 />
               </View>
             )}
@@ -1485,8 +1600,7 @@ const HomeScreen = () => {
                                 if (firstCrypto) {
                                   return `${formatBalanceNoDecimals(firstCrypto.balance || firstCrypto.availableBalance || '0')} ${firstCrypto.currency || firstCrypto.symbol || 'BTC'}`;
                                 }
-                                // If no wallets available, show default
-                                return '0.00000 BTC';
+                                return '0.00000';
                               })()}
                             </ThemedText>
                           )}
@@ -1603,22 +1717,7 @@ const HomeScreen = () => {
                           <ThemedText style={styles.sendFundsRecentCurrency}>{contact.currency}</ThemedText>
                         </View>
                       ))
-                    ) : (
-                      // Fallback to default contacts if no recent transactions
-                      [
-                        { id: '1', name: 'Adewale', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '2', name: 'Sasha', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '3', name: 'Olayemi', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '4', name: 'Adejoke', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                        { id: '5', name: 'Tunde', currency: 'NGN', avatar: require('../../assets/Frame 2398.png') },
-                      ].map((contact) => (
-                        <View key={contact.id} style={styles.sendFundsRecentItem}>
-                          <Image source={contact.avatar} style={styles.sendFundsRecentAvatar} resizeMode="cover" />
-                          <ThemedText style={styles.sendFundsRecentName}>{contact.name}</ThemedText>
-                          <ThemedText style={styles.sendFundsRecentCurrency}>{contact.currency}</ThemedText>
-                        </View>
-                      ))
-                    )}
+                    ) : null}
                   </ScrollView>
                 </View>
               )}
@@ -1971,11 +2070,7 @@ const HomeScreen = () => {
                       {/* Mobile Money Option */}
                       <TouchableOpacity
                         onPress={() => {
-                          setShowFundWalletModal(false);
-                          // Navigate to Fund screen in Wallet stack (for funding/depositing)
-                          (navigation as any).navigate('Wallet', {
-                            screen: 'Fund',
-                          });
+                          showWarningAlert('Under Maintenance', 'Mobile money funding is temporarily unavailable. Please use bank transfer.');
                         }}
                       >
                         <LinearGradient
@@ -1993,7 +2088,7 @@ const HomeScreen = () => {
                           </View>
                           <View style={styles.sendFundsTextContainer}>
                             <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
-                            <ThemedText style={styles.sendFundsOptionSubtitle}>Fund your wallet via mobile moneyt</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Mobile money funding is under maintenance</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -2050,7 +2145,7 @@ const HomeScreen = () => {
                             <ActivityIndicator size="small" color="#A9EF45" style={{ marginLeft: 8 }} />
                           ) : (
                             <ThemedText style={styles.sendFundsBalanceAmount}>
-                              {fundWalletCryptoBalance?.formatted || (selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00000 BTC')}
+                              {fundWalletCryptoBalance?.formatted || (selectedAsset ? `${selectedAsset.balance} ${selectedAsset.name}` : '0.00000')}
                             </ThemedText>
                           )}
                         </View>
@@ -2341,6 +2436,7 @@ const HomeScreen = () => {
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
       )}
@@ -2613,19 +2709,22 @@ const styles = StyleSheet.create({
     color: 'rgba(0, 0, 0, 0.5)',
   },
   promoBannerContainer: {
-    marginBottom: 5 * SCALE,
+    marginBottom: 8 * SCALE,
     marginHorizontal: SCREEN_WIDTH * 0.047,
   },
   promoBanner: {
     width: SCREEN_WIDTH - (SCREEN_WIDTH * 0.094), // Full width minus horizontal margins
     borderRadius: 20 * 1,
     overflow: 'hidden',
-    height: 118 * 1,
+    height: 128 * SCALE,
+    backgroundColor: '#081421',
+    paddingHorizontal: 10 * SCALE,
+    paddingVertical: 8 * SCALE,
   },
   promoBannerImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 20 * 1,
+    borderRadius: 16 * SCALE,
   },
   paginationDots: {
     flexDirection: 'row',

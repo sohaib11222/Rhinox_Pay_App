@@ -384,6 +384,16 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
+const sanitizeUserFacingError = (message?: string): string => {
+  if (!message) return 'An error occurred';
+  return message
+    .replace(/PalmPay virtual(?: account)?/gi, 'bank transfer')
+    .replace(/PalmPay/gi, 'payment provider')
+    .replace(/palmpay/gi, 'payment provider')
+    .replace(/virtual account/gi, 'account')
+    .trim();
+};
+
 /**
  * Custom error handler
  */
@@ -392,7 +402,7 @@ export const handleApiError = (error: AxiosError): ApiError => {
     // Server responded with error status
     const data = error.response.data as any;
     return {
-      message: data?.message || data?.error || 'An error occurred',
+      message: sanitizeUserFacingError(data?.message || data?.error || 'An error occurred'),
       status: error.response.status,
       errors: data?.errors,
     };
@@ -404,7 +414,7 @@ export const handleApiError = (error: AxiosError): ApiError => {
   } else {
     // Something else happened
     return {
-      message: error.message || 'An unexpected error occurred',
+      message: sanitizeUserFacingError(error.message || 'An unexpected error occurred'),
     };
   }
 };

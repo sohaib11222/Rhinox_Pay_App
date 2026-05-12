@@ -1693,14 +1693,8 @@ const Conversion = () => {
                         paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
                         country: receiveCountryData?.name || '',
                         recipientName: 'Currency Conversion',
-                        transactionId: conversionReference || `CV${Date.now().toString().slice(-10)}`,
-                        dateTime: new Date().toLocaleString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        }),
+                        transactionId: conversionReference,
+                        dateTime: undefined,
                         paymentMethod: 'Conversion',
                     } : receiptData?.data ? (() => {
                         // API Response: { conversionReference, fromTransaction, toTransaction, exchangeRate, channel, paymentMethod }
@@ -1719,7 +1713,7 @@ const Conversion = () => {
                             paymentAmount: `${receiveCountryData?.currencySymbol}${formatBalance(toTx.amount || receiveAmount.replace(/,/g, ''))}`,
                             country: receiveCountryData?.name || '',
                             recipientName: 'Currency Conversion',
-                            transactionId: receipt.conversionReference || conversionReference || `CV${Date.now().toString().slice(-10)}`,
+                            transactionId: receipt.conversionReference || conversionReference,
                             dateTime: completedDate
                                 ? new Date(completedDate).toLocaleString('en-US', {
                                     month: 'short',
@@ -1728,13 +1722,7 @@ const Conversion = () => {
                                     hour: '2-digit',
                                     minute: '2-digit',
                                 })
-                                : new Date().toLocaleString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                }),
+                                : undefined,
                             paymentMethod: receipt.paymentMethod || receipt.channel || 'Conversion',
                         };
                     })() : {
@@ -1745,14 +1733,8 @@ const Conversion = () => {
                         paymentAmount: `${receiveCountryData?.currencySymbol}${receiveAmount.replace(/,/g, '')}`,
                         country: receiveCountryData?.name || '',
                         recipientName: 'Currency Conversion',
-                        transactionId: conversionReference || `CV${Date.now().toString().slice(-10)}`,
-                        dateTime: new Date().toLocaleString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                        }),
+                        transactionId: conversionReference,
+                        dateTime: undefined,
                         paymentMethod: 'Conversion',
                     }
                 }

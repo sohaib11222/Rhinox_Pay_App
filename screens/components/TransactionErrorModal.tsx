@@ -33,6 +33,8 @@ const TransactionErrorModal: React.FC<TransactionErrorModalProps> = ({
   onRetry,
   onCancel,
 }) => {
+  const amount = transaction.transferAmount || transaction.amountNGN || '0';
+
   return (
     <Modal
       visible={visible}
@@ -53,12 +55,12 @@ const TransactionErrorModal: React.FC<TransactionErrorModalProps> = ({
           <ThemedText style={styles.errorTitle}>
             {transaction.transactionType === 'withdrawal' 
               ? 'Withdrawal Failed'
-              : `${transaction.transferAmount || transaction.amountNGN || 'N200,000'} Not Sent`}
+              : `${amount} Not Sent`}
           </ThemedText>
           <ThemedText style={styles.errorMessage}>
             {transaction.transactionType === 'withdrawal'
-              ? `Your withdrawal of ${transaction.transferAmount || transaction.amountNGN || 'N200,000'} could not be completed`
-              : `Your transfer of ${transaction.transferAmount || transaction.amountNGN || 'N200,000'} could not be completed due to netwrok error`}
+              ? `Your withdrawal of ${amount} could not be completed`
+              : `Your transfer of ${amount} could not be completed. Please try again or contact support.`}
           </ThemedText>
 
           {/* Action Buttons */}

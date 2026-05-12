@@ -1057,7 +1057,7 @@ const SendFundCrypto = () => {
           transaction={{
             transactionType: 'send',
             transactionTitle: `Send Crypto - ${selectedAsset?.name || 'Crypto'}`,
-            transactionId: receiptData.data.reference || `TXN-${transactionId}`,
+            transactionId: receiptData.data.reference || (transactionId ? String(transactionId) : undefined),
             dateTime: receiptData.data.completedAt 
               ? new Date(receiptData.data.completedAt).toLocaleString('en-US', {
                   month: 'short',

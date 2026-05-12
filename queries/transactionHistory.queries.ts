@@ -268,7 +268,10 @@ export const mapBillPaymentStatusToAPI = (status: string): string | undefined =>
 export const mapBillPaymentCategoryToAPI = (type: string): string | undefined => {
   if (!type || type === 'All') return undefined;
   const categoryMap: { [key: string]: string } = {
-    'MTN': 'airtime', // Could be airtime or data
+    'Airtime': 'airtime',
+    'Data': 'data',
+    'Betting': 'betting',
+    'MTN': 'airtime',
     'Airtel': 'airtime',
     'GLO': 'airtime',
     '9mobile': 'airtime',
