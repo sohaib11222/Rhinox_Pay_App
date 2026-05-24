@@ -25,13 +25,7 @@ const VERIFY_WITH_2FA_KEY = 'verifyWith2FA';
  */
 export const getAccessToken = async (): Promise<string | null> => {
   try {
-    const token = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
-    if (token) {
-      console.log('[getAccessToken] Token retrieved (preview):', token.substring(0, 50) + '...');
-    } else {
-      console.log('[getAccessToken] No token found in storage');
-    }
-    return token;
+    return await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
   } catch (error) {
     console.error('Error getting access token:', error);
     return null;
@@ -56,12 +50,6 @@ export const getRefreshToken = async (): Promise<string | null> => {
 export const setAccessToken = async (token: string): Promise<void> => {
   try {
     await AsyncStorage.setItem(ACCESS_TOKEN_KEY, token);
-    console.log('[setAccessToken] Token stored successfully');
-    console.log('[setAccessToken] Token (full):', token);
-    console.log('[setAccessToken] Token (preview):', token.substring(0, 50) + '...');
-    // Verify it was stored
-    const stored = await AsyncStorage.getItem(ACCESS_TOKEN_KEY);
-    console.log('[setAccessToken] Verification - Token retrieved:', stored ? stored.substring(0, 50) + '...' : 'null');
   } catch (error) {
     console.error('Error setting access token:', error);
   }
@@ -83,7 +71,6 @@ export const setRefreshToken = async (token: string): Promise<void> => {
  */
 export const clearTokens = async (): Promise<void> => {
   try {
-    console.log('[clearTokens] Clearing all tokens from storage...');
     await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
     
     // Verify tokens are cleared
@@ -96,8 +83,6 @@ export const clearTokens = async (): Promise<void> => {
       console.error('[clearTokens] Refresh token exists:', !!refreshToken);
       // Force remove again
       await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
-    } else {
-      console.log('[clearTokens] Tokens successfully cleared ✓');
     }
   } catch (error) {
     console.error('[clearTokens] Error clearing tokens:', error);
@@ -105,7 +90,6 @@ export const clearTokens = async (): Promise<void> => {
     try {
       await AsyncStorage.removeItem(ACCESS_TOKEN_KEY);
       await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
-      console.log('[clearTokens] Tokens cleared using fallback method');
     } catch (fallbackError) {
       console.error('[clearTokens] Fallback clear also failed:', fallbackError);
     }
@@ -131,7 +115,6 @@ export const getBiometricEnabled = async (): Promise<boolean> => {
 export const setBiometricEnabled = async (enabled: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled.toString());
-    console.log('[setBiometricEnabled] Biometric preference saved:', enabled);
   } catch (error) {
     console.error('Error setting biometric preference:', error);
   }
@@ -178,7 +161,6 @@ export const getSecurityConfirmationSettings = async (): Promise<SecurityConfirm
 export const setVerifyWithPin = async (enabled: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(VERIFY_WITH_PIN_KEY, enabled.toString());
-    console.log('[setVerifyWithPin] Verify with PIN preference saved:', enabled);
   } catch (error) {
     console.error('Error setting verify with PIN preference:', error);
   }
@@ -190,7 +172,6 @@ export const setVerifyWithPin = async (enabled: boolean): Promise<void> => {
 export const setVerifyWithEmail = async (enabled: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(VERIFY_WITH_EMAIL_KEY, enabled.toString());
-    console.log('[setVerifyWithEmail] Verify with Email preference saved:', enabled);
   } catch (error) {
     console.error('Error setting verify with Email preference:', error);
   }
@@ -202,7 +183,6 @@ export const setVerifyWithEmail = async (enabled: boolean): Promise<void> => {
 export const setVerifyWith2FA = async (enabled: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(VERIFY_WITH_2FA_KEY, enabled.toString());
-    console.log('[setVerifyWith2FA] Verify with 2FA preference saved:', enabled);
   } catch (error) {
     console.error('Error setting verify with 2FA preference:', error);
   }
@@ -220,32 +200,6 @@ const apiClient: AxiosInstance = axios.create({
 });
 
 /**
- * Decode JWT token to get payload (userId, etc.)
- * React Native compatible base64 decoding
- */
-const decodeJWT = (token: string): any => {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      return null;
-    }
-    const payload = parts[1];
-    // Base64 decode - React Native compatible
-    // Add padding if needed
-    let base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-    // Decode base64
-    const decoded = atob(base64);
-    return JSON.parse(decoded);
-  } catch (error) {
-    console.error('[decodeJWT] Error decoding token:', error);
-    return null;
-  }
-};
-
-/**
  * Request interceptor - Add auth token to requests
  */
 apiClient.interceptors.request.use(
@@ -256,33 +210,6 @@ apiClient.interceptors.request.use(
         // Ensure token is trimmed and properly formatted
         const trimmedToken = token.trim();
         config.headers.Authorization = `Bearer ${trimmedToken}`;
-      }
-      
-      // Log request details
-      const method = config.method?.toUpperCase() || 'UNKNOWN';
-      const url = config.url || '';
-      const fullUrl = `${config.baseURL}${url}`;
-      // console.log(`\n[API REQUEST] ${method} ${fullUrl}`);
-      if (config.data) {
-        // console.log('[API REQUEST] Body:', JSON.stringify(config.data, null, 2));
-      }
-      if (token) {
-        //  console.log('[API REQUEST] Token (full):', token);
-        // Decode token to show userId and other info
-        const decoded = decodeJWT(token);
-        if (decoded) {
-          // console.log('[API REQUEST] Token Payload:', JSON.stringify(decoded, null, 2));
-          // console.log('[API REQUEST] UserId from token:', decoded.userId || decoded.sub || decoded.id || 'Not found');
-          // console.log('[API REQUEST] Token expires at:', decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'Not found');
-        }
-      } else {
-        // console.log('[API REQUEST] No token available');
-      }
-      if (config.headers?.Authorization) {
-        const authHeader = config.headers.Authorization;
-        if (typeof authHeader === 'string') {
-          // console.log('[API REQUEST] Authorization header:', authHeader.substring(0, 50) + '...');
-        }
       }
     } catch (error) {
       console.error('Error in request interceptor:', error);
@@ -299,30 +226,9 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
-    // Log successful response
-    const method = response.config.method?.toUpperCase() || 'UNKNOWN';
-    const url = response.config.url || '';
-    const fullUrl = `${response.config.baseURL}${url}`;
-    // console.log(`\n[API RESPONSE] ${method} ${fullUrl} - Status: ${response.status}`);
-    if (response.data) {
-      // console.log('[API RESPONSE] Data:', JSON.stringify(response.data, null, 2));
-    }
     return response;
   },
   async (error: AxiosError) => {
-    // Log error response
-    if (error.config) {
-      const method = error.config.method?.toUpperCase() || 'UNKNOWN';
-      const url = error.config.url || '';
-      const fullUrl = `${error.config.baseURL}${url}`;
-      console.log(`\n[API ERROR] ${method} ${fullUrl} - Status: ${error.response?.status || 'NO RESPONSE'}`);
-      if (error.response?.data) {
-        console.log('[API ERROR] Response:', JSON.stringify(error.response.data, null, 2));
-      }
-      if (error.message) {
-        console.log('[API ERROR] Message:', error.message);
-      }
-    }
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // Handle 401 Unauthorized - Token expired or invalid

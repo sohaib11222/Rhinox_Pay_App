@@ -296,8 +296,6 @@ const Betting = ({ route }: any) => {
   // Initiate bill payment mutation
   const initiateMutation = useInitiateBillPayment({
     onSuccess: (data: any) => {
-      console.log('[Betting] Payment initiated successfully:', JSON.stringify(data, null, 2));
-      
       const transactionId = 
         data?.data?.transactionId || 
         data?.data?.id || 
@@ -324,7 +322,6 @@ const Betting = ({ route }: any) => {
   // Confirm bill payment mutation
   const confirmMutation = useConfirmBillPayment({
     onSuccess: (data) => {
-      console.log('[Betting] Payment confirmed successfully:', data);
       setShowPinModal(false);
       setPin('');
       setPendingTransactionId(null);
@@ -815,7 +812,7 @@ const Betting = ({ route }: any) => {
             </View>
 
             {/* Account Name (Auto-filled after validation) */}
-            {accountName && (
+            {!!accountName && (
               <View style={styles.inputField}>
                 <View style={styles.accountNameContainer}>
                   <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>

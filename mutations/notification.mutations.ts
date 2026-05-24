@@ -12,10 +12,8 @@ import { API_ROUTES, buildRouteWithParams } from '../utils/apiConfig';
  */
 export const markNotificationAsRead = async (id: number): Promise<ApiResponse> => {
   try {
-    console.log('[markNotificationAsRead] Marking notification as read:', id);
     const route = buildRouteWithParams(`${API_ROUTES.NOTIFICATION.MARK_AS_READ}/{id}/read`, { id });
     const response = await apiClient.put(route);
-    console.log('[markNotificationAsRead] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[markNotificationAsRead] Error marking notification as read:', error);
@@ -46,9 +44,7 @@ export const useMarkNotificationAsRead = (
  */
 export const markAllNotificationsAsRead = async (): Promise<ApiResponse> => {
   try {
-    console.log('[markAllNotificationsAsRead] Marking all notifications as read...');
     const response = await apiClient.put(API_ROUTES.NOTIFICATION.MARK_ALL_READ);
-    console.log('[markAllNotificationsAsRead] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[markAllNotificationsAsRead] Error marking all notifications as read:', error);
@@ -79,10 +75,8 @@ export const useMarkAllNotificationsAsRead = (
  */
 export const deleteNotification = async (id: number): Promise<ApiResponse> => {
   try {
-    console.log('[deleteNotification] Deleting notification:', id);
     const route = buildRouteWithParams(`${API_ROUTES.NOTIFICATION.DELETE}/{id}`, { id });
     const response = await apiClient.delete(route);
-    console.log('[deleteNotification] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[deleteNotification] Error deleting notification:', error);

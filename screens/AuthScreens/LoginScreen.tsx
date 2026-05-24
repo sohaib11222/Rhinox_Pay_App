@@ -95,7 +95,6 @@ const LoginScreen = () => {
   // Forgot password mutation
   const forgotPasswordMutation = useForgotPassword({
     onSuccess: (data) => {
-      console.log('[LoginScreen] Forgot password OTP sent:', JSON.stringify(data, null, 2));
       setEmailVerified(true);
       setForgotPasswordStep('otp');
       setCountdown(59); // Start countdown
@@ -116,7 +115,6 @@ const LoginScreen = () => {
   // Verify password reset OTP mutation
   const verifyOtpMutation = useVerifyPasswordResetOtp({
     onSuccess: (data) => {
-      console.log('[LoginScreen] OTP verified:', JSON.stringify(data, null, 2));
       setOtpVerified(true);
       setForgotPasswordStep('reset');
       setShowForgotPasswordModal(false);
@@ -138,7 +136,6 @@ const LoginScreen = () => {
   // Reset password mutation
   const resetPasswordMutation = useResetPassword({
     onSuccess: (data) => {
-      console.log('[LoginScreen] Password reset successful:', JSON.stringify(data, null, 2));
       showSuccessAlert(
         'Password Reset Successful',
         'Your password has been reset successfully. Please login with your new password.',

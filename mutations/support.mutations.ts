@@ -18,9 +18,7 @@ export interface CreateSupportChatParams {
  */
 export const createSupportChat = async (params: CreateSupportChatParams): Promise<ApiResponse> => {
   try {
-    console.log('[createSupportChat] Creating support chat with params:', JSON.stringify(params, null, 2));
     const response = await apiClient.post(API_ROUTES.SUPPORT.CREATE_CHAT, params);
-    console.log('[createSupportChat] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[createSupportChat] Error creating support chat:', error);
@@ -59,10 +57,8 @@ export const sendSupportMessage = async (
   params: SendSupportMessageParams
 ): Promise<ApiResponse> => {
   try {
-    console.log('[sendSupportMessage] Sending message to chat:', chatId, 'with params:', JSON.stringify(params, null, 2));
     const route = buildRouteWithParams(`${API_ROUTES.SUPPORT.SEND_MESSAGE}/{id}/messages`, { id: chatId });
     const response = await apiClient.post(route, params);
-    console.log('[sendSupportMessage] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[sendSupportMessage] Error sending support message:', error);
@@ -96,10 +92,8 @@ export const useSendSupportMessage = (
  */
 export const markSupportMessagesRead = async (chatId: number): Promise<ApiResponse> => {
   try {
-    console.log('[markSupportMessagesRead] Marking messages as read for chat:', chatId);
     const route = buildRouteWithParams(`${API_ROUTES.SUPPORT.MARK_MESSAGES_READ}/{id}/messages/read`, { id: chatId });
     const response = await apiClient.put(route);
-    console.log('[markSupportMessagesRead] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[markSupportMessagesRead] Error marking support messages as read:', error);

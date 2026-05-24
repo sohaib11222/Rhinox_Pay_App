@@ -361,16 +361,8 @@ const Conversion = () => {
     // API Response: { conversionReference, debitTransaction, creditTransaction, exchangeRate, fee }
     const initiateMutation = useInitiateConversion({
         onSuccess: (response) => {
-            console.log('[Conversion] Initiate response:', JSON.stringify(response, null, 2));
             if (response?.data?.conversionReference) {
                 setConversionReference(response.data.conversionReference);
-                // Store transaction data for reference
-                if (response.data.debitTransaction) {
-                    console.log('[Conversion] Debit transaction:', response.data.debitTransaction);
-                }
-                if (response.data.creditTransaction) {
-                    console.log('[Conversion] Credit transaction:', response.data.creditTransaction);
-                }
                 // Reset PIN before showing modal
                 setPin('');
                 setShowSummaryModal(false);
@@ -390,7 +382,6 @@ const Conversion = () => {
     // API Response: { conversionReference, fromTransaction, toTransaction, exchangeRate }
     const confirmMutation = useConfirmConversion({
         onSuccess: (response) => {
-            console.log('[Conversion] Confirm response:', JSON.stringify(response, null, 2));
             setShowPinModal(false);
             setPin(''); // Reset PIN on success
             // Refetch balances after successful conversion

@@ -210,8 +210,6 @@ const SendFundsScreen = () => {
   // Initiate transfer mutation
   const initiateMutation = useInitiateTransfer({
     onSuccess: (data: any) => {
-      console.log('[SendFundsScreen] Transfer initiated successfully:', JSON.stringify(data, null, 2));
-      
       const transactionId = 
         data?.data?.id || 
         (data?.data as any)?.transactionId ||
@@ -243,7 +241,6 @@ const SendFundsScreen = () => {
   // Verify transfer mutation
   const verifyMutation = useVerifyTransfer({
     onSuccess: (data) => {
-      console.log('[SendFundsScreen] Transfer verified successfully:', data);
       setShowSecurityModal(false);
       setEmailCode('');
       setAuthenticatorCode('');
@@ -607,7 +604,7 @@ const SendFundsScreen = () => {
             </View>
 
             {/* User Name (Auto-filled) */}
-            {userName && (
+            {!!userName && (
               <View style={[styles.inputField, {backgroundColor: '#020C19', borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                 <View style={styles.accountNameContainer}>
                   <ThemedText style={styles.accountNameLabel}>User Name</ThemedText>

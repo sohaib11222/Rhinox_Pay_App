@@ -294,8 +294,6 @@ const Fund = () => {
   // Initiate deposit mutation
   const initiateMutation = useInitiateDeposit({
     onSuccess: (data: any) => {
-      console.log('[Fund] Deposit initiated successfully:', JSON.stringify(data, null, 2));
-      
       const transactionId = 
         data?.data?.id || 
         (data?.data as any)?.transactionId ||
@@ -366,8 +364,6 @@ const Fund = () => {
   // Confirm deposit mutation
   const confirmMutation = useConfirmDeposit({
     onSuccess: (data) => {
-      console.log('[Fund] Deposit confirmed successfully:', data);
-      
       // Store transaction data before resetting form
       // Try to get transaction ID from confirm response first, then from pendingTransactionData, then from pendingTransactionId
       const transactionId = data?.data?.id || 
@@ -974,7 +970,7 @@ const Fund = () => {
                 </View>
 
                 {/* Account holder name (Auto-filled) */}
-                {accountName && (
+                {!!accountName && (
                   <View style={styles.inputField}>
                     <ThemedText style={styles.inputLabel}>Account holder name</ThemedText>
                     <ThemedText style={styles.accountNameValue}>{accountName}</ThemedText>

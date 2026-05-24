@@ -404,14 +404,9 @@ const Airtime = ({ route }: any) => {
   // Initiate bill payment mutation
   const initiateMutation = useInitiateBillPayment({
     onSuccess: (data: any) => {
-      console.log('[Airtime] Payment initiated successfully:', JSON.stringify(data, null, 2));
-      
       // According to API docs, response structure is:
       // { success: true, data: { transactionId: 123, amount: "1000", ... } }
       const transactionId = data?.data?.transactionId;
-      
-      console.log('[Airtime] Extracted transaction ID:', transactionId);
-      console.log('[Airtime] Full data structure:', JSON.stringify(data, null, 2));
       
       // Store the full transaction data for reference
       setPendingTransactionData(data?.data);
@@ -436,7 +431,6 @@ const Airtime = ({ route }: any) => {
   // Confirm bill payment mutation
   const confirmMutation = useConfirmBillPayment({
     onSuccess: (data) => {
-      console.log('[Airtime] Payment confirmed successfully:', JSON.stringify(data, null, 2));
       setShowPinModal(false);
       setPin('');
       setPendingTransactionId(null);
@@ -855,7 +849,7 @@ const Airtime = ({ route }: any) => {
             </View>
 
             {/* Account Name (Auto-filled) */}
-            {accountName && (
+            {!!accountName && (
               <View style={styles.inputField}>
                 <View style={styles.accountNameContainer}>
                   <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>

@@ -159,8 +159,7 @@ const Settings = () => {
 
   // Logout mutation
   const logoutMutation = useLogout({
-    onSuccess: async (data) => {
-      console.log('[Settings] Logout successful:', JSON.stringify(data, null, 2));
+    onSuccess: async () => {
       await navigateToLogin();
     },
     onError: async (error: any) => {
@@ -168,7 +167,6 @@ const Settings = () => {
       
       // If 401 error (token expired/invalid), still clear tokens and navigate to login
       if (error.status === 401 || error.message?.includes('not logged in') || error.message?.includes('expired')) {
-        console.log('[Settings] Token expired or invalid (401), clearing tokens and navigating to login...');
         await navigateToLogin();
       } else {
         // For other errors, show alert but still try to navigate to login

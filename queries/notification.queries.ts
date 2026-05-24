@@ -19,10 +19,8 @@ export interface GetNotificationsParams {
  */
 export const getNotifications = async (params?: GetNotificationsParams): Promise<ApiResponse> => {
   try {
-    console.log('[getNotifications] Calling notifications API with params:', JSON.stringify(params, null, 2));
     const url = buildApiUrl(API_ROUTES.NOTIFICATION.GET_ALL, params as any);
     const response = await apiClient.get(url);
-    console.log('[getNotifications] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getNotifications] Error fetching notifications:', error);
@@ -49,9 +47,7 @@ export const useGetNotifications = (
  */
 export const getUnreadNotificationCount = async (): Promise<ApiResponse> => {
   try {
-    console.log('[getUnreadNotificationCount] Calling unread count API...');
     const response = await apiClient.get(API_ROUTES.NOTIFICATION.GET_UNREAD_COUNT);
-    console.log('[getUnreadNotificationCount] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getUnreadNotificationCount] Error fetching unread count:', error);

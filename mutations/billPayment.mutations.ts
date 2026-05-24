@@ -13,9 +13,7 @@ export interface ValidateMeterRequest {
 
 export const validateMeter = async (data: ValidateMeterRequest): Promise<ApiResponse> => {
   try {
-    console.log('[validateMeter] Validating meter with data:', JSON.stringify(data, null, 2));
     const response = await apiClient.post(API_ROUTES.BILL_PAYMENT.VALIDATE_METER, data);
-    console.log('[validateMeter] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[validateMeter] Error validating meter:', error);
@@ -45,9 +43,7 @@ export interface ValidateAccountRequest {
 
 export const validateAccount = async (data: ValidateAccountRequest): Promise<ApiResponse> => {
   try {
-    console.log('[validateAccount] Validating account with data:', JSON.stringify(data, null, 2));
     const response = await apiClient.post(API_ROUTES.BILL_PAYMENT.VALIDATE_ACCOUNT, data);
-    console.log('[validateAccount] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[validateAccount] Error validating account:', error);
@@ -83,9 +79,7 @@ export interface InitiateBillPaymentRequest {
 
 export const initiateBillPayment = async (data: InitiateBillPaymentRequest): Promise<ApiResponse> => {
   try {
-    console.log('[initiateBillPayment] Initiating bill payment with data:', JSON.stringify(data, null, 2));
     const response = await apiClient.post(API_ROUTES.BILL_PAYMENT.INITIATE, data);
-    console.log('[initiateBillPayment] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[initiateBillPayment] Error initiating bill payment:', error);
@@ -115,9 +109,7 @@ export interface ConfirmBillPaymentRequest {
 
 export const confirmBillPayment = async (data: ConfirmBillPaymentRequest): Promise<ApiResponse> => {
   try {
-    console.log('[confirmBillPayment] Confirming bill payment with data:', JSON.stringify({ ...data, pin: '***' }, null, 2));
     const response = await apiClient.post(API_ROUTES.BILL_PAYMENT.CONFIRM, data);
-    console.log('[confirmBillPayment] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[confirmBillPayment] Error confirming bill payment:', error);
@@ -150,9 +142,7 @@ export interface CreateBeneficiaryRequest {
 
 export const createBeneficiary = async (data: CreateBeneficiaryRequest): Promise<ApiResponse> => {
   try {
-    console.log('[createBeneficiary] Creating beneficiary with data:', JSON.stringify(data, null, 2));
     const response = await apiClient.post(API_ROUTES.BILL_PAYMENT.BENEFICIARIES, data);
-    console.log('[createBeneficiary] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[createBeneficiary] Error creating beneficiary:', error);
@@ -185,10 +175,8 @@ export interface UpdateBeneficiaryRequest {
 export const updateBeneficiary = async (data: UpdateBeneficiaryRequest): Promise<ApiResponse> => {
   try {
     const { id, ...updateData } = data;
-    console.log('[updateBeneficiary] Updating beneficiary with data:', JSON.stringify({ id, ...updateData }, null, 2));
     const route = buildRouteWithParams(`${API_ROUTES.BILL_PAYMENT.BENEFICIARIES}/{id}`, { id });
     const response = await apiClient.put(route, updateData);
-    console.log('[updateBeneficiary] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[updateBeneficiary] Error updating beneficiary:', error);
@@ -213,10 +201,8 @@ export const useUpdateBeneficiary = (
  */
 export const deleteBeneficiary = async (id: number): Promise<ApiResponse> => {
   try {
-    console.log('[deleteBeneficiary] Deleting beneficiary with id:', id);
     const route = buildRouteWithParams(`${API_ROUTES.BILL_PAYMENT.BENEFICIARIES}/{id}`, { id });
     const response = await apiClient.delete(route);
-    console.log('[deleteBeneficiary] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[deleteBeneficiary] Error deleting beneficiary:', error);

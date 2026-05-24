@@ -37,18 +37,12 @@ export const browseP2PAds = async (params?: BrowseAdsParams): Promise<ApiRespons
       });
     }
     
-    // Debug logging
-    console.log('[browseP2PAds] Route:', route);
-    console.log('[browseP2PAds] Clean params:', JSON.stringify(cleanParams));
-    console.log('[browseP2PAds] Params count:', Object.keys(cleanParams).length);
-    
     // Build query string manually to ensure it's included in the URL
     const queryString = Object.entries(cleanParams)
       .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
       .join('&');
     
     const urlWithParams = queryString ? `${route}?${queryString}` : route;
-    console.log('[browseP2PAds] Full URL path:', urlWithParams);
     
     const response = await apiClient.get(urlWithParams);
     return response.data;

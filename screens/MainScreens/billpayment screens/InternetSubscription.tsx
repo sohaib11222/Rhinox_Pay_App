@@ -428,8 +428,6 @@ const InternetSubscription = ({ route }: any) => {
   // Initiate bill payment mutation
   const initiateMutation = useInitiateBillPayment({
     onSuccess: (data: any) => {
-      console.log('[InternetSubscription] Payment initiated successfully:', JSON.stringify(data, null, 2));
-      
       const transactionId = 
         data?.data?.transactionId || 
         data?.data?.id || 
@@ -456,7 +454,6 @@ const InternetSubscription = ({ route }: any) => {
   // Confirm bill payment mutation
   const confirmMutation = useConfirmBillPayment({
     onSuccess: (data) => {
-      console.log('[InternetSubscription] Payment confirmed successfully:', data);
       setShowPinModal(false);
       setPin('');
       setPendingTransactionId(null);
@@ -828,7 +825,7 @@ const InternetSubscription = ({ route }: any) => {
             )}
 
             {/* Account Name (Auto-filled) */}
-            {accountName && (
+            {!!accountName && (
               <View style={styles.inputField}>
                 <View style={styles.accountNameContainer}>
                   <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>

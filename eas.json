@@ -6,18 +6,14 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "production",
       "ios": {
         "simulator": true
       }
     },
     "preview": {
-      "distribution": "internal",
-      "channel": "production"
+      "distribution": "internal"
     },
-    "production": {
-      "channel": "production"
-    }
+    "production": {}
   },
   "submit": {
     "production": {}

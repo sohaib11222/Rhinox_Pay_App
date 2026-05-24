@@ -504,7 +504,6 @@ const BuyOrder = () => {
   // Transfer mutations for RhinoxPay payments
   const initiateTransferMutation = useInitiateTransfer({
     onSuccess: (data) => {
-      console.log('[BuyOrder] Transfer initiated successfully:', data);
       const transactionId = data?.data?.id || data?.data?.transactionId;
       if (transactionId) {
         setTransferTransactionId(Number(transactionId));
@@ -523,7 +522,6 @@ const BuyOrder = () => {
 
   const verifyTransferMutation = useVerifyTransfer({
     onSuccess: (data) => {
-      console.log('[BuyOrder] Transfer verified successfully:', data);
       setShowEmailCodeModal(false);
       setEmailCode('');
       setPin('');

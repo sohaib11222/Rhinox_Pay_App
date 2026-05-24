@@ -71,7 +71,6 @@ const AccountSecurity = () => {
   // Password reset mutations
   const forgotPasswordMutation = useForgotPassword({
     onSuccess: (data) => {
-      console.log('[AccountSecurity] Password reset OTP sent:', JSON.stringify(data, null, 2));
       setEmailVerified(true);
       setForgotPasswordStep('otp');
       setCountdown(59);
@@ -91,7 +90,6 @@ const AccountSecurity = () => {
 
   const verifyOtpMutation = useVerifyPasswordResetOtp({
     onSuccess: (data) => {
-      console.log('[AccountSecurity] OTP verified:', JSON.stringify(data, null, 2));
       setOtpVerified(true);
       setForgotPasswordStep('reset');
       setShowForgotPasswordModal(false);
@@ -112,7 +110,6 @@ const AccountSecurity = () => {
 
   const resetPasswordMutation = useResetPassword({
     onSuccess: (data) => {
-      console.log('[AccountSecurity] Password reset successful:', JSON.stringify(data, null, 2));
       setPasswordChanged(true);
       showSuccessAlert(
         'Password Reset Successful',
@@ -163,7 +160,6 @@ const AccountSecurity = () => {
   // Verify password for PIN mutation
   const verifyPasswordForPinMutation = useVerifyPasswordForPin({
     onSuccess: (data) => {
-      console.log('[AccountSecurity] Password verified successfully:', JSON.stringify(data, null, 2));
       setPasswordVerified(true);
       setShowPasswordModal(false);
       setShowPinModal(true);
@@ -190,7 +186,6 @@ const AccountSecurity = () => {
   // Set PIN mutation
   const setPinMutation = useSetPin({
     onSuccess: (data) => {
-      console.log('[AccountSecurity] PIN set successfully:', JSON.stringify(data, null, 2));
       showSuccessAlert(
         'Success',
         data?.data?.message || 'PIN setup completed successfully',

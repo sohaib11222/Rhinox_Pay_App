@@ -7,9 +7,7 @@ import { API_ROUTES, buildApiUrl } from '../utils/apiConfig';
  */
 export const getBillPaymentCategories = async (): Promise<ApiResponse> => {
   try {
-    console.log('[getBillPaymentCategories] Fetching bill payment categories...');
     const response = await apiClient.get(API_ROUTES.BILL_PAYMENT.CATEGORIES);
-    console.log('[getBillPaymentCategories] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getBillPaymentCategories] Error fetching categories:', error);
@@ -38,7 +36,6 @@ export interface GetProvidersParams {
 
 export const getBillPaymentProviders = async (params: GetProvidersParams): Promise<ApiResponse> => {
   try {
-    console.log('[getBillPaymentProviders] Fetching providers with params:', JSON.stringify(params, null, 2));
     // Build query string from params (apiClient already has baseURL)
     let url = API_ROUTES.BILL_PAYMENT.PROVIDERS;
     if (params) {
@@ -51,7 +48,6 @@ export const getBillPaymentProviders = async (params: GetProvidersParams): Promi
       }
     }
     const response = await apiClient.get(url);
-    console.log('[getBillPaymentProviders] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getBillPaymentProviders] Error fetching providers:', error);
@@ -84,7 +80,6 @@ export interface GetPlansParams {
 
 export const getBillPaymentPlans = async (params: GetPlansParams): Promise<ApiResponse> => {
   try {
-    console.log('[getBillPaymentPlans] Fetching plans with params:', JSON.stringify(params, null, 2));
     // Build query string from params (apiClient already has baseURL)
     let url = API_ROUTES.BILL_PAYMENT.PLANS;
     if (params) {
@@ -97,7 +92,6 @@ export const getBillPaymentPlans = async (params: GetPlansParams): Promise<ApiRe
       }
     }
     const response = await apiClient.get(url);
-    console.log('[getBillPaymentPlans] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getBillPaymentPlans] Error fetching plans:', error);
@@ -129,7 +123,6 @@ export interface GetBeneficiariesParams {
 
 export const getBillPaymentBeneficiaries = async (params?: GetBeneficiariesParams): Promise<ApiResponse> => {
   try {
-    console.log('[getBillPaymentBeneficiaries] Fetching beneficiaries with params:', JSON.stringify(params, null, 2));
     // Build query string from params (apiClient already has baseURL)
     let url = API_ROUTES.BILL_PAYMENT.BENEFICIARIES;
     if (params) {
@@ -142,7 +135,6 @@ export const getBillPaymentBeneficiaries = async (params?: GetBeneficiariesParam
       }
     }
     const response = await apiClient.get(url);
-    console.log('[getBillPaymentBeneficiaries] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getBillPaymentBeneficiaries] Error fetching beneficiaries:', error);

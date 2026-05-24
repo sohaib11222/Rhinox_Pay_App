@@ -23,9 +23,7 @@ export interface SubmitKYCRequest {
 
 export const submitKYC = async (data: SubmitKYCRequest): Promise<ApiResponse> => {
   try {
-    console.log('[submitKYC] Submitting KYC data:', JSON.stringify(data, null, 2));
     const response = await apiClient.post(API_ROUTES.KYC.SUBMIT, data);
-    console.log('[submitKYC] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[submitKYC] Error:', error);
@@ -87,9 +85,7 @@ export const submitFaceVerification = async (
   data: FaceVerificationRequest
 ): Promise<ApiResponse> => {
   try {
-    console.log('[submitFaceVerification] Submitting face verification:', JSON.stringify(data, null, 2));
     const response = await apiClient.post(API_ROUTES.KYC.FACE_VERIFICATION, data);
-    console.log('[submitFaceVerification] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[submitFaceVerification] Error:', error);

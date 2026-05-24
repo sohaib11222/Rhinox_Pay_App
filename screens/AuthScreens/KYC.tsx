@@ -101,8 +101,7 @@ const KYC = () => {
 
   // KYC Submission Mutation
   const submitKYCMutation = useSubmitKYC({
-    onSuccess: (data) => {
-      console.log('[KYC] Submission successful:', JSON.stringify(data, null, 2));
+    onSuccess: () => {
       showSuccessAlert(
         'KYC Submitted',
         'Your KYC information has been submitted successfully.',
@@ -184,7 +183,6 @@ const KYC = () => {
       // idDocumentUrl will be added later with file upload functionality
     };
 
-    console.log('[KYC] Submitting KYC data:', JSON.stringify(kycData, null, 2));
     submitKYCMutation.mutate(kycData);
   };
 

@@ -91,16 +91,11 @@ const RegisterScreen = () => {
     return [];
   }, [countriesData]);
   
-  // Debug logging (remove in production)
   React.useEffect(() => {
-    if (countriesData) {
-      console.log('Countries Data:', JSON.stringify(countriesData, null, 2));
-      console.log('Extracted Countries:', countries.length);
-    }
     if (countriesError) {
       console.error('Countries Error:', countriesError);
     }
-  }, [countriesData, countriesError, countries.length]);
+  }, [countriesError]);
 
   // Register mutation
   const registerMutation = useRegister({
@@ -129,21 +124,9 @@ const RegisterScreen = () => {
 
   // Verify email mutation
   const verifyEmailMutation = useVerifyEmail({
-    onSuccess: async (data) => {
-      console.log('[RegisterScreen] Email verification successful');
-      console.log('[RegisterScreen] Response data:', JSON.stringify(data, null, 2));
-      
+    onSuccess: async () => {
       // Wait longer to ensure tokens are fully stored and persisted
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Verify token was stored
-      const apiClientModule = await import('../../utils/apiClient');
-      const storedToken = await apiClientModule.getAccessToken();
-      if (storedToken) {
-        console.log('[RegisterScreen] Token verified after storage (preview):', storedToken.substring(0, 50) + '...');
-      } else {
-        console.error('[RegisterScreen] ERROR: Token not found after storage!');
-      }
       
       showSuccessAlert(
         'Email Verified',

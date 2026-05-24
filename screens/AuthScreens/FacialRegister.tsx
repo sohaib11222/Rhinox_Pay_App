@@ -40,8 +40,7 @@ const FacialRegister = () => {
 
   // Face verification mutation
   const faceVerificationMutation = useSubmitFaceVerification({
-    onSuccess: (data) => {
-      console.log('[FacialRegister] Face verification submitted successfully:', JSON.stringify(data, null, 2));
+    onSuccess: () => {
       // Show success modal after a short delay
       setTimeout(() => {
         setShowSuccessModal(true);

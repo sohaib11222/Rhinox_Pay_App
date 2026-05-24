@@ -129,9 +129,7 @@ export const useGetWalletTransactions = (
  */
 export const getWalletBalances = async (): Promise<ApiResponse> => {
   try {
-    console.log('[getWalletBalances] Fetching all wallet balances...');
     const response = await apiClient.get(API_ROUTES.WALLET.GET_BALANCES);
-    console.log('[getWalletBalances] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getWalletBalances] Error:', error);

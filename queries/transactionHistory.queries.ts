@@ -17,10 +17,8 @@ export const getTransactionHistory = async (
   params?: GetTransactionHistoryParams
 ): Promise<ApiResponse> => {
   try {
-    console.log('[getTransactionHistory] Calling transaction history API with params:', JSON.stringify(params, null, 2));
     const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_ALL, params as any);
     const response = await apiClient.get(url);
-    console.log('[getTransactionHistory] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getTransactionHistory] Error fetching transaction history:', error);
@@ -99,10 +97,8 @@ export const getDeposits = async (params?: GetDepositsParams): Promise<ApiRespon
       apiParams.offset = params.offset;
     }
 
-    console.log('[getDeposits] Calling deposits API with params:', JSON.stringify(apiParams, null, 2));
     const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_DEPOSITS, apiParams);
     const response = await apiClient.get(url);
-    console.log('[getDeposits] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getDeposits] Error fetching deposits:', error);
@@ -186,10 +182,8 @@ export const getWithdrawals = async (params?: GetWithdrawalsParams): Promise<Api
       apiParams.offset = params.offset;
     }
 
-    console.log('[getWithdrawals] Calling withdrawals API with params:', JSON.stringify(apiParams, null, 2));
     const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_WITHDRAWALS, apiParams);
     const response = await apiClient.get(url);
-    console.log('[getWithdrawals] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getWithdrawals] Error fetching withdrawals:', error);
@@ -220,10 +214,8 @@ export interface GetP2PTransactionsParams {
 
 export const getP2PTransactions = async (params?: GetP2PTransactionsParams): Promise<ApiResponse> => {
   try {
-    console.log('[getP2PTransactions] Calling P2P transactions API with params:', JSON.stringify(params, null, 2));
     const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_P2P, params as any);
     const response = await apiClient.get(url);
-    console.log('[getP2PTransactions] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getP2PTransactions] Error fetching P2P transactions:', error);
@@ -286,7 +278,6 @@ export const mapBillPaymentCategoryToAPI = (type: string): string | undefined =>
 
 export const getBillPayments = async (params?: GetBillPaymentsParams): Promise<ApiResponse> => {
   try {
-    console.log('[getBillPayments] Calling bill payments API with params:', JSON.stringify(params, null, 2));
     // Build query string from params, filtering out undefined values
     const queryParams: any = {};
     if (params) {
@@ -302,7 +293,6 @@ export const getBillPayments = async (params?: GetBillPaymentsParams): Promise<A
     
     const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_BILL_PAYMENTS, queryParams);
     const response = await apiClient.get(url);
-    console.log('[getBillPayments] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getBillPayments] Error fetching bill payments:', error);
@@ -323,10 +313,8 @@ export const useGetBillPayments = (
 
 export const getTransactionDetails = async (id: number): Promise<ApiResponse> => {
   try {
-    console.log('[getTransactionDetails] Calling transaction details API for ID:', id);
     const url = buildApiUrl(`${API_ROUTES.TRANSACTION_HISTORY.GET_DETAILS}/${id}/details`);
     const response = await apiClient.get(url);
-    console.log('[getTransactionDetails] Response received:', JSON.stringify(response.data, null, 2));
     return response.data;
   } catch (error: any) {
     console.error('[getTransactionDetails] Error fetching transaction details:', error);

@@ -447,8 +447,6 @@ const Electricity = ({ route }: any) => {
   // Initiate bill payment mutation
   const initiateMutation = useInitiateBillPayment({
     onSuccess: (data: any) => {
-      console.log('[Electricity] Payment initiated successfully:', JSON.stringify(data, null, 2));
-      
       const transactionId = 
         data?.data?.transactionId || 
         data?.data?.id || 
@@ -475,7 +473,6 @@ const Electricity = ({ route }: any) => {
   // Confirm bill payment mutation
   const confirmMutation = useConfirmBillPayment({
     onSuccess: (data) => {
-      console.log('[Electricity] Payment confirmed successfully:', data);
       setShowPinModal(false);
       setPin('');
       setPendingTransactionId(null);
@@ -856,7 +853,7 @@ const Electricity = ({ route }: any) => {
             </View>
 
             {/* Account Name (Auto-filled) */}
-            {accountName && (
+            {!!accountName && (
               <View style={[styles.inputField, { backgroundColor: '#020C19', justifyContent: 'center', alignItems: 'center' }]}>
                 <View style={styles.accountNameContainer}>
                   <ThemedText style={styles.accountNameLabel}>Account Name</ThemedText>
