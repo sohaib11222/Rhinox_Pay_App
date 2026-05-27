@@ -1349,7 +1349,7 @@ const Airtime = ({ route }: any) => {
 
             {pin.length === 5 && (
               <TouchableOpacity
-                style={[styles.confirmButton, confirmMutation.isPending && styles.confirmButtonDisabled]}
+                style={[styles.confirmButton, styles.pinConfirmButton, confirmMutation.isPending && styles.confirmButtonDisabled]}
                 onPress={handleConfirmPayment}
                 disabled={confirmMutation.isPending}
               >
@@ -1897,10 +1897,155 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   pinModalContent: {
-    backgroundColor: '#020C19',
-    borderTopLeftRadius: 20 * SCALE,
-    borderTopRightRadius: 20 * SCALE,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingBottom: 20 * SCALE,
     maxHeight: '90%',
+  },
+  pinModalContentFull: {
+    maxHeight: '95%',
+  },
+  pinModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 10 * SCALE,
+    paddingTop: 30 * SCALE,
+    paddingBottom: 18 * SCALE,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  pinModalTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  pinIconContainer: {
+    alignItems: 'center',
+    marginTop: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  pinIconCircle: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinIcon: {
+    width: 120 * SCALE,
+    height: 120 * SCALE,
+  },
+  pinModalTextContainer: {
+    alignItems: 'center',
+    marginBottom: 22 * SCALE,
+  },
+  pinInstruction: {
+    fontSize: 14 * SCALE,
+    fontWeight: '300',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8 * SCALE,
+  },
+  pinAmount: {
+    fontSize: 36 * SCALE,
+    fontWeight: '600',
+    color: '#A9EF45',
+    textAlign: 'center',
+  },
+  pinBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 22 * SCALE,
+    marginBottom: 35 * SCALE,
+    gap: 12 * SCALE,
+  },
+  pinBarInner: {
+    height: 60 * SCALE,
+    width: 248 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 100 * SCALE,
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24 * SCALE,
+  },
+  fingerprintButton: {
+    width: 60 * SCALE,
+    height: 60 * SCALE,
+    borderRadius: 30 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinSlot: {
+    width: 28 * SCALE,
+    height: 28 * SCALE,
+    borderRadius: 18 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinSlotText: {
+    fontSize: 20 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  pinSlotAsterisk: {
+    fontSize: 19.2 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.5)',
+  },
+  numpad: {
+    marginTop: 0,
+    paddingHorizontal: 20 * SCALE,
+    marginBottom: 20 * SCALE,
+  },
+  numpadRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20 * SCALE,
+  },
+  numpadButton: {
+    width: 117 * SCALE,
+    alignItems: 'center',
+  },
+  numpadCircle: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  numpadCirclePressed: {
+    backgroundColor: '#A9EF45',
+  },
+  numpadText: {
+    fontSize: 19.2 * SCALE,
+    fontWeight: '400',
+    color: '#FFFFFF',
+  },
+  numpadTextPressed: {
+    color: '#000000',
+  },
+  backspaceSquare: {
+    width: 53 * SCALE,
+    height: 53 * SCALE,
+    borderRadius: 26.5 * SCALE,
+    backgroundColor: '#000914',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pinModalScrollContent: {
     paddingBottom: 30 * SCALE,
@@ -1937,6 +2082,9 @@ const styles = StyleSheet.create({
     marginHorizontal: 20 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pinConfirmButton: {
+    marginBottom: 24 * SCALE,
   },
   confirmButtonDisabled: {
     backgroundColor: 'rgba(169, 239, 69, 0.3)',

@@ -36,7 +36,7 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
   return (
     <View style={containerStyle}>
       <ActivityIndicator size={size} color={color} />
-      {text && (
+      {!!text && (
         <ThemedText style={[styles.text, { color }]}>{text}</ThemedText>
       )}
     </View>

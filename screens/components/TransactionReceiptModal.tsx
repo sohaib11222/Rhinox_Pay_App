@@ -902,7 +902,8 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 source={require('../../assets/Group 41.png')}
                 style={[{ marginBottom: -1, width: 26, height: 26 }]}
                 resizeMode="cover"
-              />                <ThemedText style={styles.likeButtonText}>You gave this order a like</ThemedText>
+              />
+              <ThemedText style={styles.likeButtonText}>You gave this order a like</ThemedText>
               </TouchableOpacity>
               {transaction.reviewText && (
                 <View style={styles.reviewCard}>

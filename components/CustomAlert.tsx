@@ -156,7 +156,7 @@ const CustomAlert: React.FC<CustomAlertProps> = ({ visible, options, onClose }) 
                 <ThemedText style={styles.title}>{title}</ThemedText>
 
                 {/* Message */}
-                {message && <ThemedText style={styles.message}>{message}</ThemedText>}
+                {!!message && <ThemedText style={styles.message}>{message}</ThemedText>}
 
                 {/* Buttons */}
                 <View style={styles.buttonContainer}>

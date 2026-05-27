@@ -871,7 +871,8 @@ const HomeScreen = () => {
             <Image
               source={require('../../assets/send-square.png')}
               style={[{ width: 42, height: 42 }]} resizeMode="cover"
-            />            <ThemedText style={styles.actionButtonText}>Send</ThemedText>
+            />
+            <ThemedText style={styles.actionButtonText}>Send</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.actionButton}
@@ -881,7 +882,8 @@ const HomeScreen = () => {
               <Image
                 source={require('../../assets/send-2.png')}
                 style={[{ width: 42, height: 42 }]} resizeMode="cover"
-              />            </View>
+              />
+            </View>
             <ThemedText style={styles.actionButtonText}>Fund</ThemedText>
           </TouchableOpacity>
           <TouchableOpacity 
@@ -895,7 +897,8 @@ const HomeScreen = () => {
               source={require('../../assets/arrow-swap.png')}
               style={[{ width: 42, height: 42 }]}
               resizeMode="cover"
-            />            <ThemedText style={styles.actionButtonText}>Convert</ThemedText>
+            />
+            <ThemedText style={styles.actionButtonText}>Convert</ThemedText>
           </TouchableOpacity>
         </View>
 

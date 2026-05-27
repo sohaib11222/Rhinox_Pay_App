@@ -1225,7 +1225,7 @@ const Electricity = ({ route }: any) => {
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
           <View style={styles.pinModalContent}>
@@ -1702,10 +1702,12 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   pinModalContent: {
+    width: '100%',
     backgroundColor: '#020C19',
     borderTopLeftRadius: 20 * SCALE,
     borderTopRightRadius: 20 * SCALE,
     maxHeight: '90%',
+    paddingBottom: 20 * SCALE,
   },
   pinModalScrollContent: {
     paddingBottom: 30 * SCALE,
