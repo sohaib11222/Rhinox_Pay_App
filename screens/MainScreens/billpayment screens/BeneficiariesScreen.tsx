@@ -25,6 +25,7 @@ import { useCreateBeneficiary, useUpdateBeneficiary, useDeleteBeneficiary } from
 import { useGetBillPaymentProviders } from '../../../queries/billPayment.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -185,27 +186,9 @@ const BeneficiariesScreen = () => {
       }
 
       return () => {
-        // Restore tab bar when leaving this screen
-        const transactionsStackNav = navigation.getParent();
-        const tabNavigatorNav = transactionsStackNav?.getParent();
-        
-        if (tabNavigatorNav && typeof tabNavigatorNav.setOptions === 'function') {
-          tabNavigatorNav.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * SCALE,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * SCALE,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+        if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
+          tabNavigator.setOptions({
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };

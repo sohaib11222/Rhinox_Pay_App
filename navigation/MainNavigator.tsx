@@ -55,11 +55,14 @@ import Conversion from "../screens/MainScreens/SendFundScreens/Conversion";
 import AssetsScreen from "../screens/MainScreens/SendFundScreens/AssetsScreen";
 import P2PFundScreen from "../screens/MainScreens/SendFundScreens/P2PFundScreen";
 import CryptoFundDepositScreen from "../screens/MainScreens/SendFundScreens/CryptoFundDepositScreen";
-import { View, StyleSheet, Dimensions, Image } from "react-native";
+import { View, StyleSheet, Image } from "react-native";
 import { BlurView } from "expo-blur";
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const SCALE = 0.8;
+import {
+  defaultTabBarStyle,
+  tabBarWrapperStyle,
+  TAB_ACTIVE_CIRCLE_SIZE,
+  TAB_ICON_SIZE,
+} from "./tabBarConfig";
 
 const Tab = createBottomTabNavigator();
 const HomeStack = createNativeStackNavigator();
@@ -153,19 +156,15 @@ const SettingsStackNavigator = () => {
 
 // CallScreen replaced with BillPaymentMainScreen for 3rd tab
 
-
-
 // Tab icon component using image assets
 const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }) => {
-  const iconSize = 30 * SCALE;
-  
   let iconSource: any;
   
   if (routeName === "Home") {
     iconSource = require("../assets/home_tabicon.png");
   } else if (routeName === "Transactions") {
     iconSource = require("../assets/transaction_tabicon.png");
-  } else if (routeName === "Call") {
+  } else if (routeName === "BillPayment") {
     iconSource = require("../assets/billpayment_tabicon.png");
   } else if (routeName === "Wallet") {
     iconSource = require("../assets/wallet_tabicon.png");
@@ -180,15 +179,17 @@ const TabIcon = ({ routeName, focused }: { routeName: string; focused: boolean }
   const tintColor = focused ? "#000000" : undefined;
 
   return (
-    <Image
-      source={iconSource}
-      style={{
-        width: iconSize,
-        height: iconSize,
-        tintColor: tintColor,
-      }}
-      resizeMode="contain"
-    />
+    <View style={styles.tabIconInner}>
+      <Image
+        source={iconSource}
+        style={{
+          width: TAB_ICON_SIZE,
+          height: TAB_ICON_SIZE,
+          tintColor: tintColor,
+        }}
+        resizeMode="contain"
+      />
+    </View>
   );
 };
 
@@ -223,48 +224,51 @@ const CustomTabBar = (props: any) => {
     return null;
   }
   
-  // Otherwise, return the default tab bar
-  return <BottomTabBar {...props} />;
+  // Otherwise, return the default tab bar inset from screen edges
+  return (
+    <View style={tabBarWrapperStyle}>
+      <BottomTabBar {...props} />
+    </View>
+  );
 };
 
 export default function MainNavigator() {
-  // Default tab bar style
-  const defaultTabBarStyle = {
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderTopWidth: 0,
-    height: 75 * SCALE,
-    paddingBottom: 10,
-    paddingTop: 0,
-    position: 'absolute' as const,
-    bottom: 26 * SCALE,
-    borderRadius: 100,
-    overflow: 'hidden' as const,
-    elevation: 0,
-    width: SCREEN_WIDTH * 0.86,
-    marginLeft: 30,
-    shadowOpacity: 0,
-  };
-
   return (
     <Tab.Navigator
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={({ route }) => {
         return {
           headerShown: false,
-          tabBarShowLabel: false,
+          tabBarShowLabel: true,
+          tabBarLabelStyle: styles.tabBarLabel,
+          tabBarLabel:
+            route.name === 'BillPayment'
+              ? 'Bill Pay'
+              : route.name === 'Transactions'
+                ? 'Activity'
+                : route.name,
+          tabBarAccessibilityLabel:
+            route.name === 'BillPayment'
+              ? 'Bill Payment'
+              : route.name === 'Home'
+                ? 'Home dashboard'
+                : route.name === 'Transactions'
+                  ? 'Transactions history'
+                  : route.name === 'Wallet'
+                    ? 'Wallet balances'
+                    : route.name === 'Settings'
+                      ? 'Settings and profile'
+                      : route.name,
+          tabBarItemStyle: styles.tabBarItem,
           tabBarBackground: () => (
-            <BlurView
-              intensity={30}
-              tint="light"
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                bottom: 0,
-                right: 0,
-                borderRadius: 100,
-              }}
-            />
+            <View style={styles.tabBarBackground}>
+              <BlurView
+                intensity={80}
+                tint="dark"
+                style={styles.tabBarBlur}
+              />
+              <View style={styles.tabBarOverlay} />
+            </View>
           ),
           tabBarStyle: defaultTabBarStyle,
           tabBarIcon: ({ focused }) => {
@@ -335,7 +339,11 @@ export default function MainNavigator() {
           },
         })}
       />
-      <Tab.Screen name="Call" component={BillPaymentMainScreen} />
+      <Tab.Screen
+        name="BillPayment"
+        component={BillPaymentMainScreen}
+        options={{ tabBarLabel: 'Bill Payment', tabBarAccessibilityLabel: 'Bill Payment' }}
+      />
       <Tab.Screen 
         name="Wallet" 
         component={WalletStackNavigator}
@@ -399,17 +407,48 @@ export default function MainNavigator() {
 }
 
 const styles = StyleSheet.create({
+  tabBarBackground: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 100,
+    overflow: 'hidden',
+  },
+  tabBarBlur: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 100,
+  },
+  tabBarOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(2, 12, 25, 0.72)',
+    borderRadius: 100,
+  },
+  tabBarItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 0,
+    marginVertical: 0,
+  },
+  tabBarLabel: {
+    fontSize: 10,
+    marginTop: -2,
+    marginBottom: 4,
+  },
   tabIconContainer: {
-    width: 73 * SCALE,
-    marginTop:22,
-    height: 74 * SCALE,
+    width: TAB_ACTIVE_CIRCLE_SIZE,
+    height: TAB_ACTIVE_CIRCLE_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconInner: {
+    width: TAB_ICON_SIZE,
+    height: TAB_ICON_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
   activeTabContainer: {
-    width: 65 * SCALE,
-    height: 65 * SCALE,
-    borderRadius: 32.5 * SCALE,
+    width: TAB_ACTIVE_CIRCLE_SIZE,
+    height: TAB_ACTIVE_CIRCLE_SIZE,
+    borderRadius: TAB_ACTIVE_CIRCLE_SIZE / 2,
     backgroundColor: '#A9EF45', // Bright green background for active tab
     alignItems: 'center',
     justifyContent: 'center',

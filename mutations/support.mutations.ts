@@ -6,6 +6,7 @@
 import { useMutation, useQueryClient, UseMutationOptions } from '@tanstack/react-query';
 import apiClient, { ApiResponse, handleApiError } from '../utils/apiClient';
 import { API_ROUTES, buildRouteWithParams } from '../utils/apiConfig';
+import { uploadMultipartImage } from '../utils/multipartUpload';
 
 export interface CreateSupportChatParams {
   name: string;
@@ -46,7 +47,8 @@ export const useCreateSupportChat = (
 };
 
 export interface SendSupportMessageParams {
-  message: string;
+  message?: string;
+  imageUri?: string;
 }
 
 /**
@@ -58,7 +60,23 @@ export const sendSupportMessage = async (
 ): Promise<ApiResponse> => {
   try {
     const route = buildRouteWithParams(`${API_ROUTES.SUPPORT.SEND_MESSAGE}/{id}/messages`, { id: chatId });
-    const response = await apiClient.post(route, params);
+
+    if (params.imageUri) {
+      return uploadMultipartImage({
+        route,
+        fileField: 'image',
+        imageUri: params.imageUri,
+        fields: {
+          message: params.message?.trim() || '',
+        },
+      });
+    }
+
+    if (!params.message?.trim()) {
+      throw new Error('Message is required');
+    }
+
+    const response = await apiClient.post(route, { message: params.message.trim() });
     return response.data;
   } catch (error: any) {
     console.error('[sendSupportMessage] Error sending support message:', error);

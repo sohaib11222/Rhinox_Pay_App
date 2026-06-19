@@ -212,9 +212,34 @@ export interface GetP2PTransactionsParams {
   offset?: number;
 }
 
+export const mapP2PStatusToAPI = (status: string): string | undefined => {
+  if (!status || status === 'All') return undefined;
+  const statusMap: Record<string, string> = {
+    Completed: 'completed',
+    Successful: 'completed',
+    Pending: 'pending',
+    Failed: 'failed',
+  };
+  return statusMap[status] || status.toLowerCase();
+};
+
 export const getP2PTransactions = async (params?: GetP2PTransactionsParams): Promise<ApiResponse> => {
   try {
-    const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_P2P, params as any);
+    const apiParams: Record<string, string> = {};
+    if (params?.currency && params.currency !== 'All') {
+      apiParams.currency = params.currency;
+    }
+    if (params?.status) {
+      const mapped = mapP2PStatusToAPI(params.status);
+      if (mapped) apiParams.status = mapped;
+    }
+    if (params?.period) apiParams.period = params.period;
+    if (params?.startDate) apiParams.startDate = params.startDate;
+    if (params?.endDate) apiParams.endDate = params.endDate;
+    if (params?.limit != null) apiParams.limit = String(params.limit);
+    if (params?.offset != null) apiParams.offset = String(params.offset);
+
+    const url = buildApiUrl(API_ROUTES.TRANSACTION_HISTORY.GET_P2P, apiParams as any);
     const response = await apiClient.get(url);
     return response.data;
   } catch (error: any) {

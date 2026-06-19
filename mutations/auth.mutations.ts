@@ -3,10 +3,10 @@
  * POST/PUT/DELETE requests for authentication-related endpoints
  */
 
-import { useMutation, UseMutationOptions } from '@tanstack/react-query';
-import apiClient, { ApiResponse, handleApiError } from '../utils/apiClient';
+import { useMutation, UseMutationOptions, useQueryClient } from '@tanstack/react-query';
+import apiClient, { ApiResponse, handleApiError, setAccessToken, setRefreshToken, syncSecurityConfirmationSettings } from '../utils/apiClient';
 import { API_ROUTES } from '../utils/apiConfig';
-import { setAccessToken, setRefreshToken } from '../utils/apiClient';
+import { uploadMultipartImage } from '../utils/multipartUpload';
 
 /**
  * Login user
@@ -14,22 +14,59 @@ import { setAccessToken, setRefreshToken } from '../utils/apiClient';
 export interface LoginRequest {
   email: string;
   password: string;
+  deviceName?: string;
+  deviceId?: string;
 }
 
 export const loginUser = async (data: LoginRequest): Promise<ApiResponse> => {
   try {
     const response = await apiClient.post(API_ROUTES.AUTH.LOGIN, data);
-    // Auto-save tokens if returned - await to ensure they're stored before returning
+    const payload = response.data?.data;
+    if (payload?.accessToken && !payload?.requiresDeviceVerification) {
+      await setAccessToken(payload.accessToken);
+    }
+    if (payload?.refreshToken && !payload?.requiresDeviceVerification) {
+      await setRefreshToken(payload.refreshToken);
+    }
+    if (!payload?.requiresDeviceVerification) {
+      await syncSecurityConfirmationSettings();
+    }
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export interface VerifyDeviceLoginRequest {
+  pendingLoginToken: string;
+  code: string;
+  deviceId: string;
+  deviceName?: string;
+}
+
+export const verifyDeviceLogin = async (data: VerifyDeviceLoginRequest): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.post(API_ROUTES.AUTH.VERIFY_DEVICE_LOGIN, data);
     if (response.data?.data?.accessToken) {
       await setAccessToken(response.data.data.accessToken);
     }
     if (response.data?.data?.refreshToken) {
       await setRefreshToken(response.data.data.refreshToken);
     }
+    await syncSecurityConfirmationSettings();
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);
   }
+};
+
+export const useVerifyDeviceLogin = (
+  options?: UseMutationOptions<ApiResponse, Error, VerifyDeviceLoginRequest>
+) => {
+  return useMutation<ApiResponse, Error, VerifyDeviceLoginRequest>({
+    mutationFn: verifyDeviceLogin,
+    ...options,
+  });
 };
 
 /**
@@ -53,6 +90,7 @@ export interface RegisterRequest {
   lastName: string;
   countryId: string;
   termsAccepted: boolean;
+  deviceName?: string;
 }
 
 export const registerUser = async (data: RegisterRequest): Promise<ApiResponse> => {
@@ -65,6 +103,7 @@ export const registerUser = async (data: RegisterRequest): Promise<ApiResponse> 
     if (response.data?.data?.refreshToken) {
       await setRefreshToken(response.data.data.refreshToken);
     }
+    await syncSecurityConfirmationSettings();
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);
@@ -100,6 +139,7 @@ export const verifyEmail = async (data: VerifyEmailRequest): Promise<ApiResponse
     if (response.data?.data?.refreshToken) {
       await setRefreshToken(response.data.data.refreshToken);
     }
+    await syncSecurityConfirmationSettings();
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);
@@ -163,6 +203,7 @@ export const refreshAccessToken = async (data: RefreshTokenRequest): Promise<Api
     if (response.data?.data?.refreshToken) {
       await setRefreshToken(response.data.data.refreshToken);
     }
+    await syncSecurityConfirmationSettings();
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);
@@ -289,16 +330,16 @@ export const logoutUser = async (): Promise<ApiResponse> => {
     const response = await apiClient.post(API_ROUTES.AUTH.LOGOUT);
     
     // Clear tokens after successful logout API call
-    const { clearTokens } = await import('../utils/apiClient');
-    await clearTokens();
+    const { clearTokensForLogout } = await import('../utils/apiClient');
+    await clearTokensForLogout();
     
     return response.data;
   } catch (error: any) {
     console.error('[logoutUser] Logout error:', error);
     
     // Even if logout API fails, clear tokens locally
-    const { clearTokens } = await import('../utils/apiClient');
-    await clearTokens();
+    const { clearTokensForLogout } = await import('../utils/apiClient');
+    await clearTokensForLogout();
     
     throw handleApiError(error);
   }
@@ -440,8 +481,119 @@ export const updateProfile = async (data: UpdateProfileRequest): Promise<ApiResp
  * Mutation hook for update profile
  */
 export const useUpdateProfile = (options?: UseMutationOptions<ApiResponse, Error, UpdateProfileRequest>) => {
+  const queryClient = useQueryClient();
+
   return useMutation<ApiResponse, Error, UpdateProfileRequest>({
     mutationFn: updateProfile,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+    },
+    ...options,
+  });
+};
+
+export const uploadProfilePicture = async (imageUri: string): Promise<ApiResponse> => {
+  try {
+    return await uploadMultipartImage({
+      route: API_ROUTES.AUTH.PROFILE_PICTURE,
+      fileField: 'avatar',
+      imageUri,
+    });
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useUploadProfilePicture = (
+  options?: UseMutationOptions<ApiResponse, Error, string>
+) => {
+  const queryClient = useQueryClient();
+
+  return useMutation<ApiResponse, Error, string>({
+    mutationFn: uploadProfilePicture,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+    },
+    ...options,
+  });
+};
+
+export interface UpdateSecuritySettingsRequest {
+  verifyWithPin?: boolean;
+  verifyWithEmail?: boolean;
+  verifyWith2FA?: boolean;
+}
+
+export const updateSecuritySettings = async (
+  data: UpdateSecuritySettingsRequest
+): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.patch(API_ROUTES.AUTH.SECURITY_SETTINGS, data);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useUpdateSecuritySettings = (
+  options?: UseMutationOptions<ApiResponse, Error, UpdateSecuritySettingsRequest>
+) => {
+  return useMutation<ApiResponse, Error, UpdateSecuritySettingsRequest>({
+    mutationFn: updateSecuritySettings,
+    ...options,
+  });
+};
+
+export const sendTransactionVerificationOtp = async (): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.post(API_ROUTES.AUTH.TRANSACTION_VERIFICATION_OTP);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useSendTransactionVerificationOtp = (
+  options?: UseMutationOptions<ApiResponse, Error, void>
+) => {
+  return useMutation<ApiResponse, Error, void>({
+    mutationFn: sendTransactionVerificationOtp,
+    ...options,
+  });
+};
+
+export const revokeUserSession = async (sessionId: number): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.delete(`${API_ROUTES.AUTH.SESSIONS}/${sessionId}`);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useRevokeUserSession = (
+  options?: UseMutationOptions<ApiResponse, Error, number>
+) => {
+  return useMutation<ApiResponse, Error, number>({
+    mutationFn: revokeUserSession,
+    ...options,
+  });
+};
+
+export const revokeOtherUserSessions = async (): Promise<ApiResponse> => {
+  try {
+    const response = await apiClient.delete(`${API_ROUTES.AUTH.SESSIONS}/others`);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useRevokeOtherUserSessions = (
+  options?: UseMutationOptions<ApiResponse, Error, void>
+) => {
+  return useMutation<ApiResponse, Error, void>({
+    mutationFn: revokeOtherUserSessions,
     ...options,
   });
 };

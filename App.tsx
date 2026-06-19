@@ -3,25 +3,26 @@ import { useFonts } from "expo-font";
 import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import RootNavigator from "./navigation/RootNavigator";
+import { AuthProvider } from "./hooks/useAuth";
+import { checkAndApplyOtaUpdate } from "./utils/otaUpdates";
+import { markSplashReady, registerSplashHide } from "./utils/splashReady";
 
-// Create a client for React Query
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
-      staleTime: 5 * 60 * 1000, // 5 minutes
+      staleTime: 5 * 60 * 1000,
     },
   },
 });
 
-// Keep the splash screen visible while we fetch resources
 SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
-    // SF Pro Display fonts
     SFPRODISPLAYREGULAR: require("./assets/fonts/SFPRODISPLAYREGULAR.OTF"),
     SFPRODISPLAYBOLD: require("./assets/fonts/SFPRODISPLAYBOLD.OTF"),
     SFPRODISPLAYMEDIUM: require("./assets/fonts/SFPRODISPLAYMEDIUM.OTF"),
@@ -31,28 +32,39 @@ export default function App() {
     SFPRODISPLAYSEMIBOLDITALIC: require("./assets/fonts/SFPRODISPLAYSEMIBOLDITALIC.OTF"),
     SFPRODISPLAYTHINITALIC: require("./assets/fonts/SFPRODISPLAYTHINITALIC.OTF"),
     SFPRODISPLAYULTRALIGHTITALIC: require("./assets/fonts/SFPRODISPLAYULTRALIGHTITALIC.OTF"),
-    // Agbalumo
     "Agbalumo-Regular": require("./assets/fonts/Agbalumo-Regular.ttf"),
   });
 
   useEffect(() => {
+    registerSplashHide(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    });
+  }, []);
+
+  useEffect(() => {
     if (fontError) {
-      console.error('Font loading error:', fontError);
+      console.error("Font loading error:", fontError);
     }
-    // Hide splash screen once fonts are loaded
     if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
+      markSplashReady("fonts");
     }
   }, [fontsLoaded, fontError]);
 
-  // Show nothing while loading fonts
+  useEffect(() => {
+    checkAndApplyOtaUpdate();
+  }, []);
+
   if (!fontsLoaded && !fontError) {
     return null;
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <RootNavigator />
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }

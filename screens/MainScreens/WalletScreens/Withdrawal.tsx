@@ -11,6 +11,8 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -29,6 +31,18 @@ import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { showTransferEligibilityAlert } from '../../../utils/transferEligibilityAlert';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
+import {
+  isNairaFiatSupported,
+  showMobileMoneyComingSoon,
+  showNairaOnlyComingSoon,
+} from '../../../utils/fiatFeatureAvailability';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import { mapTransactionReceiptTransaction } from '../../../utils/transferReceipt';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -82,21 +96,7 @@ const Withdrawal = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -126,6 +126,13 @@ const Withdrawal = () => {
   const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
   const [receiptData, setReceiptData] = useState<any>(null);
+  const [withdrawalSnapshot, setWithdrawalSnapshot] = useState<{
+    amount: string;
+    bankName?: string;
+    accountNumber?: string;
+    accountName?: string;
+    country?: string;
+  } | null>(null);
 
   // Get currency from country code
   const currency = useMemo(() => getCurrencyFromCountryCode(selectedCountry), [selectedCountry]);
@@ -251,8 +258,23 @@ const Withdrawal = () => {
       const transactionData = response.data;
       setPendingTransactionId(transactionData.id);
       setPendingTransactionData(transactionData);
+      setWithdrawalSnapshot({
+        amount: amount.replace(/,/g, ''),
+        bankName: selectedBank?.bankName,
+        accountNumber: selectedBank?.accountNumber,
+        accountName: selectedBank?.accountName,
+        country: selectedCountryName,
+      });
       setShowSummaryModal(false);
-      setShowPinModal(true);
+      proceedAfterTransactionInitiate(transactionData.id, {
+        showVerificationModal: () => setShowPinModal(true),
+        confirm: (payload) =>
+          verifyMutation.mutate({
+            transactionId: payload.transactionId,
+            pin: payload.pin ?? '',
+            ...(payload.emailOtp ? { emailCode: payload.emailOtp } : {}),
+          }),
+      });
     },
     onError: (error: any) => {
       showErrorAlert('Error', error.message || 'Failed to initiate transfer. Please try again.');
@@ -298,19 +320,27 @@ const Withdrawal = () => {
   };
 
   const handleProceed = () => {
+    if (!isNairaFiatSupported(selectedCountry, currency)) {
+      showNairaOnlyComingSoon('Fiat withdrawals');
+      return;
+    }
     if (selectedBank && amount) {
       setShowSummaryModal(true);
     }
   };
 
   const handleCompleteWithdrawal = () => {
+    if (!isNairaFiatSupported(selectedCountry, currency)) {
+      showNairaOnlyComingSoon('Fiat withdrawals');
+      return;
+    }
     if (!selectedBank || !amount) {
       showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
     if (!isEligible) {
-      showWarningAlert('Not Eligible', eligibilityData?.data?.message || 'You are not eligible to make transfers. Please complete your KYC verification.');
+      showTransferEligibilityAlert(navigation, eligibilityData?.data);
       return;
     }
 
@@ -458,22 +488,25 @@ const Withdrawal = () => {
     }
   };
 
-  const handleSecurityComplete = () => {
-    if (emailCode.length !== 5 || !pin || pin.length < 4) {
-      showErrorAlert('Error', 'Please enter a valid 5-digit email code and 4-digit PIN');
-      return;
-    }
-
+  const handleSecurityComplete = async () => {
     if (!pendingTransactionId) {
       showErrorAlert('Error', 'Transaction ID not found. Please try again.');
       return;
     }
 
-    // Verify transfer with email code and PIN
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, {
+      pin,
+      emailOtp: emailCode,
+    });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
+    }
+
     verifyMutation.mutate({
-      transactionId: pendingTransactionId,
-      emailCode: emailCode,
-      pin: pin,
+      transactionId: result.payload.transactionId,
+      pin: result.payload.pin ?? '',
+      ...(result.payload.emailOtp ? { emailCode: result.payload.emailOtp } : {}),
     });
   };
 
@@ -519,12 +552,35 @@ const Withdrawal = () => {
     refreshDelay: 2000,
   });
 
+  const receiptTransaction = useMemo(() => {
+    const details = receiptData || pendingTransactionData;
+    const snapshot = withdrawalSnapshot;
+    if (!details && !snapshot) return null;
+
+    return mapTransactionReceiptTransaction(details || {}, {
+      amount: snapshot?.amount,
+      currency,
+      country: snapshot?.country || selectedCountryName,
+      recipientName: snapshot?.accountName,
+      accountName: snapshot?.accountName,
+      bankName: snapshot?.bankName,
+      accountNumber: snapshot?.accountNumber,
+      paymentMethod: 'Bank Transfer',
+    }, { transactionType: 'withdrawal' });
+  }, [receiptData, pendingTransactionData, withdrawalSnapshot, currency, selectedCountryName]);
+
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+    >
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1211,37 +1267,15 @@ const Withdrawal = () => {
       />
 
       {/* Transaction Receipt Modal */}
-      <TransactionReceiptModal
-        visible={showReceiptModal}
-        transaction={(() => {
-          const recipientInfo = receiptData?.recipientInfo || pendingTransactionData?.recipientInfo || {};
-          const dateValue = receiptData?.date || receiptData?.completedAt || receiptData?.createdAt || pendingTransactionData?.createdAt;
-          const symbol = currency === 'NGN' ? 'N' : currency === 'KES' ? 'K' : currency === 'GHS' ? 'G' : currency;
-          return {
-            transactionType: 'withdrawal',
-            transferAmount: `${symbol}${amount.replace(/,/g, '')}`,
-            amountNGN: `${symbol}${amount.replace(/,/g, '')}`,
-            fee: `${symbol}${parseFloat(receiptData?.fee || pendingTransactionData?.fee || '0').toLocaleString()}`,
-            bank: recipientInfo.bankName || selectedBank?.bankName,
-            accountNumber: recipientInfo.accountNumber || selectedBank?.accountNumber,
-            accountName: recipientInfo.accountName || selectedBank?.accountName,
-            country: receiptData?.country || selectedCountryName,
-            transactionId: receiptData?.reference || receiptData?.transactionId || pendingTransactionData?.reference,
-            dateTime: dateValue ? new Date(dateValue).toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            }) : undefined,
-            paymentMethod: receiptData?.paymentMethod || 'Bank Transfer',
-            status: receiptData?.status || pendingTransactionData?.status,
-          };
-        })()}
-        onClose={() => {
-          setShowReceiptModal(false);
-        }}
-      />
+      {receiptTransaction && (
+        <TransactionReceiptModal
+          visible={showReceiptModal}
+          transaction={receiptTransaction}
+          onClose={() => {
+            setShowReceiptModal(false);
+          }}
+        />
+      )}
 
       {/* Country Selection Modal */}
       <Modal
@@ -1295,7 +1329,7 @@ const Withdrawal = () => {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -1305,7 +1339,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#020c19',
   },
   scrollContent: {
-    paddingBottom: 100 * SCALE,
+    paddingBottom: 160 * SCALE,
   },
   header: {
     flexDirection: 'row',

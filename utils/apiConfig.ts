@@ -37,6 +37,8 @@ export const API_ROUTES = {
   AUTH: {
     ME: '/auth/me',
     LOGIN: '/auth/login',
+    VERIFY_DEVICE_LOGIN: '/auth/verify-device-login',
+    RESEND_DEVICE_LOGIN_OTP: '/auth/resend-device-login-otp',
     LOGOUT: '/auth/logout',
     REGISTER: '/auth/register',
     VERIFY_EMAIL: '/auth/verify-email',
@@ -49,6 +51,10 @@ export const API_ROUTES = {
     FORGOT_PASSWORD: '/auth/forgot-password',
     VERIFY_PASSWORD_RESET_OTP: '/auth/verify-password-reset-otp',
     RESET_PASSWORD: '/auth/reset-password',
+    SECURITY_SETTINGS: '/auth/security-settings',
+    TRANSACTION_VERIFICATION_OTP: '/auth/transaction-verification-otp',
+    SESSIONS: '/auth/sessions',
+    PROFILE_PICTURE: '/auth/me/profile-picture',
   },
 
   // Bank Accounts Routes
@@ -86,6 +92,7 @@ export const API_ROUTES = {
   CRYPTO: {
     TOKENS_BY_SYMBOL: '/crypto/tokens',
     USDT_TOKENS: '/crypto/usdt-tokens',
+    UNIFIED_BALANCES: '/crypto/unified-balances',
     DEPOSIT_ADDRESS: '/crypto/deposit-address',
     VIRTUAL_ACCOUNTS: '/crypto/virtual-accounts',
     TATUM_WEBHOOK: '/crypto/webhooks/tatum',
@@ -95,6 +102,7 @@ export const API_ROUTES = {
   DEPOSIT: {
     INITIATE: '/deposit/initiate',
     CONFIRM: '/deposit/confirm',
+    STATUS: '/deposit/status',
     BANK_DETAILS: '/deposit/bank-details',
     MOBILE_MONEY_PROVIDERS: '/deposit/mobile-money-providers',
     RECEIPT: '/deposit/receipt',
@@ -120,6 +128,12 @@ export const API_ROUTES = {
     DASHBOARD: '/home',
     WALLETS: '/home/wallets',
     TRANSACTIONS: '/home/transactions',
+  },
+
+  REWARDS: {
+    DASHBOARD: '/rewards',
+    HISTORY: '/rewards/history',
+    CLAIM: '/rewards/{rewardCode}/claim',
   },
 
   // KYC Routes

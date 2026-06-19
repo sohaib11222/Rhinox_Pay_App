@@ -11,16 +11,22 @@ import {
   Modal,
   RefreshControl,
   ActivityIndicator,
+  Platform,
+  ActionSheetIOS,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
+import { useRefreshKYCOnFocus } from '../../../queries/kyc.queries';
 import { useGetCountries } from '../../../queries/country.queries';
-import { useUpdateProfile } from '../../../mutations/auth.mutations';
+import { useUpdateProfile, useUploadProfilePicture } from '../../../mutations/auth.mutations';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { resolveUploadUri } from '../../../utils/walletFlags';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -43,6 +49,8 @@ const EditProfile = () => {
   const navigation = useNavigation();
   const [showCountryModal, setShowCountryModal] = useState(false);
   const [selectedCountryId, setSelectedCountryId] = useState<string | number | null>(null);
+  const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Fetch current user profile
   const {
@@ -50,6 +58,8 @@ const EditProfile = () => {
     isLoading: isLoadingUser,
     refetch: refetchUser,
   } = useGetCurrentUser();
+
+  useRefreshKYCOnFocus();
 
   // Fetch countries from API
   const {
@@ -109,6 +119,7 @@ const EditProfile = () => {
     if (userData?.data) {
       const user = userData.data;
       const userCountry = countries.find((c: any) => c.id === user.countryId || c.code === user.countryCode);
+      const avatarUri = pendingAvatarUri || resolveUploadUri(user.profilePictureUrl);
       
       setProfileData({
         country: userCountry?.name || user.country || 'Nigeria',
@@ -122,7 +133,7 @@ const EditProfile = () => {
         lastName: user.lastName || '',
         email: user.email || '',
         phoneNumber: user.phone || '',
-        avatar: require('../../../assets/login/memoji.png'),
+        avatar: avatarUri ? { uri: avatarUri } : require('../../../assets/login/memoji.png'),
       });
       
       // Set selected country ID for modal
@@ -130,9 +141,19 @@ const EditProfile = () => {
         setSelectedCountryId(user.countryId || (userCountry ? userCountry.id : null));
       }
     }
-  }, [userData?.data, countries]);
+  }, [userData?.data, countries, pendingAvatarUri]);
 
   // Update profile mutation
+  const uploadProfilePictureMutation = useUploadProfilePicture({
+    onSuccess: () => {
+      setPendingAvatarUri(null);
+      refetchUser();
+    },
+    onError: (error: any) => {
+      showErrorAlert('Error', error?.message || 'Failed to upload profile picture');
+    },
+  });
+
   const updateProfileMutation = useUpdateProfile({
     onSuccess: (data) => {
       console.log('[EditProfile] Profile updated successfully:', data);
@@ -155,24 +176,9 @@ const EditProfile = () => {
         });
       }
       return () => {
-        // Restore tab bar when leaving this screen
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8, // Using MainNavigator's SCALE
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8, // Using MainNavigator's SCALE
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -190,18 +196,88 @@ const EditProfile = () => {
     );
   }, [profileData.firstName, profileData.lastName, profileData.email, profileData.phoneNumber, profileData.countryId]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!isFormValid) {
       showWarningAlert('Error', 'Please fill in all required fields');
       return;
     }
 
-    updateProfileMutation.mutate({
-      firstName: profileData.firstName,
-      lastName: profileData.lastName,
-      phone: profileData.phoneNumber,
-      countryId: profileData.countryId || undefined,
+    try {
+      if (pendingAvatarUri) {
+        setIsUploadingAvatar(true);
+        await uploadProfilePictureMutation.mutateAsync(pendingAvatarUri);
+      }
+
+      await updateProfileMutation.mutateAsync({
+        firstName: profileData.firstName,
+        lastName: profileData.lastName,
+        phone: profileData.phoneNumber,
+        countryId: profileData.countryId || undefined,
+      });
+    } catch {
+      // Errors are handled in mutation callbacks
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const pickImageFromLibrary = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showWarningAlert('Permission Required', 'Photo library permission is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
     });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setPendingAvatarUri(result.assets[0].uri);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      showWarningAlert('Permission Required', 'Camera permission is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setPendingAvatarUri(result.assets[0].uri);
+    }
+  };
+
+  const handlePickAvatar = () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            takePhoto();
+          } else if (buttonIndex === 2) {
+            pickImageFromLibrary();
+          }
+        }
+      );
+      return;
+    }
+
+    pickImageFromLibrary();
   };
 
   const handleCountrySelect = () => {
@@ -300,7 +376,11 @@ const EditProfile = () => {
                 style={styles.avatar}
                 resizeMode="cover"
               />
-              <TouchableOpacity style={styles.editIconContainer}>
+              <TouchableOpacity
+                style={styles.editIconContainer}
+                onPress={handlePickAvatar}
+                disabled={isUploadingAvatar || uploadProfilePictureMutation.isPending}
+              >
                 <View style={styles.editIconCircle}>
                   <Image
                     source={require('../../../assets/PencilSimpleLine (1).png')}
@@ -478,11 +558,14 @@ const EditProfile = () => {
       {/* Save Button - Fixed at bottom */}
       <View style={styles.saveButtonContainer}>
         <TouchableOpacity
-          style={[styles.saveButton, (!isFormValid || updateProfileMutation.isPending) && styles.saveButtonDisabled]}
+          style={[
+            styles.saveButton,
+            (!isFormValid || updateProfileMutation.isPending || isUploadingAvatar || uploadProfilePictureMutation.isPending) && styles.saveButtonDisabled
+          ]}
           onPress={handleSave}
-          disabled={!isFormValid || updateProfileMutation.isPending}
+          disabled={!isFormValid || updateProfileMutation.isPending || isUploadingAvatar || uploadProfilePictureMutation.isPending}
         >
-          {updateProfileMutation.isPending ? (
+          {updateProfileMutation.isPending || isUploadingAvatar || uploadProfilePictureMutation.isPending ? (
             <ActivityIndicator size="small" color="#000000" />
           ) : (
             <ThemedText style={styles.saveButtonText}>Save</ThemedText>
@@ -640,7 +723,6 @@ const styles = StyleSheet.create({
     marginHorizontal: SCREEN_WIDTH * 0.047,
     marginBottom: 20 * SCALE,
     minHeight: 500 * SCALE,
-    opacity: 0.5,
   },
   fieldContainer: {
     marginBottom: 12 * SCALE,

@@ -21,6 +21,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { getBaseSymbol } from '../../../utils/cryptoSymbols';
 import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mutations';
 import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
@@ -28,7 +30,16 @@ import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
 import { useGetTransferEligibility } from '../../../queries/transfer.queries';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import {
+  afterPinEntryComplete,
+  checkSecurityRequirements,
+  prepareTransactionConfirmPayload,
+  runAfterSecurityCheck,
+  verifySecurityBeforeTransaction,
+  getMissingVerificationMessage,
+} from '../../../utils/securityVerification';
 import { useQueryClient } from '@tanstack/react-query';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -74,6 +85,11 @@ const BuyOrder = () => {
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityRequirements, setSecurityRequirements] = useState({
+    pin: false,
+    email: false,
+    twoFA: false,
+  });
   const [countdown, setCountdown] = useState(30); // 30 seconds countdown
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [reviewRating, setReviewRating] = useState<'positive' | 'negative' | null>(null);
@@ -160,24 +176,9 @@ const BuyOrder = () => {
       }
 
       return () => {
-        // Restore tab bar when leaving this screen
         if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
           tabNavigator.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * SCALE,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * SCALE,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -318,6 +319,35 @@ const BuyOrder = () => {
     return 'N1,520'; // Default fallback
   }, [adDetailsData?.data?.price, adDetailsData?.data?.fiatCurrency]);
 
+  const adCryptoSymbol = useMemo(
+    () => getBaseSymbol(adDetailsData?.data?.cryptoCurrency || 'USDT'),
+    [adDetailsData?.data?.cryptoCurrency]
+  );
+  const adFiatCurrency = adDetailsData?.data?.fiatCurrency || 'NGN';
+
+  const { data: balancesData } = useGetWalletBalances();
+
+  const fiatBalanceDisplay = useMemo(() => {
+    const fiat = balancesData?.data?.fiat;
+    if (!Array.isArray(fiat)) return '0.00';
+    const wallet = fiat.find(
+      (w: any) => (w.currency || '').toUpperCase() === adFiatCurrency.toUpperCase()
+    );
+    return parseFloat(wallet?.balance || '0').toFixed(2);
+  }, [balancesData?.data?.fiat, adFiatCurrency]);
+
+  const estimatedCryptoReceive = useMemo(() => {
+    const numericAmount = parseFloat((amount || '').replace(/,/g, ''));
+    const price = parseFloat(adDetailsData?.data?.price || '0');
+    if (!numericAmount || !price || isNaN(numericAmount) || isNaN(price)) {
+      return '0.00';
+    }
+    if (currencyType === 'Fiat') {
+      return (numericAmount / price).toFixed(8).replace(/\.?0+$/, '');
+    }
+    return numericAmount.toFixed(8).replace(/\.?0+$/, '');
+  }, [amount, adDetailsData?.data?.price, currencyType]);
+
   // Transform order data from API
   const orderData = useMemo(() => {
     if (orderDetailsData?.data) {
@@ -366,14 +396,13 @@ const BuyOrder = () => {
         accountNumber: paymentMethod.accountNumber || paymentMethod.phoneNumber || 'N/A',
         accountName: paymentMethod.accountName || 'N/A',
         // For RhinoxPay ID, get the actual ID from rhinoxpayId or accountNumber field
-        rhinoxPayId: paymentMethod.type === 'rhinoxpay_id' 
-          ? (paymentMethod.rhinoxpayId || paymentMethod.accountNumber || 'N/A')
-          : null,
+        rhinoxPayId: vendor.rhinoxPayId ||
+          (paymentMethod.type === 'rhinoxpay_id'
+            ? (paymentMethod.rhinoxpayId || paymentMethod.accountNumber || 'N/A')
+            : null),
         usdtAmount: `${order.cryptoAmount || '0'} ${order.cryptoCurrency || 'USDT'}`,
         orderStatus: order.status || 'pending',
         paymentMethodId: paymentMethod.id ? String(paymentMethod.id) : null,
-        // Get vendor email for RhinoxPay transfers
-        vendorEmail: vendor.email || null,
         vendorId: vendor.id ? String(vendor.id) : null,
       };
     }
@@ -588,6 +617,20 @@ const BuyOrder = () => {
     }
   }, [showPinModal]);
 
+  useEffect(() => {
+    if (showSecurityModal || showPinModal) {
+      checkSecurityRequirements().then((requirements) => {
+        setSecurityRequirements(requirements.methods);
+      });
+    }
+  }, [showSecurityModal, showPinModal]);
+
+  const canProceedSecurity = useMemo(() => {
+    const emailOk = !securityRequirements.email || emailCode.length >= 5;
+    const twoFaOk = !securityRequirements.twoFA || authenticatorCode.length >= 6;
+    return emailOk && twoFaOk;
+  }, [securityRequirements, emailCode, authenticatorCode]);
+
   const checkBiometricAvailability = async () => {
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -771,14 +814,28 @@ const BuyOrder = () => {
     setShowWarningModal(true);
   };
 
-  const handleWarningComplete = () => {
+  const handleWarningComplete = async () => {
     setShowWarningModal(false);
-    // If RhinoxPay ID is selected, skip verification modals and open payment modal
     if (selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') {
       setShowRhinoxPayModal(true);
-    } else {
-      setShowPinModal(true);
+      return;
     }
+
+    await runAfterSecurityCheck({
+      onProceed: () => {
+        if (orderId) {
+          markPaymentMadeMutation.mutate({ orderId });
+        }
+      },
+      showVerificationModal: async () => {
+        const requirements = await checkSecurityRequirements();
+        if (requirements.methods.pin) {
+          setShowPinModal(true);
+        } else {
+          setShowSecurityModal(true);
+        }
+      },
+    });
   };
 
   const handlePayNow = () => {
@@ -786,9 +843,15 @@ const BuyOrder = () => {
   };
 
   const handleRhinoxPayProceed = () => {
-    // Validate required data
-    if (!orderData?.vendorEmail && !orderData?.rhinoxPayId) {
-      showErrorAlert('Error', 'Vendor payment information not available');
+    const rhinoxPayId =
+      orderData?.rhinoxPayId ||
+      orderData?.vendor?.rhinoxPayId ||
+      selectedPaymentMethod?.paymentMethodData?.rhinoxpayId ||
+      adDetailsData?.data?.vendor?.rhinoxPayId ||
+      adDetailsData?.data?.paymentMethods?.find((pm: any) => pm.type === 'rhinoxpay_id')?.rhinoxpayId;
+
+    if (!rhinoxPayId || rhinoxPayId === 'N/A') {
+      showErrorAlert('Error', 'Vendor Rhinox Pay ID not available');
       return;
     }
 
@@ -797,7 +860,6 @@ const BuyOrder = () => {
       return;
     }
 
-    // Extract amount from "NGN1,800.00" format
     const amountStr = orderData.amountToPay.replace(/[^0-9.]/g, '');
     const numericAmount = parseFloat(amountStr);
     
@@ -806,65 +868,41 @@ const BuyOrder = () => {
       return;
     }
 
-    // Determine recipient - use vendor email if available, otherwise use RhinoxPay ID
-    const recipientEmail = orderData.vendorEmail;
-    const rhinoxPayId = orderData.rhinoxPayId;
-
-    if (!recipientEmail && !rhinoxPayId) {
-      showErrorAlert('Error', 'Vendor payment details not found');
-      return;
-    }
-
-    // Get country code from selected country (default to NG for Nigeria)
     const countryCode = selectedCountryName === 'Nigeria' ? 'NG' : 
                         selectedCountryName === 'South Africa' ? 'ZA' : 'NG';
 
-    // Initiate transfer
     const transferData: any = {
       amount: numericAmount.toFixed(2),
       currency: selectedCurrency || 'NGN',
       countryCode: countryCode,
       channel: 'rhionx_user' as const,
+      recipientRhinoxPayId: rhinoxPayId,
     };
-
-    // Use email if available, otherwise try RhinoxPay ID
-    if (recipientEmail) {
-      transferData.recipientEmail = recipientEmail;
-    } else if (rhinoxPayId && rhinoxPayId !== 'N/A') {
-      // If RhinoxPay ID is an email format, use it as email
-      if (rhinoxPayId.includes('@')) {
-        transferData.recipientEmail = rhinoxPayId;
-      } else {
-        // Otherwise, try to use it as accountNumber (API might accept it)
-        transferData.accountNumber = rhinoxPayId;
-      }
-    }
 
     console.log('[BuyOrder] Initiating transfer:', transferData);
     initiateTransferMutation.mutate(transferData);
   };
 
-  const handleEmailCodeVerify = () => {
-    if (!emailCode || emailCode.length < 4) {
-      showErrorAlert('Error', 'Please enter a valid email verification code');
-      return;
-    }
-
-    if (!pin || pin.length !== 5) {
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
-      return;
-    }
-
+  const handleEmailCodeVerify = async () => {
     if (!transferTransactionId) {
       showErrorAlert('Error', 'Transaction ID not found');
       return;
     }
 
-    // Verify transfer with email code and PIN
+    const result = await prepareTransactionConfirmPayload(transferTransactionId, {
+      pin,
+      emailOtp: emailCode,
+    });
+
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
+    }
+
     verifyTransferMutation.mutate({
-      transactionId: transferTransactionId,
-      emailCode: emailCode,
-      pin: pin,
+      transactionId: result.payload.transactionId,
+      ...(result.payload.pin ? { pin: result.payload.pin } : {}),
+      ...(result.payload.emailOtp ? { emailCode: result.payload.emailOtp } : {}),
     });
   };
 
@@ -886,10 +924,22 @@ const BuyOrder = () => {
       setPin(newPin);
 
       if (newPin.length === 5) {
-        // Auto proceed to security verification
-        setTimeout(() => {
-          setShowPinModal(false);
-          setShowSecurityModal(true);
+        setTimeout(async () => {
+          await afterPinEntryComplete(newPin, {
+            onProceed: () => {
+              setShowPinModal(false);
+              if (orderId) {
+                markPaymentMadeMutation.mutate({ orderId });
+              }
+            },
+            onShowAdditionalVerification: () => {
+              setShowPinModal(false);
+              setShowSecurityModal(true);
+            },
+            onInvalid: (message) => {
+              showWarningAlert('Security Verification Required', message);
+            },
+          });
         }, 300);
       }
     }
@@ -901,22 +951,30 @@ const BuyOrder = () => {
     }
   };
 
-  const handleSecurityProceed = () => {
-    if (emailCode && authenticatorCode && orderId) {
-      setShowSecurityModal(false);
-      // Mark payment as made via API
-      markPaymentMadeMutation.mutate({
-        orderId: orderId,
-      });
-    } else if (emailCode && authenticatorCode) {
-      // Fallback if no orderId (shouldn't happen in normal flow)
-      setShowSecurityModal(false);
-      setPaymentConfirmed(true);
-      setCurrentStep(3);
-      setTimeout(() => {
-        setCurrentStep(4);
-      }, 2000);
+  const handleSecurityProceed = async () => {
+    if (!orderId) {
+      showErrorAlert('Error', 'Order ID not found');
+      return;
     }
+
+    const verification = await verifySecurityBeforeTransaction({
+      pin,
+      emailOtp: emailCode,
+      twoFACode: authenticatorCode,
+    });
+
+    if (!verification.success) {
+      showWarningAlert(
+        'Security Verification Required',
+        getMissingVerificationMessage(verification.missingVerifications)
+      );
+      return;
+    }
+
+    setShowSecurityModal(false);
+    setEmailCode('');
+    setAuthenticatorCode('');
+    markPaymentMadeMutation.mutate({ orderId });
   };
 
   const handleCopyAccountNumber = async () => {
@@ -1142,7 +1200,9 @@ const BuyOrder = () => {
                   />
                   <View style={styles.balanceRow}>
                     <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
-                    <ThemedText style={styles.balanceValue}>NGN 0.00</ThemedText>
+                    <ThemedText style={styles.balanceValue}>
+                      {adFiatCurrency} {fiatBalanceDisplay}
+                    </ThemedText>
                   </View>
                 </View>
 
@@ -1150,14 +1210,16 @@ const BuyOrder = () => {
                 <View style={styles.receiveSection}>
                   <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
                   <View style={styles.receiveValueContainer}>
-                    <ThemedText style={styles.receiveValue}>0.00 USDT</ThemedText>
+                    <ThemedText style={styles.receiveValue}>
+                      {estimatedCryptoReceive} {adCryptoSymbol}
+                    </ThemedText>
                   </View>
                 </View>
               </>
             ) : (
               <>
                 <View style={styles.amountSection}>
-                  <ThemedText style={styles.amountLabel}>Enter USDT Amount</ThemedText>
+                  <ThemedText style={styles.amountLabel}>Enter {adCryptoSymbol} Amount</ThemedText>
                   <TextInput
                     style={styles.amountInput}
                     value={amount}
@@ -1178,7 +1240,9 @@ const BuyOrder = () => {
                   />
                   <View style={styles.balanceRow}>
                     <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
-                    <ThemedText style={styles.balanceValue}>USDT 0.00</ThemedText>
+                    <ThemedText style={styles.balanceValue}>
+                      {adCryptoSymbol} {estimatedCryptoReceive}
+                    </ThemedText>
                   </View>
                 </View>
 
@@ -1356,7 +1420,7 @@ const BuyOrder = () => {
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <ThemedText style={styles.headerTitle}>
-            USDT Buy Ad
+            {adCryptoSymbol} Buy Ad
           </ThemedText>
         </View>
         <View style={styles.backButton} />
@@ -1960,10 +2024,10 @@ const BuyOrder = () => {
             <TouchableOpacity
               style={[
                 styles.proceedButton, 
-                (!emailCode || !authenticatorCode || markPaymentMadeMutation.isPending) && styles.proceedButtonDisabled
+                (!canProceedSecurity || markPaymentMadeMutation.isPending) && styles.proceedButtonDisabled
               ]}
               onPress={handleSecurityProceed}
-              disabled={!emailCode || !authenticatorCode || markPaymentMadeMutation.isPending}
+              disabled={!canProceedSecurity || markPaymentMadeMutation.isPending}
             >
               {markPaymentMadeMutation.isPending ? (
                 <ActivityIndicator size="small" color="#000000" />

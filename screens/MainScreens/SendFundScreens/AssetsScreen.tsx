@@ -16,28 +16,18 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
-import { ThemedText } from '../../../components';
+import { ThemedText, CryptoIcon } from '../../../components';
+import { getCryptoIconSource } from '../../../utils/cryptoIcons';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetUSDTTokens, useGetVirtualAccounts, useGetDepositAddress } from '../../../queries/crypto.queries';
 import { showSuccessAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
 // Helper function to get coin icon based on currency
-const getCoinIcon = (currency: string): any => {
-    const upperCurrency = currency.toUpperCase();
-    if (upperCurrency.includes('BTC') || upperCurrency === 'BTC' || upperCurrency === 'BITCOIN') {
-        return require('../../../assets/login/bitcoin-coin.png');
-    } else if (upperCurrency.includes('USDT') || upperCurrency.includes('USDC') || upperCurrency === 'USDT' || upperCurrency === 'USDC' || upperCurrency === 'TETHER') {
-        return require('../../../assets/login/usdt-coin.png');
-    } else if (upperCurrency.includes('ETH') || upperCurrency === 'ETH' || upperCurrency === 'ETHEREUM') {
-        return require('../../../assets/login/usdt-coin.png'); // Using USDT icon as placeholder for ETH
-    } else {
-        // Default to USDT icon for other currencies
-        return require('../../../assets/login/usdt-coin.png');
-    }
-};
+const getCoinIcon = (currency: string): any => getCryptoIconSource(currency);
 
 interface Token {
     id: string;
@@ -72,31 +62,17 @@ const AssetsScreen = () => {
         React.useCallback(() => {
             const parent = navigation.getParent();
             if (parent) {
-                parent.setOptions({
-                    tabBarStyle: { display: 'none' },
-                });
-            }
-            return () => {
-                if (parent) {
-                    parent.setOptions({
-                        tabBarStyle: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                            borderTopWidth: 0,
-                            height: 75 * 0.8,
-                            paddingBottom: 10,
-                            paddingTop: 0,
-                            position: 'absolute',
-                            bottom: 26 * 0.8,
-                            borderRadius: 100,
-                            overflow: 'hidden',
-                            elevation: 0,
-                            width: SCREEN_WIDTH * 0.86,
-                            marginLeft: 30,
-                            shadowOpacity: 0,
-                        },
-                    });
-                }
-            };
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+      return () => {
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: defaultTabBarStyle,
+          });
+        }
+      };
         }, [navigation])
     );
 

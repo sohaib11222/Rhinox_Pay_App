@@ -24,9 +24,22 @@ import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutation
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
+import { useQueryClient } from '@tanstack/react-query';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showConfirmAlert } from '../../../utils/customAlert';
+import { filterSupportedCountries, getDefaultCountry } from '../../../utils/supportedCountries';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import {
+  NAIRA_SYMBOL,
+  QUICK_AMOUNT_LABELS,
+  formatNaira,
+  parseQuickAmountValue,
+} from '../../../utils/naira';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -55,6 +68,12 @@ interface RecentTransaction {
 
 const Airtime = ({ route }: any) => {
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
+
+  const isRewardRedemption = Boolean(route?.params?.isRewardRedemption);
+  const rewardClaimId = route?.params?.rewardClaimId as number | undefined;
+  const rewardAmountNgn = route?.params?.rewardAmountNgn as number | undefined;
+  const rewardTitle = route?.params?.rewardTitle as string | undefined;
   
   // Handle beneficiary selection from BeneficiariesScreen
   React.useEffect(() => {
@@ -85,21 +104,7 @@ const Airtime = ({ route }: any) => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -107,6 +112,12 @@ const Airtime = ({ route }: any) => {
   );
 
   const [amount, setAmount] = useState('');
+
+  useEffect(() => {
+    if (isRewardRedemption && rewardAmountNgn) {
+      setAmount(String(rewardAmountNgn).replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+    }
+  }, [isRewardRedemption, rewardAmountNgn]);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [selectedProviderCode, setSelectedProviderCode] = useState<string | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
@@ -177,7 +188,8 @@ const Airtime = ({ route }: any) => {
         { id: 7, name: 'Uganda', code: 'UG', flag: '🇺🇬', flagUrl: null },
       ];
     }
-    return countriesData.data.map((country: any, index: number) => {
+    return filterSupportedCountries(
+      countriesData.data.map((country: any, index: number) => {
       // Check if flag is a URL path (starts with /) or an emoji
       const flagValue = country.flag || '';
       const isFlagUrl = flagValue.startsWith('/') || flagValue.startsWith('http');
@@ -193,7 +205,8 @@ const Airtime = ({ route }: any) => {
         flag: flagEmoji,
         flagUrl: flagUrl,
       };
-    });
+    })
+    );
   }, [countriesData?.data]);
 
   // Initialize selected country from API data when it first loads
@@ -201,7 +214,7 @@ const Airtime = ({ route }: any) => {
     if (countriesData?.data && Array.isArray(countriesData.data) && countriesData.data.length > 0) {
       // Only initialize if we still have default values and API data is available
       if (selectedCountry === 'NG' && selectedCountryName === 'Nigeria') {
-        const defaultCountry = countries.find((c: any) => c.code === 'NG') || countries[0];
+        const defaultCountry = getDefaultCountry(countries);
         if (defaultCountry && (defaultCountry.code !== selectedCountry || defaultCountry.name !== selectedCountryName)) {
           setSelectedCountry(defaultCountry.code);
           setSelectedCountryName(defaultCountry.name);
@@ -260,9 +273,14 @@ const Airtime = ({ route }: any) => {
     const transformed = providersData.data.map((provider: any) => {
       console.log('[Airtime] Processing provider:', provider);
       
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -365,9 +383,14 @@ const Airtime = ({ route }: any) => {
 
     return transactions.map((tx: any) => {
       const provider = tx.provider || {};
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -393,7 +416,7 @@ const Airtime = ({ route }: any) => {
         transactionId: tx.id, // Store numeric ID for detail fetching
         phoneNumber: tx.accountNumber || '',
         network: provider.name || provider.code || '',
-        amount: `N${formatBalance(amount)}`,
+        amount: formatNaira(amount, { compact: true }),
         date: date,
         plan: tx.plan?.name || tx.rechargeToken || '',
         icon: logoUrl ? { uri: logoUrl } : icon,
@@ -413,7 +436,10 @@ const Airtime = ({ route }: any) => {
       
       if (transactionId) {
         setPendingTransactionId(transactionId);
-        setShowPinModal(true);
+        proceedAfterTransactionInitiate(transactionId, {
+          showVerificationModal: () => setShowPinModal(true),
+          confirm: (payload) => confirmMutation.mutate(payload),
+        });
       } else {
         console.error('[Airtime] No transactionId found in response:', data);
         showErrorAlert(
@@ -445,6 +471,21 @@ const Airtime = ({ route }: any) => {
       refetchTransactions();
       refetchBalances();
       refetchBeneficiaries();
+
+      if (isRewardRedemption) {
+        queryClient.invalidateQueries({ queryKey: ['rewards', 'dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['rewards', 'history'] });
+        showSuccessAlert(
+          'Reward Redeemed',
+          rewardTitle
+            ? `${rewardTitle} has been sent successfully!`
+            : 'Your reward airtime has been sent successfully!',
+          () => {
+            (navigation as any).navigate('Settings', { screen: 'Rewards' });
+          }
+        );
+        return;
+      }
       
       // Show success and navigate back
       showSuccessAlert(
@@ -453,7 +494,7 @@ const Airtime = ({ route }: any) => {
         () => {
           // Navigate back to bill payment main screen
           // @ts-ignore - allow parent route name
-          navigation.navigate('Call' as never);
+          navigation.navigate('BillPayment' as never);
         }
       );
     },
@@ -491,9 +532,14 @@ const Airtime = ({ route }: any) => {
     }
     return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
       const provider = beneficiary.provider || {};
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -516,10 +562,10 @@ const Airtime = ({ route }: any) => {
     });
   }, [beneficiariesData?.data]);
 
-  const quickAmounts = ['N100', 'N200', 'N500', 'N1,000'];
+  const quickAmounts = [...QUICK_AMOUNT_LABELS];
 
   const handleAmountSelect = (quickAmount: string) => {
-    const numericValue = quickAmount.replace(/[N,]/g, '');
+    const numericValue = parseQuickAmountValue(quickAmount);
     setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
   };
 
@@ -559,6 +605,7 @@ const Airtime = ({ route }: any) => {
       currency: 'NGN',
       amount: numericAmount.toString(),
       accountNumber: mobileNumber,
+      ...(isRewardRedemption && rewardClaimId ? { rewardClaimId } : {}),
     });
   };
 
@@ -584,14 +631,6 @@ const Airtime = ({ route }: any) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 5) {
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
-      return;
-    }
-
-    // According to API: POST /api/bill-payment/confirm
-    // Request Body: { transactionId: 123, pin: "12345" }
-    // We should have transactionId from the initiate response
     if (!pendingTransactionId) {
       showErrorAlert(
         'Transaction ID Not Found',
@@ -604,11 +643,13 @@ const Airtime = ({ route }: any) => {
       return;
     }
 
-    // Confirm payment with transactionId and PIN
-    confirmMutation.mutate({
-      transactionId: pendingTransactionId,
-      pin: pin,
-    });
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, { pin });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
+    }
+
+    confirmMutation.mutate(result.payload);
   };
 
   const filteredNetworks = networks.filter((network) =>
@@ -648,9 +689,13 @@ const Airtime = ({ route }: any) => {
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
+              if (isRewardRedemption) {
+                (navigation as any).navigate('Settings', { screen: 'Rewards' });
+                return;
+              }
               // Navigate back to BillPaymentMainScreen (Call tab)
               // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
+              navigation.navigate('BillPayment' as never);
             }}
           >
             <View style={styles.iconCircle}>
@@ -724,16 +769,28 @@ const Airtime = ({ route }: any) => {
           </LinearGradient>
         </View>
 
+        {isRewardRedemption && (
+          <View style={styles.rewardBanner}>
+            <MaterialCommunityIcons name="gift" size={18} color="#A9EF45" />
+            <ThemedText style={styles.rewardBannerText}>
+              {rewardTitle
+                ? `Redeeming ${rewardTitle} — your wallet will not be charged`
+                : 'Redeeming reward airtime — your wallet will not be charged'}
+            </ThemedText>
+          </View>
+        )}
+
         {/* Main Card */}
         <View style={styles.mainCard}>
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
+              <ThemedText style={styles.amountInputLabel}>{NAIRA_SYMBOL}</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
                 onChangeText={(text) => {
+                  if (isRewardRedemption) return;
                   // Remove commas and format
                   const numericValue = text.replace(/,/g, '');
                   if (numericValue === '' || /^\d+$/.test(numericValue)) {
@@ -743,8 +800,10 @@ const Airtime = ({ route }: any) => {
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                editable={!isRewardRedemption}
               />
             </View>
+            {!isRewardRedemption && (
             <View style={styles.quickAmountsContainer}>
               {quickAmounts.map((quickAmount) => (
                 <TouchableOpacity
@@ -756,6 +815,7 @@ const Airtime = ({ route }: any) => {
                 </TouchableOpacity>
               ))}
             </View>
+            )}
             {/* <View style={styles.amountDivider} /> */}
           </View>
 
@@ -880,7 +940,7 @@ const Airtime = ({ route }: any) => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
+          <ThemedText style={styles.feeText}>Fee : {formatNaira(200, { compact: true })}</ThemedText>
         </View>
 
         {/* Recent Section */}
@@ -1369,9 +1429,9 @@ const Airtime = ({ route }: any) => {
         visible={showReceiptModal && !isLoadingDetails}
         transaction={{
           transactionType: 'billPayment',
-          transferAmount: `N${formatBalance(transactionDetails.amount)}`,
-          amountNGN: `N${formatBalance(transactionDetails.amount)}`,
-          fee: transactionDetails.fee ? `N${formatBalance(transactionDetails.fee)}` : 'N0',
+          transferAmount: formatNaira(transactionDetails.amount, { compact: true }),
+          amountNGN: formatNaira(transactionDetails.amount, { compact: true }),
+          fee: transactionDetails.fee ? formatNaira(transactionDetails.fee, { compact: true }) : `${NAIRA_SYMBOL}0`,
           mobileNumber: transactionDetails.accountNumber,
           billerType: transactionDetails.billerType,
           plan: transactionDetails.plan || '',
@@ -1525,6 +1585,25 @@ const styles = StyleSheet.create({
     padding: 14 * SCALE,
     marginHorizontal: SCREEN_WIDTH * 0.047,
     marginBottom: 10 * SCALE,
+  },
+  rewardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 12 * SCALE,
+    paddingHorizontal: 14 * SCALE,
+    paddingVertical: 10 * SCALE,
+    borderRadius: 10,
+    backgroundColor: 'rgba(169, 239, 69, 0.12)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(169, 239, 69, 0.35)',
+  },
+  rewardBannerText: {
+    flex: 1,
+    fontSize: 12 * SCALE,
+    color: '#A9EF45',
+    lineHeight: 18,
   },
   amountSection: {
     marginBottom: 20 * SCALE,

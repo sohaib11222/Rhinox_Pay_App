@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -11,14 +11,27 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { ThemedText } from '../../components';
+import OtpInput from '../../components/OtpInput';
+import KeyboardSafeModal from '../../components/KeyboardSafeModal';
 import { useRegister, useVerifyEmail, useResendVerification } from '../../mutations/auth.mutations';
 import { useGetCountries } from '../../queries/country.queries';
-import { API_BASE_URL } from '../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../utils/customAlert';
+import { filterSupportedCountries } from '../../utils/supportedCountries';
+import {
+  validatePassword,
+  isPasswordValid,
+  PASSWORD_RULE_LABELS,
+  type PasswordRuleKey,
+} from '../../utils/passwordValidation';
+import { OTP_LENGTH } from '../../constants/otp';
+import { TYPOGRAPHY } from '../../constants/typography';
+import { resolveCountryFlagUrl } from '../../utils/mediaUrl';
+import { getAuthHeroHeight, getAuthHeroImageWidth } from '../../utils/responsiveAuth';
 
 interface Country {
   id: number;
@@ -31,6 +44,10 @@ interface Country {
 
 const RegisterScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute<any>();
+  const { height: windowHeight } = useWindowDimensions();
+  const heroHeight = useMemo(() => getAuthHeroHeight(119), [windowHeight]);
+  const heroImageWidth = useMemo(() => getAuthHeroImageWidth(), [windowHeight]);
   const [country, setCountry] = useState('');
   const [countryId, setCountryId] = useState<string>('');
   const [firstName, setFirstName] = useState('');
@@ -44,12 +61,10 @@ const RegisterScreen = () => {
   const [showEmailVerifyModal, setShowEmailVerifyModal] = useState(false);
   const [showPhoneVerifyModal, setShowPhoneVerifyModal] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<number | null>(null);
-  const [emailCode, setEmailCode] = useState(['', '', '', '', '']);
+  const [emailCode, setEmailCode] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [phoneCode, setPhoneCode] = useState(['', '', '', '', '']);
   const [userId, setUserId] = useState<string>(''); // Store user ID from registration
   
-  // Refs for auto-focus
-  const emailCodeRefs = useRef<(TextInput | null)[]>([]);
   const phoneCodeRefs = useRef<(TextInput | null)[]>([]);
 
   // Resend timer states
@@ -59,10 +74,13 @@ const RegisterScreen = () => {
   const [phoneResendClicked, setPhoneResendClicked] = useState(false);
 
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
-  const [passwordValid, setPasswordValid] = useState({
-    noNameEmail: false,
+  const [passwordValid, setPasswordValid] = useState<Record<PasswordRuleKey, boolean>>({
     minLength: false,
-    hasLetterOrSymbol: false,
+    uppercase: false,
+    lowercase: false,
+    number: false,
+    symbol: false,
+    noPersonalInfo: false,
   });
 
   // Fetch countries from API
@@ -77,18 +95,17 @@ const RegisterScreen = () => {
   // API response structure: { success: true, data: [...] }
   // The query returns response.data which is the ApiResponse object
   const countries: Country[] = React.useMemo(() => {
+    let rawCountries: Country[] = [];
+
     if (!countriesData) return [];
-    
-    // Handle both possible response structures
+
     if (Array.isArray(countriesData)) {
-      return countriesData;
+      rawCountries = countriesData;
+    } else if (countriesData.data && Array.isArray(countriesData.data)) {
+      rawCountries = countriesData.data;
     }
-    
-    if (countriesData.data && Array.isArray(countriesData.data)) {
-      return countriesData.data;
-    }
-    
-    return [];
+
+    return filterSupportedCountries(rawCountries) as Country[];
   }, [countriesData]);
   
   React.useEffect(() => {
@@ -110,15 +127,14 @@ const RegisterScreen = () => {
       } else {
         showSuccessAlert(
           'Registration Successful',
-          'A 5-digit OTP code has been sent to your email address. Please verify your email to continue.'
+          'A 6-digit OTP code has been sent to your email address. Please verify your email to continue.'
         );
       }
     },
     onError: (error: any) => {
-      showErrorAlert(
-        'Registration Failed',
-        error.message || 'Failed to register. Please try again.'
-      );
+      const message = error?.message || 'Failed to register. Please try again.';
+      const title = !error?.status ? 'Connection Problem' : 'Registration Failed';
+      showErrorAlert(title, message);
     },
   });
 
@@ -169,9 +185,7 @@ const RegisterScreen = () => {
       email.trim() !== '' &&
       phone.trim() !== '' &&
       password.trim() !== '' &&
-      passwordValid.noNameEmail &&
-      passwordValid.minLength &&
-      passwordValid.hasLetterOrSymbol &&
+      isPasswordValid(passwordValid) &&
       agreeTerms
     );
   };
@@ -191,6 +205,10 @@ const RegisterScreen = () => {
       lastName: lastName.trim(),
       countryId: countryId,
       termsAccepted: agreeTerms,
+      deviceName:
+        Platform.OS === 'ios'
+          ? `iPhone (${Platform.Version})`
+          : `Android Device (${Platform.Version})`,
     });
   };
 
@@ -209,11 +227,13 @@ const RegisterScreen = () => {
     setPassword(text);
     setShowPasswordRequirements(text.length > 0);
 
-    setPasswordValid({
-      noNameEmail: !text.toLowerCase().includes(firstName.toLowerCase()) && !text.toLowerCase().includes(email.toLowerCase()),
-      minLength: text.length >= 8,
-      hasLetterOrSymbol: /[a-zA-Z]/.test(text) || /[^a-zA-Z0-9]/.test(text),
-    });
+    setPasswordValid(
+      validatePassword(text, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+      })
+    );
   };
 
   const handleVerifyEmail = () => {
@@ -223,8 +243,8 @@ const RegisterScreen = () => {
     }
 
     const code = emailCode.join('');
-    if (code.length !== 5) {
-      showWarningAlert('Validation Error', 'Please enter the complete 5-digit code.');
+    if (code.length !== OTP_LENGTH) {
+      showWarningAlert('Validation Error', `Please enter the complete ${OTP_LENGTH}-digit code.`);
       return;
     }
 
@@ -260,15 +280,25 @@ const RegisterScreen = () => {
   //   console.log('Resending phone OTP...');
   // };
 
-  // Auto-focus first input when email modal opens
+  // Resume email verification when redirected from login
   useEffect(() => {
-    if (showEmailVerifyModal) {
-      setTimeout(() => {
-        emailCodeRefs.current[0]?.focus();
-      }, 100);
-    } else {
-      // Reset email code when modal closes
-      setEmailCode(['', '', '', '', '']);
+    const verifyUserId = route.params?.verifyUserId as string | undefined;
+    const verifyEmail = route.params?.verifyEmail as string | undefined;
+    if (!verifyUserId) {
+      return;
+    }
+
+    setUserId(verifyUserId);
+    if (verifyEmail) {
+      setEmail(verifyEmail);
+    }
+    setShowEmailVerifyModal(true);
+    resendVerificationMutation.mutate({ userId: verifyUserId });
+  }, [route.params?.verifyUserId, route.params?.verifyEmail]);
+
+  useEffect(() => {
+    if (!showEmailVerifyModal) {
+      setEmailCode(Array(OTP_LENGTH).fill(''));
       setEmailResendTimer(0);
       setEmailResendClicked(false);
     }
@@ -337,15 +367,22 @@ const RegisterScreen = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Hero Section */}
-        <View style={styles.heroSection}>
+        <View style={[styles.heroSection, { height: heroHeight }]}>
           <Image
             source={require('../../assets/login/hero-image.png')}
-            style={styles.heroImage}
+            style={[styles.heroImage, { width: heroImageWidth, height: heroHeight * 1.1 }]}
             resizeMode="cover"
           />
-          <View style={styles.circularGradient} />
+          <View style={styles.circularGradient}>
+            <Image
+              source={require('../../assets/login/rhinox-logo.png')}
+              style={styles.circularLogo}
+              resizeMode="contain"
+            />
+          </View>
           <Image
             source={require('../../assets/login/usdt-coin.png')}
             style={[styles.floatingCoin, styles.usdtCoin]}
@@ -493,30 +530,16 @@ const RegisterScreen = () => {
             {/* Password Requirements */}
             {showPasswordRequirements && (
               <View style={styles.passwordRequirements}>
-                <View style={styles.requirementRow}>
-                  <MaterialCommunityIcons
-                    name={passwordValid.noNameEmail ? 'check-circle' : 'close-circle'}
-                    size={11.2}
-                    color={passwordValid.noNameEmail ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                  <ThemedText style={styles.requirementText}>Must not contain your name or email</ThemedText>
-                </View>
-                <View style={styles.requirementRow}>
-                  <MaterialCommunityIcons
-                    name={passwordValid.minLength ? 'check-circle' : 'close-circle'}
-                    size={11.2}
-                    color={passwordValid.minLength ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                  <ThemedText style={styles.requirementText}>Must be at least 8 characters</ThemedText>
-                </View>
-                <View style={styles.requirementRow}>
-                  <MaterialCommunityIcons
-                    name={passwordValid.hasLetterOrSymbol ? 'check-circle' : 'close-circle'}
-                    size={11.2}
-                    color={passwordValid.hasLetterOrSymbol ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                  />
-                  <ThemedText style={styles.requirementText}>Must have a letter or symbol</ThemedText>
-                </View>
+                {(Object.keys(PASSWORD_RULE_LABELS) as PasswordRuleKey[]).map((key) => (
+                  <View key={key} style={styles.requirementRow}>
+                    <MaterialCommunityIcons
+                      name={passwordValid[key] ? 'check-circle' : 'close-circle'}
+                      size={14}
+                      color={passwordValid[key] ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    />
+                    <ThemedText style={styles.requirementText}>{PASSWORD_RULE_LABELS[key]}</ThemedText>
+                  </View>
+                ))}
               </View>
             )}
 
@@ -615,7 +638,7 @@ const RegisterScreen = () => {
                   >
                     {c.flag ? (
                       <Image
-                        source={{ uri: `${API_BASE_URL.replace('/api', '')}${c.flag}` }}
+                        source={{ uri: resolveCountryFlagUrl(c.flag) ?? undefined }}
                         style={styles.countryFlagImage}
                         resizeMode="contain"
                       />
@@ -640,19 +663,18 @@ const RegisterScreen = () => {
       </Modal>
 
       {/* Email Verification Modal */}
-      <Modal
+      <KeyboardSafeModal
         visible={showEmailVerifyModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowEmailVerifyModal(false)}
+        onRequestClose={() => {
+          showWarningAlert(
+            'Verification Required',
+            'You must verify your email before you can use Rhinox Pay.'
+          );
+        }}
+        contentStyle={styles.verifyModalContent}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.verifyModalContent}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Email Verification</ThemedText>
-              <TouchableOpacity onPress={() => setShowEmailVerifyModal(false)}>
-                <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
-              </TouchableOpacity>
             </View>
             <View style={styles.verifyIcon}>
               <Image
@@ -665,8 +687,8 @@ const RegisterScreen = () => {
             <View style={styles.verifySubtitleContainer}>
               <ThemedText style={styles.verifySubtitle}>
                 {emailResendClicked
-                  ? 'A 5 digit code has been sent again to your registered email address'
-                  : 'A 5 digit code has been sent to your registered email address'}
+                  ? `A ${OTP_LENGTH}-digit code has been sent again to your registered email address`
+                  : `A ${OTP_LENGTH}-digit code has been sent to your registered email address`}
                 {' '}
               </ThemedText>
               {emailResendTimer > 0 ? (
@@ -688,35 +710,12 @@ const RegisterScreen = () => {
               )}
             </View>
             <View style={styles.codeContainer}>
-              {[0, 1, 2, 3, 4].map((index) => (
-                <View key={index} style={styles.codeInput}>
-                  <TextInput
-                    ref={(ref) => {
-                      emailCodeRefs.current[index] = ref;
-                    }}
-                    style={styles.codeText}
-                    maxLength={1}
-                    keyboardType="number-pad"
-                    value={emailCode[index]}
-                    onChangeText={(text) => {
-                      const newCode = [...emailCode];
-                      newCode[index] = text;
-                      setEmailCode(newCode);
-                      
-                      // Auto-focus to next input if digit entered
-                      if (text && index < 4) {
-                        emailCodeRefs.current[index + 1]?.focus();
-                      }
-                    }}
-                    onKeyPress={({ nativeEvent }) => {
-                      // Handle backspace to go to previous input
-                      if (nativeEvent.key === 'Backspace' && !emailCode[index] && index > 0) {
-                        emailCodeRefs.current[index - 1]?.focus();
-                      }
-                    }}
-                  />
-                </View>
-              ))}
+              <OtpInput
+                value={emailCode}
+                onChange={setEmailCode}
+                onComplete={() => handleVerifyEmail()}
+                disabled={verifyEmailMutation.isPending}
+              />
             </View>
             <TouchableOpacity 
               style={[
@@ -732,9 +731,7 @@ const RegisterScreen = () => {
                 <ThemedText style={styles.verifyButtonText}>Proceed</ThemedText>
               )}
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardSafeModal>
 
       {/* Phone Verification Modal - Commented out for now */}
       {/* <Modal
@@ -839,14 +836,11 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     width: '100%',
-    height: 119,
     backgroundColor: '#FFFFFF',
     position: 'relative',
     overflow: 'hidden',
   },
   heroImage: {
-    width: 440,
-    height: 142,
     position: 'absolute',
     top: -14,
     left: 0,
@@ -860,6 +854,13 @@ const styles = StyleSheet.create({
     top: 141,
     left: '33%',
     opacity: 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  circularLogo: {
+    width: 90,
+    height: 90,
   },
   floatingCoin: {
     position: 'absolute',
@@ -966,7 +967,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.5)',
   },
   verifyText: {
-    fontSize: 11.2,
+    fontSize: 14,
     fontWeight: '400',
     color: '#A9EF45',
     paddingHorizontal: 8,
@@ -982,7 +983,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   requirementText: {
-    fontSize: 9.6, // 12 * 0.8
+    fontSize: 12,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
     marginLeft: 8,
@@ -1114,7 +1115,7 @@ const styles = StyleSheet.create({
   },
   countryName: {
     flex: 1,
-    fontSize: 11.2,
+    fontSize: 14,
     fontWeight: '400',
     color: '#FFFFFF',
   },
@@ -1128,7 +1129,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   applyButtonText: {
-    fontSize: 11.2,
+    fontSize: 14,
     fontWeight: '400',
     color: '#000000',
   },

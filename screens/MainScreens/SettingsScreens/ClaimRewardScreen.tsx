@@ -1,75 +1,198 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   StyleSheet,
-  ImageBackground,
   TouchableOpacity,
   Dimensions,
   StatusBar,
-  Image,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useClaimReward } from '../../../mutations/rewards.mutations';
+import { ClaimRewardResponse } from '../../../mutations/rewards.mutations';
+import { showErrorAlert, showSuccessAlert, showWarningAlert } from '../../../utils/customAlert';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
+
+const navigateToRewardRedemption = (
+  navigation: any,
+  claim: ClaimRewardResponse
+) => {
+  const baseParams = {
+    rewardClaimId: claim.id,
+    rewardCode: claim.code,
+    isRewardRedemption: true,
+    rewardTitle: claim.title,
+  };
+
+  if (claim.fulfillmentType === 'bill_payment_airtime') {
+    (navigation as any).navigate('Transactions', {
+      screen: 'Airtime',
+      params: {
+        ...baseParams,
+        rewardAmountNgn: claim.amountNgn,
+      },
+    });
+    return;
+  }
+
+  if (claim.fulfillmentType === 'bill_payment_data') {
+    (navigation as any).navigate('Transactions', {
+      screen: 'DataRecharge',
+      params: {
+        ...baseParams,
+        dataHint: claim.dataHint,
+      },
+    });
+  }
+};
 
 const ClaimRewardScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute<any>();
+  const claimMutation = useClaimReward();
+
+  const rewardCode = route.params?.rewardCode as string | undefined;
+  const title = route.params?.title as string | undefined;
+  const description = route.params?.description as string | undefined;
+  const value = route.params?.value as string | undefined;
+  const fulfillmentType = route.params?.fulfillmentType as string | undefined;
+  const existingClaimId = route.params?.claimId as number | undefined;
+  const amountNgn = route.params?.amountNgn as number | undefined;
+  const dataHint = route.params?.dataHint as string | undefined;
+  const categoryCode = route.params?.categoryCode as string | undefined;
+  const icon = route.params?.icon as string | undefined;
+
+  const displayLabel = useMemo(() => {
+    if (!value) return 'Reward';
+    if (value.toLowerCase().includes('data')) return 'FREE DATA';
+    if (value.toLowerCase().includes('airtime')) return 'FREE AIRTIME';
+    if (value.toLowerCase().includes('cashback')) return 'CASHBACK';
+    return 'REWARD';
+  }, [value]);
+
+  const displayAmount = useMemo(() => {
+    if (!value) return 'Reward';
+    const match = value.match(/(\d+\s?(?:GB|MB|₦[\d,]+|\$[\d,]+|\d+%))/i);
+    return match ? match[1] : value;
+  }, [value]);
+
+  const handleClaimSuccess = (claim: ClaimRewardResponse) => {
+    if (claim.fulfillmentType === 'bill_payment_airtime' || claim.fulfillmentType === 'bill_payment_data') {
+      navigateToRewardRedemption(navigation, claim);
+      return;
+    }
+
+    if (claim.fulfillmentType === 'cashback') {
+      showWarningAlert(
+        'Cashback Reserved',
+        'Your cashback reward is reserved. Bonus wallet redemption will be available in a future update.',
+        () => navigation.goBack()
+      );
+      return;
+    }
+
+    showSuccessAlert('Success', `${title || 'Reward'} claimed successfully!`, () => {
+      navigation.goBack();
+    });
+  };
+
+  const handleContinueRedemption = () => {
+    if (!existingClaimId || !rewardCode) {
+      showErrorAlert('Error', 'Reward details are missing.');
+      return;
+    }
+
+    navigateToRewardRedemption(navigation, {
+      id: existingClaimId,
+      code: rewardCode,
+      title: title || '',
+      description: description || '',
+      value: value || '',
+      tierCode: '',
+      status: 'pending',
+      fulfillmentType: fulfillmentType || '',
+      amountNgn: amountNgn ?? null,
+      categoryCode: categoryCode ?? null,
+      dataHint: dataHint ?? null,
+      icon: icon || 'gift',
+      claimedAt: '',
+      expiresAt: null,
+    });
+  };
 
   const handleClaimGift = () => {
-    // TODO: Implement claim gift API call
-    console.log('Claiming gift...');
+    if (existingClaimId && fulfillmentType?.startsWith('bill_payment_')) {
+      handleContinueRedemption();
+      return;
+    }
+
+    if (!rewardCode) {
+      showErrorAlert('Error', 'Reward details are missing.');
+      return;
+    }
+
+    claimMutation.mutate(rewardCode, {
+      onSuccess: (response) => {
+        const claim = response.data;
+        if (!claim) {
+          showErrorAlert('Claim Failed', 'Invalid response from server.');
+          return;
+        }
+        handleClaimSuccess(claim);
+      },
+      onError: (error) => {
+        showErrorAlert('Claim Failed', error.message || 'Unable to claim this reward.');
+      },
+    });
   };
 
-  const handleShareOnSocials = () => {
-    // TODO: Implement social sharing
-    console.log('Sharing on socials...');
-  };
+  const buttonLabel = existingClaimId && fulfillmentType?.startsWith('bill_payment_')
+    ? 'Continue Redemption'
+    : 'Claim Gift';
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-      <ImageBackground
-        source={require('../../../assets/claim_background.png')}
+      <StatusBar barStyle="light-content" backgroundColor="#020c19" />
+      <LinearGradient
+        colors={['#031428', '#020c19', '#05152b']}
         style={styles.background}
-        resizeMode="cover"
       >
-        {/* Back Button */}
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <MaterialCommunityIcons name="chevron-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
 
-        {/* Main Content Card */}
         <View style={styles.cardContainer}>
           <View style={styles.card}>
-            {/* Top Icon - claim_top.png */}
             <View style={styles.topIconContainer}>
-              <Image
-                source={require('../../../assets/claim_top.png')}
-                style={styles.topIcon}
-                resizeMode="contain"
-              />
+              <MaterialCommunityIcons name="gift" size={72} color="#B08D57" />
             </View>
 
-            {/* FREE DATA Label */}
             <View style={styles.freeDataLabel}>
-              <ThemedText style={styles.freeDataText}>FREE DATA</ThemedText>
+              <ThemedText style={styles.freeDataText}>{displayLabel}</ThemedText>
             </View>
 
-            {/* Data Amount */}
-            <ThemedText style={styles.dataAmount}>1GB</ThemedText>
+            <ThemedText style={styles.dataAmount}>{displayAmount}</ThemedText>
+            {title ? <ThemedText style={styles.rewardTitle}>{title}</ThemedText> : null}
+            {description ? (
+              <ThemedText style={styles.rewardDescription}>{description}</ThemedText>
+            ) : null}
 
-            {/* Claim Gift Button */}
+            {(fulfillmentType === 'bill_payment_airtime' || fulfillmentType === 'bill_payment_data') && (
+              <ThemedText style={styles.rewardHint}>
+                You will choose your network and phone number next. Your wallet will not be charged.
+              </ThemedText>
+            )}
+
             <TouchableOpacity
               style={styles.claimGiftButton}
               onPress={handleClaimGift}
               activeOpacity={0.8}
+              disabled={claimMutation.isPending}
             >
               <LinearGradient
                 colors={['#A9EF45', '#8FD83A']}
@@ -77,33 +200,24 @@ const ClaimRewardScreen = () => {
                 end={{ x: 1, y: 0 }}
                 style={styles.claimGiftGradient}
               >
-                <MaterialCommunityIcons 
-                  name="gift" 
-                  size={20} 
-                  color="#FFFFFF" 
-                  style={styles.buttonIcon}
-                />
-                <ThemedText style={styles.claimGiftText}>Claim Gift</ThemedText>
+                {claimMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#000000" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons
+                      name="gift"
+                      size={20}
+                      color="#000000"
+                      style={styles.buttonIcon}
+                    />
+                    <ThemedText style={styles.claimGiftText}>{buttonLabel}</ThemedText>
+                  </>
+                )}
               </LinearGradient>
-            </TouchableOpacity>
-
-            {/* Share on Socials Button */}
-            <TouchableOpacity
-              style={styles.shareButton}
-              onPress={handleShareOnSocials}
-              activeOpacity={0.8}
-            >
-              <MaterialCommunityIcons 
-                name="share-variant" 
-                size={20} 
-                color="#000000" 
-                style={styles.buttonIcon}
-              />
-              <ThemedText style={styles.shareText}>Share on Socials</ThemedText>
             </TouchableOpacity>
           </View>
         </View>
-      </ImageBackground>
+      </LinearGradient>
     </View>
   );
 };
@@ -120,111 +234,92 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 50,
-    left: 20,
+    top: 50 * SCALE,
+    left: 20 * SCALE,
     width: 40 * SCALE,
     height: 40 * SCALE,
     borderRadius: 20 * SCALE,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
   },
   cardContainer: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: SCREEN_WIDTH * 0.08,
   },
   card: {
     width: '100%',
-    backgroundColor: '#0A1520',
-    borderRadius: 30 * SCALE,
-    borderWidth: 2,
-    borderColor: '#A9EF45',
-    paddingVertical: 40 * SCALE,
-    paddingHorizontal: 30 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 24 * SCALE,
+    padding: 28 * SCALE,
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: SCREEN_HEIGHT * 0.65,
+    borderWidth: 0.5,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   topIconContainer: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20 * SCALE,
-    marginBottom: 20 * SCALE,
-  },
-  topIcon: {
-    width: 120 * SCALE,
-    height: 80 * SCALE,
+    marginBottom: 16 * SCALE,
   },
   freeDataLabel: {
-    backgroundColor: 'rgba(26, 45, 80, 0.95)',
-    borderWidth: 1.5,
-    borderColor: '#A9EF45',
-    borderRadius: 20 * SCALE,
-    paddingHorizontal: 20 * SCALE,
-    paddingVertical: 8 * SCALE,
-    marginBottom: 30 * SCALE,
-    alignSelf: 'center',
+    backgroundColor: 'rgba(176, 141, 87, 0.2)',
+    borderRadius: 100,
+    paddingHorizontal: 16 * SCALE,
+    paddingVertical: 6 * SCALE,
+    marginBottom: 12 * SCALE,
   },
   freeDataText: {
     fontSize: 12 * SCALE,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 2,
-    textAlign: 'center',
+    fontWeight: '600',
+    color: '#B08D57',
+    letterSpacing: 1,
   },
   dataAmount: {
-    fontSize: 80 * SCALE,
+    fontSize: 42 * SCALE,
     fontWeight: '700',
-    color: '#A9EF45',
-    marginBottom: 60 * SCALE,
-    letterSpacing: 3,
+    color: '#FFFFFF',
+    marginBottom: 8 * SCALE,
+  },
+  rewardTitle: {
+    fontSize: 16 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 6 * SCALE,
     textAlign: 'center',
   },
-  claimGiftButton: {
-    width: '90%',
+  rewardDescription: {
+    fontSize: 12 * SCALE,
+    color: 'rgba(255, 255, 255, 0.65)',
+    textAlign: 'center',
+    marginBottom: 12 * SCALE,
+  },
+  rewardHint: {
+    fontSize: 12 * SCALE,
+    color: '#A9EF45',
+    textAlign: 'center',
     marginBottom: 16 * SCALE,
-    borderRadius: 25 * SCALE,
-    overflow: 'hidden',
+    lineHeight: 18,
+  },
+  claimGiftButton: {
+    width: '100%',
+    marginTop: 8 * SCALE,
   },
   claimGiftGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18 * SCALE,
-    paddingHorizontal: 20 * SCALE,
-  },
-  shareButton: {
-    width: '90%',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#A9EF45',
-    borderRadius: 25 * SCALE,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 18 * SCALE,
-    paddingHorizontal: 20 * SCALE,
+    borderRadius: 100,
+    paddingVertical: 14 * SCALE,
+    gap: 8 * SCALE,
   },
   buttonIcon: {
-    marginRight: 10 * SCALE,
+    marginRight: 4 * SCALE,
   },
   claimGiftText: {
     fontSize: 16 * SCALE,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  shareText: {
-    fontSize: 16 * SCALE,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#000000',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
   },
 });
 

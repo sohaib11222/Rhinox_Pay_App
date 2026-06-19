@@ -26,9 +26,15 @@ import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutation
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
+import { OTP_LENGTH } from '../../../constants/otp';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
-import { checkSecurityRequirements, verifySecurityBeforeTransaction, getMissingVerificationMessage } from '../../../utils/securityVerification';
+import {
+  checkSecurityRequirements,
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -76,21 +82,7 @@ const CableTv = ({ route }: any) => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -426,9 +418,16 @@ const CableTv = ({ route }: any) => {
       
       if (transactionId) {
         setPendingTransactionId(transactionId);
-        setShowPinModal(true);
+        proceedAfterTransactionInitiate(transactionId, {
+          showVerificationModal: () => setShowPinModal(true),
+          confirm: (payload) => confirmMutation.mutate(payload),
+        });
       } else {
-        setShowPinModal(true);
+        console.error('[CableTv] No transactionId found in response:', data);
+        showErrorAlert(
+          'Transaction Error',
+          'Transaction ID not found in response. Please try again.'
+        );
       }
     },
     onError: (error: any) => {
@@ -576,33 +575,18 @@ const CableTv = ({ route }: any) => {
   }, [showPinModal]);
 
   const handleConfirmPayment = async () => {
-    // Verify all security requirements
-    const verification = await verifySecurityBeforeTransaction({
-      pin: pin,
-      emailOtp: emailOtp,
-      twoFACode: twoFACode,
-    });
-
-    if (!verification.success) {
-      const message = getMissingVerificationMessage(verification.missingVerifications);
-      showWarningAlert('Security Verification Required', message);
-      return;
-    }
-
-    // Basic PIN validation (always required by backend)
-    if (!pin || pin.length < 5) {
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
-      return;
-    }
-
-    if (pendingTransactionId) {
-      confirmMutation.mutate({
-        transactionId: pendingTransactionId,
-        pin: pin,
-      });
-    } else {
+    if (!pendingTransactionId) {
       showErrorAlert('Error', 'Transaction ID not found. Please try again.');
+      return;
     }
+
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, { pin, emailOtp });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
+    }
+
+    confirmMutation.mutate(result.payload);
   };
 
   const filteredBillers = billerTypes.filter((biller) =>
@@ -650,7 +634,7 @@ const CableTv = ({ route }: any) => {
             onPress={() => {
               // Navigate back to BillPaymentMainScreen (Call tab)
               // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
+              navigation.navigate('BillPayment' as never);
             }}
           >
             <View style={styles.iconCircle}>
@@ -857,7 +841,7 @@ const CableTv = ({ route }: any) => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
+          <ThemedText style={styles.feeText}>Fee : ₦200</ThemedText>
         </View>
 
         {/* Recent Section */}
@@ -1313,8 +1297,8 @@ const CableTv = ({ route }: any) => {
                       value={emailOtp}
                       onChangeText={setEmailOtp}
                       keyboardType="number-pad"
-                      maxLength={5}
-                      placeholder="Enter 5-digit OTP from email"
+                      maxLength={OTP_LENGTH}
+                      placeholder="Enter 6-digit OTP from email"
                       placeholderTextColor="rgba(255, 255, 255, 0.5)"
                     />
                   </View>
@@ -1342,7 +1326,7 @@ const CableTv = ({ route }: any) => {
                   (
                     !pin || 
                     pin.length < 5 || 
-                    (securityRequirements.email && (!emailOtp || emailOtp.length !== 5)) ||
+                    (securityRequirements.email && (!emailOtp || emailOtp.length !== OTP_LENGTH)) ||
                     (securityRequirements.twoFA && (!twoFACode || twoFACode.length < 6)) ||
                     confirmMutation.isPending
                   ) && styles.confirmButtonDisabled
@@ -1351,7 +1335,7 @@ const CableTv = ({ route }: any) => {
                 disabled={
                   !pin || 
                   pin.length < 5 || 
-                  (securityRequirements.email && (!emailOtp || emailOtp.length !== 5)) ||
+                  (securityRequirements.email && (!emailOtp || emailOtp.length !== OTP_LENGTH)) ||
                   (securityRequirements.twoFA && (!twoFACode || twoFACode.length < 6)) ||
                   confirmMutation.isPending
                 }

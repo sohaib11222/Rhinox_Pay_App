@@ -28,6 +28,11 @@ import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -79,21 +84,7 @@ const Electricity = ({ route }: any) => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -459,9 +450,16 @@ const Electricity = ({ route }: any) => {
       
       if (transactionId) {
         setPendingTransactionId(transactionId);
-        setShowPinModal(true);
+        proceedAfterTransactionInitiate(transactionId, {
+          showVerificationModal: () => setShowPinModal(true),
+          confirm: (payload) => confirmMutation.mutate(payload),
+        });
       } else {
-        setShowPinModal(true);
+        console.error('[Electricity] No transactionId found in response:', data);
+        showErrorAlert(
+          'Transaction Error',
+          'Transaction ID not found in response. Please try again.'
+        );
       }
     },
     onError: (error: any) => {
@@ -603,19 +601,18 @@ const Electricity = ({ route }: any) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 5) {
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
+    if (!pendingTransactionId) {
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
       return;
     }
 
-    if (pendingTransactionId) {
-      confirmMutation.mutate({
-        transactionId: pendingTransactionId,
-        pin: pin,
-      });
-    } else {
-      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, { pin });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
     }
+
+    confirmMutation.mutate(result.payload);
   };
 
   const filteredBillers = billerTypes.filter((biller) =>
@@ -656,7 +653,7 @@ const Electricity = ({ route }: any) => {
             onPress={() => {
               // Navigate back to BillPaymentMainScreen (Call tab)
               // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
+              navigation.navigate('BillPayment' as never);
             }}
           >
             <View style={styles.iconCircle}>
@@ -871,7 +868,7 @@ const Electricity = ({ route }: any) => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
+          <ThemedText style={styles.feeText}>Fee : ₦200</ThemedText>
         </View>
 
         {/* Recent Section */}

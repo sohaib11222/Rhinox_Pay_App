@@ -9,14 +9,17 @@ import {
   Modal,
   Image,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { useSubmitKYC } from '../../mutations/kyc.mutations';
 import { useGetCountries } from '../../queries/country.queries';
-import { useGetKYCStatus } from '../../queries/kyc.queries';
-import { API_BASE_URL } from '../../utils/apiConfig';
+import { useGetKYCStatus, useRefreshKYCOnFocus } from '../../queries/kyc.queries';
+import { resolveCountryFlagUrl } from '../../utils/mediaUrl';
+import { TYPOGRAPHY } from '../../constants/typography';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../utils/customAlert';
 
 const ID_TYPES = [
@@ -50,7 +53,7 @@ const KYC = () => {
   const [selectedIDType, setSelectedIDType] = useState<number | null>(null);
 
   // Fetch countries from API
-  const { data: countriesData, isLoading: countriesLoading, error: countriesError } = useGetCountries({
+  const { data: countriesData, isLoading: countriesLoading, error: countriesError, refetch: refetchCountries } = useGetCountries({
     queryKey: ['countries'],
     retry: 2,
     retryDelay: 1000,
@@ -60,6 +63,8 @@ const KYC = () => {
 
   // Fetch KYC status to check if already verified
   const { data: kycStatusData, isLoading: isLoadingKYCStatus } = useGetKYCStatus();
+
+  useRefreshKYCOnFocus();
 
   // Determine KYC status from API
   const kycStatus = kycStatusData?.data?.status || kycStatusData?.data?.kycStatus || 'not_done';
@@ -231,7 +236,10 @@ const KYC = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <StatusBar barStyle="light-content" />
       
       {/* Header */}
@@ -247,7 +255,7 @@ const KYC = () => {
         <ThemedText style={styles.headerTitle}>KYC Registration</ThemedText>
       </View>
 
-      <ScrollView style={styles.scrollView}>
+      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
         {/* Shield Icon */}
         <View style={styles.iconContainer}>
         <Image
@@ -452,8 +460,11 @@ const KYC = () => {
               ) : countriesError ? (
                 <View style={styles.errorContainer}>
                   <ThemedText style={styles.errorText}>
-                    Failed to load countries. Please try again.
+                    Couldn&apos;t load countries. Please try again.
                   </ThemedText>
+                  <TouchableOpacity style={styles.applyButton} onPress={() => refetchCountries()}>
+                    <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
+                  </TouchableOpacity>
                 </View>
               ) : countries.length === 0 ? (
                 <View style={styles.errorContainer}>
@@ -468,11 +479,7 @@ const KYC = () => {
                   >
                     {c.flag ? (
                       <Image
-                        source={{
-                          uri: c.flag.startsWith('/')
-                            ? `${API_BASE_URL.replace('/api', '')}${c.flag}`
-                            : c.flag,
-                        }}
+                        source={{ uri: resolveCountryFlagUrl(c.flag) ?? undefined }}
                         style={styles.countryFlagImage}
                         resizeMode="contain"
                       />
@@ -715,7 +722,7 @@ const KYC = () => {
           </View>
         </View>
       </Modal>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -769,7 +776,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 9.6, // 12 * 0.8
+    fontSize: TYPOGRAPHY.caption,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
     paddingHorizontal: 20,
@@ -809,7 +816,7 @@ const styles = StyleSheet.create({
     marginBottom: 21,
   },
   inputLabel: {
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '300',
     color: '#FFFFFF',
     marginBottom: 6,
@@ -826,7 +833,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '300',
     color: '#FFFFFF',
     paddingVertical: 0,
@@ -854,7 +861,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   proceedButtonText: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: '#000000',
   },
@@ -867,7 +874,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   continueButtonText: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: '#FFFFFF',
   },
@@ -923,7 +930,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   loadingText: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     color: 'rgba(255, 255, 255, 0.5)',
     marginTop: 10,
   },
@@ -933,13 +940,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   errorText: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
   },
   countryName: {
     flex: 1,
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: '#FFFFFF',
   },
@@ -953,7 +960,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   applyButtonText: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: '#000000',
   },
@@ -978,7 +985,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   idName: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: '#FFFFFF',
   },
@@ -990,7 +997,7 @@ const styles = StyleSheet.create({
     height: 307,
   },
   dobSubtitle: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: '#FFFFFF',
     paddingHorizontal: 20,
@@ -1028,7 +1035,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   dobText: {
-    fontSize: 11.2,
+    fontSize: TYPOGRAPHY.body,
     fontWeight: '400',
     color: 'rgba(255, 255, 255, 0.5)',
   },

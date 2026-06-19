@@ -28,6 +28,17 @@ import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import {
+  NAIRA_SYMBOL,
+  QUICK_AMOUNT_LABELS,
+  formatNaira,
+  parseQuickAmountValue,
+} from '../../../utils/naira';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -63,21 +74,7 @@ const Betting = ({ route }: any) => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -253,9 +250,14 @@ const Betting = ({ route }: any) => {
     }
     
     return providersData.data.map((provider: any) => {
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -308,9 +310,16 @@ const Betting = ({ route }: any) => {
       
       if (transactionId) {
         setPendingTransactionId(transactionId);
-        setShowPinModal(true);
+        proceedAfterTransactionInitiate(transactionId, {
+          showVerificationModal: () => setShowPinModal(true),
+          confirm: (payload) => confirmMutation.mutate(payload),
+        });
       } else {
-        setShowPinModal(true);
+        console.error('[Betting] No transactionId found in response:', data);
+        showErrorAlert(
+          'Transaction Error',
+          'Transaction ID not found in response. Please try again.'
+        );
       }
     },
     onError: (error: any) => {
@@ -386,9 +395,14 @@ const Betting = ({ route }: any) => {
     }
     return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
       const provider = beneficiary.provider || {};
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -429,9 +443,14 @@ const Betting = ({ route }: any) => {
 
     return transactions.map((tx: any) => {
       const provider = tx.provider || {};
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -459,7 +478,7 @@ const Betting = ({ route }: any) => {
         transactionId: tx.id, // Store numeric ID for detail fetching
         userId: tx.accountNumber || '',
         platform: provider.name || provider.code || '',
-        amount: `N${formatBalance(amount)}`,
+        amount: formatNaira(amount, { compact: true }),
         date: date,
         icon: logoUrl ? { uri: logoUrl } : icon,
       };
@@ -533,10 +552,10 @@ const Betting = ({ route }: any) => {
     }
   };
 
-  const quickAmounts = ['N100', 'N200', 'N500', 'N1,000'];
+  const quickAmounts = [...QUICK_AMOUNT_LABELS];
 
   const handleAmountSelect = (quickAmount: string) => {
-    const numericValue = quickAmount.replace(/[N,]/g, '');
+    const numericValue = parseQuickAmountValue(quickAmount);
     setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
   };
 
@@ -570,19 +589,18 @@ const Betting = ({ route }: any) => {
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 5) {
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
+    if (!pendingTransactionId) {
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
       return;
     }
 
-    if (pendingTransactionId) {
-      confirmMutation.mutate({
-        transactionId: pendingTransactionId,
-        pin: pin,
-      });
-    } else {
-      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, { pin });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
     }
+
+    confirmMutation.mutate(result.payload);
   };
 
   const filteredPlatforms = bettingPlatforms.filter((platform) =>
@@ -624,7 +642,7 @@ const Betting = ({ route }: any) => {
             onPress={() => {
               // Navigate back to BillPaymentMainScreen (Call tab)
               // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
+              navigation.navigate('BillPayment' as never);
             }}
           >
             <View style={styles.iconCircle}>
@@ -703,7 +721,7 @@ const Betting = ({ route }: any) => {
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
             <View style={styles.amountInputLabelContainer}>
-              <ThemedText style={styles.amountInputLabel}>N</ThemedText>
+              <ThemedText style={styles.amountInputLabel}>{NAIRA_SYMBOL}</ThemedText>
               <TextInput
                 style={styles.amountInput}
                 value={amount}
@@ -830,7 +848,7 @@ const Betting = ({ route }: any) => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
+          <ThemedText style={styles.feeText}>Fee : {formatNaira(200, { compact: true })}</ThemedText>
         </View>
 
         {/* Recent Section */}
@@ -1200,8 +1218,8 @@ const Betting = ({ route }: any) => {
       <TransactionSuccessModal
         visible={showSuccessModal}
         transaction={{
-          amount: `N${amount}`,
-          fee: 'N200',
+          amount: formatNaira(amount, { compact: true }),
+          fee: formatNaira(200, { compact: true }),
           mobileNumber: userId,
           networkProvider: bettingPlatforms.find((p) => p.id === String(selectedBettingPlatform))?.name || '',
           country: selectedCountryName,
@@ -1221,9 +1239,9 @@ const Betting = ({ route }: any) => {
         visible={showReceiptModal && !isLoadingDetails}
         transaction={{
           transactionType: 'billPayment',
-          transferAmount: `N${formatBalance(transactionDetails.amount)}`,
-          amountNGN: `N${formatBalance(transactionDetails.amount)}`,
-          fee: transactionDetails.fee ? `N${formatBalance(transactionDetails.fee)}` : 'N0',
+          transferAmount: formatNaira(transactionDetails.amount, { compact: true }),
+          amountNGN: formatNaira(transactionDetails.amount, { compact: true }),
+          fee: transactionDetails.fee ? formatNaira(transactionDetails.fee, { compact: true }) : `${NAIRA_SYMBOL}0`,
           mobileNumber: transactionDetails.userId || transactionDetails.accountNumber,
           billerType: transactionDetails.bettingPlatform,
           plan: `Betting - ${transactionDetails.userId || transactionDetails.accountNumber}`,

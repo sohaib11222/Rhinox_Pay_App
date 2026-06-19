@@ -18,11 +18,13 @@ import { useNavigation, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useLogout } from '../../../mutations/auth.mutations';
-import { clearTokens, getBiometricEnabled, setBiometricEnabled } from '../../../utils/apiClient';
+import { clearTokensForLogout, getBiometricEnabled, hasStoredAuthSession, setBiometricEnabled, setBiometricLocked } from '../../../utils/apiClient';
+import { verifyBiometricToEnableLogin } from '../../../utils/biometricAuth';
 import { showErrorAlert, showConfirmAlert } from '../../../utils/customAlert';
-import { useGetKYCStatus } from '../../../queries/kyc.queries';
+import { useGetKYCStatus, useRefreshKYCOnFocus } from '../../../queries/kyc.queries';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
+import { resolveUploadUri } from '../../../utils/walletFlags';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -46,7 +48,7 @@ interface SettingsSection {
 
 const Settings = () => {
   const navigation = useNavigation();
-  const { logout: authLogout } = useAuth();
+  const { logout: authLogout, token: authToken } = useAuth();
   const insets = useSafeAreaInsets();
   const [biometricEnabled, setBiometricEnabledState] = useState(false);
   const [showDeleteWarningModal, setShowDeleteWarningModal] = useState(false);
@@ -63,6 +65,8 @@ const Settings = () => {
     isLoading: isLoadingKYC,
     refetch: refetchKYC 
   } = useGetKYCStatus();
+
+  useRefreshKYCOnFocus();
 
   // Fetch current user data
   const { 
@@ -87,13 +91,52 @@ const Settings = () => {
   };
 
   const handleBiometricToggle = async (value: boolean) => {
+    if (value) {
+      const hasSession = await hasStoredAuthSession();
+      if (!hasSession && !authToken) {
+        showErrorAlert(
+          'Session Not Found',
+          'Please log out and sign in again, then enable biometric login.'
+        );
+        return;
+      }
+
+      const verification = await verifyBiometricToEnableLogin();
+      if (!verification.ok) {
+        if (verification.error === 'user_cancel') {
+          return;
+        }
+        if (verification.error === 'not_available') {
+          showErrorAlert(
+            'Biometrics Not Available',
+            'Your device does not support biometrics or fingerprint is not set up. Add a fingerprint in your device settings first.'
+          );
+          return;
+        }
+        if (verification.error === 'no_session') {
+          showErrorAlert(
+            'Session Not Found',
+            'Please log out and sign in again, then enable biometric login.'
+          );
+          return;
+        }
+        showErrorAlert(
+          'Verification Failed',
+          'Biometric verification failed. Please try again.'
+        );
+        return;
+      }
+    }
+
     try {
       setBiometricEnabledState(value);
       await setBiometricEnabled(value);
+      if (value) {
+        await setBiometricLocked(false);
+      }
       console.log('[Settings] Biometric preference updated:', value);
     } catch (error) {
       console.error('[Settings] Error saving biometric preference:', error);
-      // Revert state on error
       setBiometricEnabledState(!value);
       showErrorAlert('Error', 'Failed to save biometric preference. Please try again.');
     }
@@ -101,9 +144,8 @@ const Settings = () => {
 
   // Helper function to navigate to login
   const navigateToLogin = async () => {
-    // Clear tokens from storage (even if logout API failed)
     console.log('[Settings] Clearing tokens on logout...');
-    await clearTokens();
+    await clearTokensForLogout();
     
     // Verify tokens are cleared
     const { getAccessToken, getRefreshToken } = await import('../../../utils/apiClient');
@@ -183,15 +225,20 @@ const Settings = () => {
 
   // Get user data from API
   const userData = useMemo(() => {
-    if (currentUserData?.data?.user) {
-      const user = currentUserData.data.user;
+    const user = currentUserData?.data;
+    if (user) {
       const fullName = user.firstName && user.lastName 
         ? `${user.firstName} ${user.lastName}`.trim()
         : user.firstName || user.lastName || user.name || 'User';
       
+      const avatarUri = resolveUploadUri(user.profilePictureUrl);
+      const profilePicture = avatarUri
+        ? { uri: avatarUri }
+        : require('../../../assets/login/memoji.png');
+
       return {
         name: fullName,
-        avatar: require('../../../assets/login/memoji.png'),
+        avatar: profilePicture,
         isVerified: kycStatusData?.data?.status === 'approved' || 
                     kycStatusData?.data?.status === 'verified' || 
                     kycStatusData?.data?.status === 'complete' ||
@@ -326,6 +373,9 @@ const Settings = () => {
   ], [kycBadgeInfo]);
 
   const handleItemPress = (item: SettingsItem) => {
+    if (item.hasToggle) {
+      return;
+    }
     // TODO: Implement navigation or actions based on item.id
     if (item.id === 'edit-profile') {
       (navigation as any).navigate('Settings', {
@@ -469,81 +519,97 @@ const Settings = () => {
             <View key={section.id} style={styles.sectionCard}>
               <ThemedText style={styles.sectionTitle}>{section.title}</ThemedText>
               <View style={styles.sectionItems}>
-                {section.items.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.settingsItem}
-                    onPress={() => handleItemPress(item)}
-                    disabled={item.id === 'logout' && logoutMutation.isPending}
-                  >
-                    <View style={styles.itemIconContainer}>
-                      <Image
-                        source={item.icon}
-                        style={styles.itemIcon}
-                        resizeMode="contain"
-                      />
-                    </View>
-                    <ThemedText style={styles.itemTitle}>{item.title}</ThemedText>
-                    {item.id === 'account-verification' && (
-                      <View style={[
-                        styles.itemBadge,
-                        {
-                          backgroundColor: kycBadgeInfo.badgeBgColor,
-                          borderColor: kycBadgeInfo.badgeBorderColor,
-                        },
-                        !kycBadgeInfo.hasBadge && styles.itemBadgeAction,
-                      ]}>
-                        {kycBadgeInfo.hasBadge ? (
-                          <>
-                            {kycStatusLower === 'approved' || kycStatusLower === 'verified' || kycStatusLower === 'complete' ? (
-                              <MaterialCommunityIcons
-                                name="check-circle"
-                                size={10 * SCALE}
-                                color={kycBadgeInfo.badgeColor}
-                              />
-                            ) : (
-                              <MaterialCommunityIcons
-                                name="timer-sand"
-                                size={10 * SCALE}
-                                color={kycBadgeInfo.badgeColor}
-                              />
-                            )}
+                {section.items.map((item) => {
+                  const itemContent = (
+                    <>
+                      <View style={styles.itemIconContainer}>
+                        <Image
+                          source={item.icon}
+                          style={styles.itemIcon}
+                          resizeMode="contain"
+                        />
+                      </View>
+                      <ThemedText style={styles.itemTitle}>{item.title}</ThemedText>
+                      {item.id === 'account-verification' && (
+                        <View style={[
+                          styles.itemBadge,
+                          {
+                            backgroundColor: kycBadgeInfo.badgeBgColor,
+                            borderColor: kycBadgeInfo.badgeBorderColor,
+                          },
+                          !kycBadgeInfo.hasBadge && styles.itemBadgeAction,
+                        ]}>
+                          {kycBadgeInfo.hasBadge ? (
+                            <>
+                              {kycStatusLower === 'approved' || kycStatusLower === 'verified' || kycStatusLower === 'complete' ? (
+                                <MaterialCommunityIcons
+                                  name="check-circle"
+                                  size={10 * SCALE}
+                                  color={kycBadgeInfo.badgeColor}
+                                />
+                              ) : (
+                                <MaterialCommunityIcons
+                                  name="timer-sand"
+                                  size={10 * SCALE}
+                                  color={kycBadgeInfo.badgeColor}
+                                />
+                              )}
+                              <ThemedText style={[styles.itemBadgeText, { color: kycBadgeInfo.badgeColor }]}>
+                                {item.badgeText}
+                              </ThemedText>
+                            </>
+                          ) : (
                             <ThemedText style={[styles.itemBadgeText, { color: kycBadgeInfo.badgeColor }]}>
                               {item.badgeText}
                             </ThemedText>
-                          </>
-                        ) : (
-                          <ThemedText style={[styles.itemBadgeText, { color: kycBadgeInfo.badgeColor }]}>
-                            {item.badgeText}
-                          </ThemedText>
-                        )}
-                      </View>
-                    )}
-                    {item.hasBadge && item.id !== 'account-verification' && (
-                      <View style={styles.itemBadge}>
-                        <MaterialCommunityIcons
-                          name="check-circle"
-                          size={10 * SCALE}
-                          color="#008000"
+                          )}
+                        </View>
+                      )}
+                      {item.hasBadge && item.id !== 'account-verification' && (
+                        <View style={styles.itemBadge}>
+                          <MaterialCommunityIcons
+                            name="check-circle"
+                            size={10 * SCALE}
+                            color="#008000"
+                          />
+                          <ThemedText style={styles.itemBadgeText}>{item.badgeText}</ThemedText>
+                        </View>
+                      )}
+                      {item.hasToggle && (
+                        <Switch
+                          value={biometricEnabled}
+                          onValueChange={handleBiometricToggle}
+                          trackColor={{ false: 'rgba(255, 255, 255, 0.1)', true: '#A9EF45' }}
+                          thumbColor="#FFFFFF"
+                          style={styles.toggle}
+                          disabled={logoutMutation.isPending}
                         />
-                        <ThemedText style={styles.itemBadgeText}>{item.badgeText}</ThemedText>
+                      )}
+                      {item.id === 'logout' && logoutMutation.isPending && (
+                        <ActivityIndicator size="small" color="#FFFFFF" style={styles.logoutLoader} />
+                      )}
+                    </>
+                  );
+
+                  if (item.hasToggle) {
+                    return (
+                      <View key={item.id} style={styles.settingsItem}>
+                        {itemContent}
                       </View>
-                    )}
-                    {item.hasToggle && (
-                      <Switch
-                        value={biometricEnabled}
-                        onValueChange={handleBiometricToggle}
-                        trackColor={{ false: 'rgba(255, 255, 255, 0.1)', true: '#A9EF45' }}
-                        thumbColor={biometricEnabled ? '#FFFFFF' : '#FFFFFF'}
-                        style={styles.toggle}
-                        disabled={logoutMutation.isPending}
-                      />
-                    )}
-                    {item.id === 'logout' && logoutMutation.isPending && (
-                      <ActivityIndicator size="small" color="#FFFFFF" style={styles.logoutLoader} />
-                    )}
-                  </TouchableOpacity>
-                ))}
+                    );
+                  }
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.settingsItem}
+                      onPress={() => handleItemPress(item)}
+                      disabled={item.id === 'logout' && logoutMutation.isPending}
+                    >
+                      {itemContent}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
           ))}
@@ -823,7 +889,8 @@ const styles = StyleSheet.create({
     color: '#008000',
   },
   toggle: {
-    marginRight: 8 * SCALE,
+    marginLeft: 'auto',
+    flexShrink: 0,
   },
   chevron: {
     marginRight: 8 * SCALE,

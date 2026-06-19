@@ -1,60 +1,112 @@
 import React from 'react';
 import {
+  Dimensions,
+  Image,
+  StatusBar,
   StyleSheet,
   Text,
-  View,
   TouchableOpacity,
-  Image,
-  Dimensions,
-  StatusBar,
+  View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, {
+  Defs,
+  LinearGradient as SvgLinearGradient,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
+import OnboardingCutGlow, { GLOW_HEIGHT } from './OnboardingCutGlow';
+import OnboardingNextBarNative from './OnboardingNextBarNative';
+import OnboardingStars from './OnboardingStars';
+import { ONBOARDING_COLORS } from './onboardingStyles';
+import { markOnboardingSeen } from '../../utils/onboardingPersistence';
 
-const { width, height } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+/** Green cut sits below center — ~60% from top in Figma. */
+const CUT_Y = screenHeight * 0.6;
 
 const OnboardingScreen2 = () => {
   const navigation = useNavigation();
-
-  const handleNext = () => {
-    navigation.navigate('Onboarding3' as never);
-  };
-
-  const handleSkip = () => {
+  const insets = useSafeAreaInsets();
+  const goWelcome = async () => {
+    await markOnboardingSeen();
     navigation.navigate('Welcome' as never);
   };
+  const goNext = () => navigation.navigate('Onboarding3' as never);
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
-      {/* Background Image */}
-      <Image
-        source={require('../../assets/onboarding2_background.png')}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-      />
-      
-      {/* Progress Indicator */}
-      <View style={styles.progressContainer}>
-        <View style={styles.progressBar} />
-        <View style={[styles.progressBar, styles.progressActive]} />
-        <View style={styles.progressBar} />
+
+      {/* Single continuous background (no panel seam) */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        <Svg width={screenWidth} height={CUT_Y}>
+          <Defs>
+            <SvgLinearGradient id="screen2BaseNavy" x1="0%" y1="0%" x2="0%" y2="100%">
+              <Stop offset="0%" stopColor="#123a5c" stopOpacity="1" />
+              <Stop offset="50%" stopColor="#0d2840" stopOpacity="1" />
+              <Stop offset="100%" stopColor={ONBOARDING_COLORS.background} stopOpacity="1" />
+            </SvgLinearGradient>
+            <RadialGradient id="screen2BlueGlow" cx="50%" cy="30%" rx="80%" ry="56%">
+              <Stop offset="0%" stopColor="#4a9bd4" stopOpacity="0.5" />
+              <Stop offset="42%" stopColor="#236496" stopOpacity="0.28" />
+              <Stop offset="100%" stopColor="#0d2840" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Rect x={0} y={0} width={screenWidth} height={CUT_Y} fill="url(#screen2BaseNavy)" />
+          <Rect x={0} y={0} width={screenWidth} height={CUT_Y} fill="url(#screen2BlueGlow)" />
+        </Svg>
+
+        <OnboardingStars width={screenWidth} height={CUT_Y} />
       </View>
 
-      {/* Skip Button */}
-      <TouchableOpacity style={styles.skipButton} onPress={handleSkip}>
-        <Text style={styles.skipText}>Skip</Text>
-      </TouchableOpacity>
+      {/* Top half: illustration + skip */}
+      <View style={[styles.topSection, { height: CUT_Y, paddingTop: insets.top + 6 }]}>
+        <View style={styles.progressRow}>
+          <View style={styles.progressBar} />
+          <View style={[styles.progressBar, styles.progressActive]} />
+          <View style={styles.progressBar} />
+        </View>
 
-      {/* Bottom Section with Next Button */}
-      <View style={styles.bottomSection}>
-        <TouchableOpacity style={styles.nextButtonContainer} onPress={handleNext}>
+        <View style={styles.heroWrap}>
           <Image
-            source={require('../../assets/onboarding2_next_button.png')}
-            style={styles.nextButtonImage}
+            source={require('../../assets/onboarding/main-illustration-2.png')}
+            style={styles.heroImage}
             resizeMode="contain"
           />
+        </View>
+
+        <TouchableOpacity
+          style={styles.skipButton}
+          onPress={goWelcome}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Skip onboarding"
+        >
+          <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* The glowing cut */}
+      <OnboardingCutGlow />
+
+      {/* Bottom half: copy + actions */}
+      <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <View style={styles.copyBlock}>
+          <Text style={styles.title}>
+            Get Dedicated <Text style={styles.titleAccent}>Crypto</Text> and{'\n'}
+            <Text style={styles.titleAccent}>Fiat</Text> Wallets
+          </Text>
+          <Text style={styles.subtitle}>
+            Once you register dedicated fiat wallets for currencies in Africa and crypto wallets
+            will be created for you
+          </Text>
+        </View>
+
+        <OnboardingNextBarNative variant="single" onNext={goNext} onHome={goWelcome} />
       </View>
     </View>
   );
@@ -65,68 +117,79 @@ export default OnboardingScreen2;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#020c19',
+    backgroundColor: ONBOARDING_COLORS.background,
   },
-  backgroundImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  topSection: {
     width: '100%',
-    height: '100%',
   },
-  progressContainer: {
+  progressRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: 8,
     paddingHorizontal: 20,
-    marginTop: 60,
-    gap: 10,
-    zIndex: 10,
+    marginBottom: 2,
   },
   progressBar: {
     flex: 1,
-    height: 7,
-    backgroundColor: '#D9D9D9',
+    height: 6,
     borderRadius: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
   progressActive: {
-    backgroundColor: '#A9EF45',
+    backgroundColor: ONBOARDING_COLORS.primary,
+  },
+  heroWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroImage: {
+    width: screenWidth * 0.92,
+    height: '100%',
   },
   skipButton: {
-    position: 'absolute',
-    top: height * 0.59,
     alignSelf: 'center',
-    borderWidth: 0.3,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    marginBottom: 16,
+    paddingHorizontal: 34,
+    paddingVertical: 9,
     borderRadius: 100,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    zIndex: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   skipText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '300',
+    fontSize: 13,
+    fontWeight: '400',
+    color: ONBOARDING_COLORS.white,
   },
   bottomSection: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    paddingBottom: 20,
-    zIndex: 10,
+    flex: 1,
+    marginTop: -GLOW_HEIGHT + 2,
+    paddingTop: GLOW_HEIGHT * 0.5,
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
   },
-  nextButtonContainer: {
-    width: '100%',
+  copyBlock: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingTop: 8,
   },
-  nextButtonImage: {
-    width: '80%',
-    height: 70,
-    // marginTop:30,
+  title: {
+    fontFamily: 'SFPRODISPLAYBOLD',
+    fontSize: 27,
+    color: ONBOARDING_COLORS.white,
+    lineHeight: 34,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+    marginBottom: 10,
+  },
+  titleAccent: {
+    fontFamily: 'SFPRODISPLAYBOLD',
+    color: ONBOARDING_COLORS.primary,
+  },
+  subtitle: {
+    fontFamily: 'SFPRODISPLAYREGULAR',
+    fontSize: 13,
+    color: ONBOARDING_COLORS.muted,
+    lineHeight: 20,
+    textAlign: 'center',
+    paddingHorizontal: 6,
   },
 });
-

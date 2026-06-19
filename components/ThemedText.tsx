@@ -19,8 +19,11 @@ export const FontFamilies = {
 
 export type FontFamily = typeof FontFamilies[keyof typeof FontFamilies];
 
+import { TYPOGRAPHY, TypographyVariant } from '../constants/typography';
+
 interface ThemedTextProps extends TextProps {
   fontFamily?: FontFamily;
+  variant?: TypographyVariant;
 }
 
 /**
@@ -29,6 +32,7 @@ interface ThemedTextProps extends TextProps {
  */
 const ThemedText: React.FC<ThemedTextProps> = ({
   fontFamily = FontFamilies.SFProRegular,
+  variant = 'body',
   style,
   ...props
 }) => {
@@ -36,7 +40,7 @@ const ThemedText: React.FC<ThemedTextProps> = ({
     <Text
       style={[
         styles.defaultText,
-        { fontFamily },
+        { fontFamily, fontSize: TYPOGRAPHY[variant] },
         style,
       ]}
       {...props}

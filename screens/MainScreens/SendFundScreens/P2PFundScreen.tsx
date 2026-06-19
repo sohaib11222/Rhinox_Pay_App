@@ -20,9 +20,10 @@ import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useBrowseP2PAds, useBrowseBuyAds, useBrowseSellAds, useGetP2PAdDetails, useGetP2POrderDetails } from '../../../queries/p2p.queries';
 import { useCreateP2POrder, useMarkPaymentMade } from '../../../mutations/p2p.mutations';
 import { useGetCountries } from '../../../queries/country.queries';
-import { useGetUSDTTokens } from '../../../queries/crypto.queries';
+import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -86,21 +87,7 @@ const P2PFundScreen = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -197,29 +184,37 @@ const P2PFundScreen = () => {
     });
   }, [countriesData?.data]);
 
-  // Fetch USDT tokens for asset selection
-  const {
-    data: tokensData,
-    isLoading: isLoadingTokens,
-  } = useGetUSDTTokens();
+  const { data: balancesData, isLoading: isLoadingBalances } = useGetWalletBalances();
 
-  // Transform tokens to assets
+  const getBaseSymbol = (currency: string): string => {
+    const u = (currency || '').toUpperCase();
+    if (u.startsWith('USDT')) return 'USDT';
+    if (u.startsWith('USDC')) return 'USDC';
+    return u;
+  };
+
   const availableAssets = useMemo(() => {
-    if (!tokensData?.data || !Array.isArray(tokensData.data)) {
-      return [
-        { id: '1', name: 'USDT', balance: '0', icon: require('../../../assets/CurrencyBtc.png'), symbol: 'USDT', blockchain: 'ethereum' },
-      ];
+    const unified = balancesData?.data?.cryptoUnified;
+    if (Array.isArray(unified) && unified.length > 0) {
+      return unified.map((item: any) => ({
+        id: item.symbol,
+        name: item.symbol,
+        balance: item.totalAvailable || item.totalBalance || '0',
+        icon: require('../../../assets/CurrencyBtc.png'),
+        symbol: item.symbol,
+        rawData: item,
+      }));
     }
-    return tokensData.data.map((token: any) => ({
-      id: token.id || token.blockchain + '_' + token.currency,
-      name: token.displayName || `${token.currency} (${token.blockchainName})`,
-      balance: '0',
-      icon: require('../../../assets/CurrencyBtc.png'),
-      symbol: token.currency || token.symbol,
-      blockchain: token.blockchain,
-      rawData: token,
-    }));
-  }, [tokensData?.data]);
+    return [
+      {
+        id: 'USDT',
+        name: 'USDT',
+        balance: '0',
+        icon: require('../../../assets/CurrencyBtc.png'),
+        symbol: 'USDT',
+      },
+    ];
+  }, [balancesData?.data?.cryptoUnified]);
 
   // Set default asset if none selected
   useEffect(() => {
@@ -233,7 +228,7 @@ const P2PFundScreen = () => {
   // For Sell: Use PUBLIC endpoint - GET /api/p2p/ads/browse with type=sell
   const browseBuyParams = useMemo(() => {
     const params: any = {
-    cryptoCurrency: selectedAsset?.symbol || 'USDT',
+    cryptoCurrency: getBaseSymbol(selectedAsset?.symbol || 'USDT'),
     fiatCurrency: fiatCurrency,
     countryCode: selectedCountryCode,
     limit: 50,
@@ -252,7 +247,7 @@ const P2PFundScreen = () => {
 
   const browseSellParams = useMemo(() => {
     const params: any = {
-      cryptoCurrency: selectedAsset?.symbol || 'USDT',
+      cryptoCurrency: getBaseSymbol(selectedAsset?.symbol || 'USDT'),
       fiatCurrency: fiatCurrency,
       countryCode: selectedCountryCode,
       limit: 50,
@@ -871,7 +866,7 @@ const P2PFundScreen = () => {
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
               />
             </View>
-            {isLoadingTokens ? (
+            {isLoadingBalances ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ActivityIndicator size="small" color="#A9EF45" />
                 <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>

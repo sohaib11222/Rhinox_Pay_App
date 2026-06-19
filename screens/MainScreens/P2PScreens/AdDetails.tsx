@@ -878,8 +878,10 @@ const AdDetails = () => {
                             screen: 'ChatScreen',
                             params: {
                               orderId: order.orderId,
-                              chatId: order.orderId, // chatId is the same as orderId
+                              chatId: order.orderId,
+                              isP2PChat: true,
                               buyerName: order.userName,
+                              vendorName: vendorInfo?.name,
                             },
                           });
                         }}

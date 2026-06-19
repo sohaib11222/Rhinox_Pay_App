@@ -44,7 +44,8 @@ export const useInitiateDeposit = (
  */
 export interface ConfirmDepositRequest {
   transactionId: number;
-  pin: string;
+  pin?: string;
+  emailOtp?: string;
 }
 
 export const confirmDeposit = async (data: ConfirmDepositRequest): Promise<ApiResponse> => {

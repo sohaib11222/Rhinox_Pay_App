@@ -10,8 +10,9 @@ import {
     RefreshControl,
     ActivityIndicator,
     Modal,
-    TextInput,
+    Platform,
 } from 'react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -99,41 +100,51 @@ const TransactionsScreen = () => {
         return dateString;
     };
 
-    // Parse date from input (MM/DD/YYYY or YYYY-MM-DD) and return YYYY-MM-DD
-    const parseDateToAPIFormat = (dateString: string): string | null => {
-        if (!dateString || dateString.trim() === '') return null;
-        
-        // Try MM/DD/YYYY format first
-        const parts = dateString.split('/');
-        if (parts.length === 3) {
-            const month = parseInt(parts[0]);
-            const day = parseInt(parts[1]);
-            const year = parseInt(parts[2]);
-            if (!isNaN(month) && !isNaN(day) && !isNaN(year) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                const date = new Date(year, month - 1, day);
-                if (!isNaN(date.getTime())) {
-                    return formatDateForAPI(date);
-                }
-            }
+    const parseAPIDateString = (dateString: string): Date => {
+        if (!dateString) {
+            return new Date();
         }
-        
-        // Try YYYY-MM-DD format
-        if (dateString.includes('-')) {
-            const dateParts = dateString.split('-');
-            if (dateParts.length === 3) {
-                const year = parseInt(dateParts[0]);
-                const month = parseInt(dateParts[1]);
-                const day = parseInt(dateParts[2]);
-                if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
-                    const date = new Date(year, month - 1, day);
-                    if (!isNaN(date.getTime())) {
-                        return formatDateForAPI(date);
-                    }
-                }
-            }
+
+        const [year, month, day] = dateString.split('-').map(Number);
+        if (!year || !month || !day) {
+            return new Date();
         }
-        
-        return null;
+
+        return new Date(year, month - 1, day);
+    };
+
+    const handleStartDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+        if (Platform.OS === 'android' && event.type === 'dismissed') {
+            return;
+        }
+
+        if (!selectedDate) {
+            return;
+        }
+
+        const nextStartDate = formatDateForAPI(selectedDate);
+        setTempStartDate(nextStartDate);
+
+        if (tempEndDate && parseAPIDateString(nextStartDate) > parseAPIDateString(tempEndDate)) {
+            setTempEndDate(nextStartDate);
+        }
+    };
+
+    const handleEndDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+        if (Platform.OS === 'android' && event.type === 'dismissed') {
+            return;
+        }
+
+        if (!selectedDate) {
+            return;
+        }
+
+        const nextEndDate = formatDateForAPI(selectedDate);
+        setTempEndDate(nextEndDate);
+
+        if (tempStartDate && parseAPIDateString(nextEndDate) < parseAPIDateString(tempStartDate)) {
+            setTempStartDate(nextEndDate);
+        }
     };
 
     // Handle Custom period selection
@@ -152,37 +163,26 @@ const TransactionsScreen = () => {
         setShowCustomDateModal(true);
     };
 
-    // Check if dates are valid
     const areDatesValid = useMemo(() => {
-        const startDateAPI = parseDateToAPIFormat(tempStartDate);
-        const endDateAPI = parseDateToAPIFormat(tempEndDate);
-        return startDateAPI !== null && endDateAPI !== null;
+        return Boolean(tempStartDate && tempEndDate);
     }, [tempStartDate, tempEndDate]);
 
-    // Apply custom date range
     const handleApplyCustomDates = () => {
-        const startDateAPI = parseDateToAPIFormat(tempStartDate);
-        const endDateAPI = parseDateToAPIFormat(tempEndDate);
-        
-        if (!startDateAPI || !endDateAPI) {
-            // Show error or validation message
-            console.error('[TransactionsScreen] Invalid dates provided');
+        if (!tempStartDate || !tempEndDate) {
             return;
         }
-        
-        // Parse to compare dates
-        const start = new Date(startDateAPI);
-        const end = new Date(endDateAPI);
-        
+
+        const start = parseAPIDateString(tempStartDate);
+        const end = parseAPIDateString(tempEndDate);
+
         if (start > end) {
-            // Swap if start is after end
-            setStartDate(endDateAPI);
-            setEndDate(startDateAPI);
+            setStartDate(tempEndDate);
+            setEndDate(tempStartDate);
         } else {
-            setStartDate(startDateAPI);
-            setEndDate(endDateAPI);
+            setStartDate(tempStartDate);
+            setEndDate(tempEndDate);
         }
-        
+
         setShowCustomDateModal(false);
         setSelectedPeriod('Custom');
     };
@@ -943,46 +943,55 @@ const TransactionsScreen = () => {
                             Select start and end dates for your transaction history
                         </ThemedText>
 
-                        {/* Start Date Input */}
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            bounces={false}
+                            contentContainerStyle={styles.customDateScrollContent}
+                        >
                         <View style={styles.dateInputSection}>
                             <ThemedText style={styles.dateInputLabel}>Start Date</ThemedText>
                             <View style={styles.dateInputContainer}>
-                                <TextInput
-                                    style={styles.dateInput}
-                                    placeholder="MM/DD/YYYY"
-                                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                                    value={formatDateForDisplay(tempStartDate)}
-                                    onChangeText={(text) => {
-                                        // Allow user to type in MM/DD/YYYY format
-                                        setTempStartDate(text);
-                                    }}
-                                    keyboardType="numeric"
+                                <MaterialCommunityIcons name="calendar" size={20} color="#A9EF45" />
+                                <ThemedText style={styles.datePickerValue}>
+                                    {formatDateForDisplay(tempStartDate)}
+                                </ThemedText>
+                            </View>
+                            <View style={styles.datePickerWrapper}>
+                                <DateTimePicker
+                                    value={parseAPIDateString(tempStartDate)}
+                                    mode="date"
+                                    display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                                    onChange={handleStartDateChange}
+                                    maximumDate={parseAPIDateString(tempEndDate || formatDateForAPI(new Date()))}
+                                    themeVariant="dark"
+                                    accentColor="#A9EF45"
                                 />
-                                <MaterialCommunityIcons name="calendar" size={20} color="rgba(255, 255, 255, 0.5)" />
                             </View>
                         </View>
 
-                        {/* End Date Input */}
                         <View style={styles.dateInputSection}>
                             <ThemedText style={styles.dateInputLabel}>End Date</ThemedText>
                             <View style={styles.dateInputContainer}>
-                                <TextInput
-                                    style={styles.dateInput}
-                                    placeholder="MM/DD/YYYY"
-                                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                                    value={tempEndDate ? formatDateForDisplay(tempEndDate) : ''}
-                                    onChangeText={(text) => {
-                                        // Allow user to type in MM/DD/YYYY format
-                                        // Remove non-numeric characters except /
-                                        const cleaned = text.replace(/[^\d/]/g, '');
-                                        setTempEndDate(cleaned);
-                                    }}
-                                    keyboardType="numeric"
-                                    maxLength={10}
+                                <MaterialCommunityIcons name="calendar" size={20} color="#A9EF45" />
+                                <ThemedText style={styles.datePickerValue}>
+                                    {formatDateForDisplay(tempEndDate)}
+                                </ThemedText>
+                            </View>
+                            <View style={styles.datePickerWrapper}>
+                                <DateTimePicker
+                                    value={parseAPIDateString(tempEndDate)}
+                                    mode="date"
+                                    display={Platform.OS === 'ios' ? 'spinner' : 'calendar'}
+                                    onChange={handleEndDateChange}
+                                    minimumDate={parseAPIDateString(tempStartDate)}
+                                    maximumDate={new Date()}
+                                    themeVariant="dark"
+                                    accentColor="#A9EF45"
                                 />
-                                <MaterialCommunityIcons name="calendar" size={20} color="rgba(255, 255, 255, 0.5)" />
                             </View>
                         </View>
+
+                        </ScrollView>
 
                         {/* Action Buttons */}
                         <View style={styles.customDateButtons}>
@@ -1384,7 +1393,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20 * SCALE,
         paddingTop: 20 * SCALE,
         paddingBottom: 30 * SCALE,
-        maxHeight: '60%',
+        maxHeight: '85%',
     },
     modalHeader: {
         flexDirection: 'row',
@@ -1404,7 +1413,10 @@ const styles = StyleSheet.create({
         fontSize: 12 * SCALE,
         fontWeight: '300',
         color: 'rgba(255, 255, 255, 0.7)',
-        marginBottom: 25 * SCALE,
+        marginBottom: 16 * SCALE,
+    },
+    customDateScrollContent: {
+        paddingBottom: 8 * SCALE,
     },
     loadingModalContent: {
         backgroundColor: '#020c19',
@@ -1438,11 +1450,17 @@ const styles = StyleSheet.create({
         paddingVertical: 12 * SCALE,
         gap: 10 * SCALE,
     },
-    dateInput: {
+    datePickerValue: {
         flex: 1,
         fontSize: 14 * SCALE,
         fontWeight: '400',
         color: '#FFFFFF',
+    },
+    datePickerWrapper: {
+        marginTop: 8 * SCALE,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
     },
     customDateButtons: {
         flexDirection: 'row',

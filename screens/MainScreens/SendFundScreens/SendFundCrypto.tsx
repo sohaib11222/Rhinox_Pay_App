@@ -20,15 +20,21 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
-import { ThemedText } from '../../../components';
+import { ThemedText, CryptoIcon } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetTransferEligibility, useGetTransferReceipt } from '../../../queries/transfer.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
-import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert, showInfoAlert, showWarningAlert } from '../../../utils/customAlert';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+  checkSecurityRequirements,
+} from '../../../utils/securityVerification';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -56,29 +62,23 @@ const SendFundCrypto = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
     }, [navigation])
   );
 
-  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<{
+    id: string;
+    name: string;
+    balance: string;
+    isUnifiedStable?: boolean;
+    networks?: Array<{ blockchain: string; blockchainName?: string | null; currency: string }>;
+  } | null>(null);
+  const [selectedBlockchain, setSelectedBlockchain] = useState<string | null>(null);
   const [showAssetModal, setShowAssetModal] = useState(false);
+  const [showNetworkModal, setShowNetworkModal] = useState(false);
   const [balance, setBalance] = useState('0.00000000');
   const [amount, setAmount] = useState('');
   const [recipientUserId, setRecipientUserId] = useState('');
@@ -132,13 +132,42 @@ const SendFundCrypto = () => {
     }
   );
 
-  // Get crypto wallets from API
+  const getBaseSymbol = (currency: string): string => {
+    const u = (currency || '').toUpperCase();
+    if (u.startsWith('USDT')) return 'USDT';
+    if (u.startsWith('USDC')) return 'USDC';
+    return u;
+  };
+
+  const isUnifiedStableSymbol = (symbol: string) => {
+    const base = getBaseSymbol(symbol);
+    return base === 'USDT' || base === 'USDC';
+  };
+
   const cryptoWallets = useMemo(() => {
+    const unified = balancesData?.data?.cryptoUnified;
+    if (Array.isArray(unified) && unified.length > 0) {
+      return unified.map((u: any) => ({
+        id: u.symbol,
+        currency: u.symbol,
+        symbol: u.symbol,
+        balance: u.totalAvailable || u.totalBalance || '0',
+        availableBalance: u.totalAvailable || u.totalBalance || '0',
+        isUnifiedStable: u.isUnifiedStable,
+        networks: u.networks || [],
+        active: true,
+      }));
+    }
     if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
       return [];
     }
     return balancesData.data.crypto.filter((w: any) => w.active !== false);
-  }, [balancesData?.data?.crypto]);
+  }, [balancesData?.data?.crypto, balancesData?.data?.cryptoUnified]);
+
+  const networksForSelectedAsset = useMemo(() => {
+    if (!selectedAsset?.networks) return [];
+    return selectedAsset.networks;
+  }, [selectedAsset?.networks]);
 
   // Transform countries from API
   const countries = useMemo(() => {
@@ -156,19 +185,21 @@ const SendFundCrypto = () => {
         id: String(firstWallet.id || firstWallet.currency),
         name: firstWallet.currency || firstWallet.symbol || 'BTC',
         balance: firstWallet.balance || firstWallet.availableBalance || '0',
-        icon: require('../../../assets/CurrencyBtc.png'),
+        isUnifiedStable: firstWallet.isUnifiedStable,
+        networks: firstWallet.networks,
       });
       setBalance(firstWallet.balance || firstWallet.availableBalance || '0');
+      if (firstWallet.networks?.length === 1) {
+        setSelectedBlockchain(firstWallet.networks[0].blockchain);
+      }
     }
   }, [cryptoWallets, selectedAsset]);
 
-  // Update balance when asset changes
   useEffect(() => {
-      if (selectedAsset) {
-        const wallet = cryptoWallets.find((w: any) => 
-          w.currency === selectedAsset?.name || 
-          w.symbol === selectedAsset?.name
-        );
+    if (selectedAsset) {
+      const wallet = cryptoWallets.find(
+        (w: any) => w.currency === selectedAsset.name || w.symbol === selectedAsset.name
+      );
       if (wallet) {
         setBalance(wallet.balance || wallet.availableBalance || '0');
       }
@@ -183,8 +214,21 @@ const SendFundCrypto = () => {
         setTransactionId(transactionIdFromResponse);
         setTransferData(data?.data);
         setShowSummaryModal(false);
-        setShowPinModal(true);
-        showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+        proceedAfterTransactionInitiate(transactionIdFromResponse, {
+          showVerificationModal: async () => {
+            setShowPinModal(true);
+            const requirements = await checkSecurityRequirements();
+            if (requirements.methods.email) {
+              showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+            }
+          },
+          confirm: (payload) =>
+            verifyTransferMutation.mutate({
+              transactionId: payload.transactionId,
+              ...(payload.pin ? { pin: payload.pin } : {}),
+              ...(payload.emailOtp ? { emailCode: payload.emailOtp } : {}),
+            }),
+        });
       } else {
         showErrorAlert('Error', 'Transaction ID not found in response');
       }
@@ -249,12 +293,17 @@ const SendFundCrypto = () => {
   // Check if form is valid
   const isFormValid = useMemo(() => {
     const numericAmount = parseFloat(amount.replace(/,/g, ''));
-    return amount.trim() !== '' &&
-           !isNaN(numericAmount) &&
-           numericAmount > 0 &&
-           (recipientUserId.trim() !== '' || recipientEmail.trim() !== '') &&
-           selectedAsset !== null;
-  }, [amount, recipientUserId, recipientEmail, selectedAsset]);
+    const needsNetwork =
+      selectedAsset && isUnifiedStableSymbol(selectedAsset.name) && (selectedAsset.networks?.length ?? 0) > 0;
+    return (
+      amount.trim() !== '' &&
+      !isNaN(numericAmount) &&
+      numericAmount > 0 &&
+      (recipientUserId.trim() !== '' || recipientEmail.trim() !== '') &&
+      selectedAsset !== null &&
+      (!needsNetwork || !!selectedBlockchain)
+    );
+  }, [amount, recipientUserId, recipientEmail, selectedAsset, selectedBlockchain]);
 
   // Filter crypto wallets for asset modal
   const filteredCryptoWallets = useMemo(() => {
@@ -286,6 +335,16 @@ const SendFundCrypto = () => {
       return;
     }
 
+    if (
+      selectedAsset &&
+      isUnifiedStableSymbol(selectedAsset.name) &&
+      (selectedAsset.networks?.length ?? 0) > 0 &&
+      !selectedBlockchain
+    ) {
+      setShowNetworkModal(true);
+      return;
+    }
+
     setShowSummaryModal(true);
   };
 
@@ -304,6 +363,7 @@ const SendFundCrypto = () => {
       channel: 'rhionx_user',
       recipientUserId: recipientUserId || undefined,
       recipientEmail: recipientEmail || undefined,
+      ...(selectedBlockchain ? { blockchain: selectedBlockchain } : {}),
     });
   };
 
@@ -331,16 +391,25 @@ const SendFundCrypto = () => {
     setPin(pin.slice(0, -1));
   };
 
-  const handleSecurityComplete = () => {
-    if (!emailCode || !pin || !transactionId) {
-      showErrorAlert('Validation Error', 'Please fill in all required fields');
+  const handleSecurityComplete = async () => {
+    if (!transactionId) {
+      showErrorAlert('Error', 'Transaction ID not found');
+      return;
+    }
+
+    const result = await prepareTransactionConfirmPayload(transactionId, {
+      pin,
+      emailOtp: emailCode,
+    });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
       return;
     }
 
     verifyTransferMutation.mutate({
-      transactionId: transactionId,
-      emailCode: emailCode,
-      pin: pin,
+      transactionId: result.payload.transactionId,
+      pin: result.payload.pin ?? '',
+      ...(result.payload.emailOtp ? { emailCode: result.payload.emailOtp } : {}),
     });
   };
 
@@ -431,19 +500,19 @@ const SendFundCrypto = () => {
             >
               {selectedAsset ? (
                 <>
-                  <Image
-                    source={selectedAsset.icon}
+                  <CryptoIcon
+                    currency={selectedAsset.name}
+                    size={24 * SCALE}
                     style={styles.assetSelectorIcon}
-                    resizeMode="cover"
                   />
                   <ThemedText style={styles.assetSelectorText}>{selectedAsset?.name || 'BTC'}</ThemedText>
                 </>
               ) : (
                 <>
-                  <Image
-                    source={require('../../../assets/CurrencyBtc.png')}
+                  <CryptoIcon
+                    currency="BTC"
+                    size={24 * SCALE}
                     style={styles.assetSelectorIcon}
-                    resizeMode="cover"
                   />
                   <ThemedText style={styles.assetSelectorText}>Select Asset</ThemedText>
                 </>
@@ -452,6 +521,24 @@ const SendFundCrypto = () => {
             </TouchableOpacity>
           </LinearGradient>
         </View>
+
+        {selectedAsset && isUnifiedStableSymbol(selectedAsset.name) && (selectedAsset.networks?.length ?? 0) > 0 && (
+          <TouchableOpacity
+            style={styles.networkSelector}
+            onPress={() => setShowNetworkModal(true)}
+          >
+            <ThemedText style={styles.networkSelectorLabel}>Network</ThemedText>
+            <View style={styles.networkSelectorRow}>
+              <ThemedText style={styles.networkSelectorValue}>
+                {selectedBlockchain
+                  ? networksForSelectedAsset.find((n) => n.blockchain === selectedBlockchain)?.blockchainName ||
+                    selectedBlockchain
+                  : 'Select network'}
+              </ThemedText>
+              <MaterialCommunityIcons name="chevron-down" size={20 * SCALE} color="#FFFFFF" />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* Main Card */}
       
@@ -613,14 +700,14 @@ const SendFundCrypto = () => {
                 </View>
               ) : (
                 filteredCryptoWallets.map((wallet: any) => {
-                  let icon = require('../../../assets/CurrencyBtc.png');
                   const currency = wallet.currency || wallet.symbol || '';
                   
                   const asset = {
                     id: String(wallet.id || currency),
                     name: currency,
                     balance: wallet.balance || wallet.availableBalance || '0',
-                    icon: icon,
+                    isUnifiedStable: wallet.isUnifiedStable,
+                    networks: wallet.networks,
                   };
                   const isSelected = selectedAsset?.id === asset.id;
                   return (
@@ -630,14 +717,20 @@ const SendFundCrypto = () => {
                       onPress={() => {
                         setSelectedAsset(asset);
                         setBalance(asset.balance);
+                        setSelectedBlockchain(null);
                         setShowAssetModal(false);
                         setAssetSearchTerm('');
+                        if (wallet.isUnifiedStable && wallet.networks?.length > 1) {
+                          setShowNetworkModal(true);
+                        } else if (wallet.networks?.length === 1) {
+                          setSelectedBlockchain(wallet.networks[0].blockchain);
+                        }
                       }}
                     >
-                      <Image
-                        source={asset.icon}
+                      <CryptoIcon
+                        currency={asset.name}
+                        size={40 * SCALE}
                         style={styles.assetItemIcon}
-                        resizeMode="cover"
                       />
                       <View style={styles.assetItemInfo}>
                         <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
@@ -659,6 +752,50 @@ const SendFundCrypto = () => {
               style={styles.applyButton}
               onPress={() => setShowAssetModal(false)}
             >
+              <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showNetworkModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowNetworkModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Select Network</ThemedText>
+              <TouchableOpacity onPress={() => setShowNetworkModal(false)}>
+                <MaterialCommunityIcons name="close-circle" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {networksForSelectedAsset.map((net) => (
+                <TouchableOpacity
+                  key={`${net.blockchain}_${net.currency}`}
+                  style={styles.assetItem}
+                  onPress={() => {
+                    setSelectedBlockchain(net.blockchain);
+                    setShowNetworkModal(false);
+                  }}
+                >
+                  <View style={styles.assetItemInfo}>
+                    <ThemedText style={styles.assetItemName}>
+                      {net.blockchainName || net.blockchain}
+                    </ThemedText>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={selectedBlockchain === net.blockchain ? 'radiobox-marked' : 'radiobox-blank'}
+                    size={24}
+                    color={selectedBlockchain === net.blockchain ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.applyButton} onPress={() => setShowNetworkModal(false)}>
               <ThemedText style={styles.applyButtonText}>Apply</ThemedText>
             </TouchableOpacity>
           </View>
@@ -1132,6 +1269,30 @@ const styles = StyleSheet.create({
   balanceSectionContainer: {
     paddingHorizontal: SCREEN_WIDTH * 0.047,
     marginBottom: 20 * SCALE,
+  },
+  networkSelector: {
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 16 * SCALE,
+    padding: 14 * SCALE,
+    borderRadius: 12 * SCALE,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(169, 239, 69, 0.2)',
+  },
+  networkSelectorLabel: {
+    fontSize: 12 * SCALE,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginBottom: 6 * SCALE,
+  },
+  networkSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  networkSelectorValue: {
+    fontSize: 16 * SCALE,
+    color: '#FFFFFF',
+    fontWeight: '500',
   },
   balanceSectionTitle: {
     fontSize: 14 * 1,

@@ -20,12 +20,12 @@ import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useSetPin, useVerifyPasswordForPin } from '../../../mutations/auth.mutations';
 import { 
-  getSecurityConfirmationSettings, 
-  setVerifyWithPin, 
-  setVerifyWithEmail, 
-  setVerifyWith2FA 
+  syncSecurityConfirmationSettings,
+  persistSecurityConfirmationSettings,
 } from '../../../utils/apiClient';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import { OTP_LENGTH } from '../../../constants/otp';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1; // Reduced scale for big phone design
@@ -238,14 +238,16 @@ const AccountSecurity = () => {
     }
   }, [showForgotPasswordModal, forgotPasswordStep]);
 
-  // Load security confirmation settings on mount
-  useEffect(() => {
-    loadSecuritySettings();
-  }, []);
+  // Load security confirmation settings on mount and when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSecuritySettings();
+    }, [])
+  );
 
   const loadSecuritySettings = async () => {
     try {
-      const settings = await getSecurityConfirmationSettings();
+      const settings = await syncSecurityConfirmationSettings();
       setVerifyWithPin(settings.verifyWithPin);
       setVerifyWithEmail(settings.verifyWithEmail);
       setVerifyWith2FA(settings.verifyWith2FA);
@@ -256,28 +258,29 @@ const AccountSecurity = () => {
   };
 
   const handleSecurityToggle = async (type: 'pin' | 'email' | '2fa', value: boolean) => {
+    if (type === '2fa' && value) {
+      showInfoAlert(
+        'Coming Soon',
+        'Two-factor authentication for transactions is coming soon.'
+      );
+      return;
+    }
+
     try {
       if (type === 'pin') {
         setVerifyWithPin(value);
-        await setVerifyWithPin(value);
+        await persistSecurityConfirmationSettings({ verifyWithPin: value });
       } else if (type === 'email') {
         setVerifyWithEmail(value);
-        await setVerifyWithEmail(value);
+        await persistSecurityConfirmationSettings({ verifyWithEmail: value });
       } else if (type === '2fa') {
         setVerifyWith2FA(value);
-        await setVerifyWith2FA(value);
+        await persistSecurityConfirmationSettings({ verifyWith2FA: value });
       }
       console.log(`[AccountSecurity] ${type} verification preference updated:`, value);
     } catch (error) {
       console.error(`[AccountSecurity] Error saving ${type} preference:`, error);
-      // Revert state on error
-      if (type === 'pin') {
-        setVerifyWithPin(!value);
-      } else if (type === 'email') {
-        setVerifyWithEmail(!value);
-      } else if (type === '2fa') {
-        setVerifyWith2FA(!value);
-      }
+      await loadSecuritySettings();
       showErrorAlert('Error', `Failed to save ${type} preference. Please try again.`);
     }
   };
@@ -294,21 +297,7 @@ const AccountSecurity = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -408,8 +397,8 @@ const AccountSecurity = () => {
   };
 
   const handleVerifyCode = () => {
-    if (verificationCode.length !== 5) {
-      showErrorAlert('Invalid Code', 'Please enter the 5-digit code');
+    if (verificationCode.length !== OTP_LENGTH) {
+      showErrorAlert('Invalid Code', `Please enter the ${OTP_LENGTH}-digit code`);
       return;
     }
     verifyOtpMutation.mutate({
@@ -711,8 +700,8 @@ const AccountSecurity = () => {
                 </View>
                 <ThemedText style={styles.resendText}>
                   {countdown > 0 
-                    ? `A 5 digit code has been sent to your registered email. Resend in ${formatCountdown(countdown)} Sec`
-                    : 'A 5 digit code has been sent to your registered email.'}
+                    ? `A ${OTP_LENGTH}-digit code has been sent to your registered email. Resend in ${formatCountdown(countdown)} Sec`
+                    : `A ${OTP_LENGTH}-digit code has been sent to your registered email.`}
                 </ThemedText>
 
                 <View style={styles.modalSection}>
@@ -725,7 +714,7 @@ const AccountSecurity = () => {
                       value={verificationCode}
                       onChangeText={setVerificationCode}
                       keyboardType="number-pad"
-                      maxLength={5}
+                      maxLength={OTP_LENGTH}
                       autoFocus={emailVerified}
                     />
                     <MaterialCommunityIcons
@@ -754,7 +743,7 @@ const AccountSecurity = () => {
                 style={[
                   styles.modalActionButton,
                   (!emailVerified && (!forgotEmail || !forgotEmail.includes('@'))) ||
-                  (emailVerified && verificationCode.length !== 5) ||
+                  (emailVerified && verificationCode.length !== OTP_LENGTH) ||
                   forgotPasswordMutation.isPending ||
                   verifyOtpMutation.isPending
                     ? styles.modalButtonDisabled
@@ -763,7 +752,7 @@ const AccountSecurity = () => {
                 onPress={emailVerified ? handleVerifyCode : handleSendCode}
                 disabled={
                   (!emailVerified && (!forgotEmail || !forgotEmail.includes('@'))) ||
-                  (emailVerified && verificationCode.length !== 5) ||
+                  (emailVerified && verificationCode.length !== OTP_LENGTH) ||
                   forgotPasswordMutation.isPending ||
                   verifyOtpMutation.isPending
                 }

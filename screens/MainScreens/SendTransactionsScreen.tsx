@@ -7,7 +7,6 @@ import {
   Image,
   Dimensions,
   StatusBar,
-  Modal,
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
@@ -19,6 +18,7 @@ import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { useGetWithdrawals, useGetTransactionDetails } from '../../queries/transactionHistory.queries';
+import { mapTransactionReceiptTransaction } from '../../utils/transferReceipt';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -31,7 +31,9 @@ interface SendTransaction {
   amountUSD: string;
   date: string;
   status: 'Successful' | 'Pending' | 'Failed';
-  paymentMethod: 'Bank Transfer' | 'Mobile Money';
+  paymentMethod: string;
+  channel?: string;
+  rhinoxPayId?: string;
   // For receipt modal
   transferAmount?: string;
   fee?: string;
@@ -57,6 +59,13 @@ const SendTransactionsScreen = () => {
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
 
+  const clearSelectedTransaction = () => {
+    setShowReceiptModal(false);
+    setShowErrorModal(false);
+    setSelectedTransaction(null);
+    setSelectedTransactionId(null);
+  };
+
   // Get withdrawals data from API
   const { 
     data: withdrawalsData, 
@@ -72,10 +81,9 @@ const SendTransactionsScreen = () => {
     offset: 0,
   });
 
-  // Get transaction details when a transaction is selected
-  const { 
+  // Fetch extra details in the background to enrich the receipt (non-blocking).
+  const {
     data: transactionDetailsData,
-    isLoading: isLoadingTransactionDetails 
   } = useGetTransactionDetails(selectedTransactionId || 0);
 
   // Filter and transform API data to show only "Send Transactions"
@@ -116,10 +124,19 @@ const SendTransactionsScreen = () => {
       else if (tx.status === 'pending' || tx.status === 'processing') status = 'Pending';
 
       // Map payment method
-      let paymentMethod: 'Bank Transfer' | 'Mobile Money' = 'Bank Transfer';
-      if (tx.paymentMethod?.includes('Mobile') || tx.channel?.includes('mobile')) {
+      let paymentMethod: 'Bank Transfer' | 'Mobile Money' | string = 'Bank Transfer';
+      if (tx.channel === 'rhionx_user' || tx.paymentMethod?.toLowerCase().includes('rhionx')) {
+        paymentMethod = 'RhinoxPay Transfer';
+      } else if (tx.paymentMethod?.includes('Mobile') || tx.channel?.includes('mobile')) {
         paymentMethod = 'Mobile Money';
+      } else if (tx.paymentMethod) {
+        paymentMethod = tx.paymentMethod;
       }
+
+      const rhinoxPayId =
+        recipientInfoData.rhinoxPayId ||
+        metadata.recipientRhinoxPayId ||
+        undefined;
 
       return {
         id: String(tx.id),
@@ -134,8 +151,16 @@ const SendTransactionsScreen = () => {
         paymentAmount: `N${parseFloat(tx.totalAmount || tx.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         country: tx.country || undefined,
         bank: metadata.bankName || recipientInfoData.bankName || undefined,
-        accountNumber: metadata.accountNumber || recipientInfoData.accountNumber || recipientInfoData.phone || recipientInfoData.phoneNumber || '',
+        accountNumber:
+          rhinoxPayId ||
+          metadata.accountNumber ||
+          recipientInfoData.accountNumber ||
+          recipientInfoData.phone ||
+          recipientInfoData.phoneNumber ||
+          '',
         accountName: recipientName,
+        rhinoxPayId,
+        channel: tx.channel,
         transactionId: tx.reference || String(tx.id),
         dateTime: date.toLocaleDateString('en-US', {
           month: 'short',
@@ -190,45 +215,83 @@ const SendTransactionsScreen = () => {
   };
 
   const handleTransactionPress = (transaction: SendTransaction) => {
-    // Set the transaction ID to fetch details
-    const transactionId = parseInt(transaction.id);
+    setSelectedTransaction(transaction);
+
+    if (transaction.status === 'Failed') {
+      setShowErrorModal(true);
+      setShowReceiptModal(false);
+    } else {
+      setShowReceiptModal(true);
+      setShowErrorModal(false);
+    }
+
+    const transactionId = parseInt(transaction.id, 10);
     if (!isNaN(transactionId)) {
       setSelectedTransactionId(transactionId);
-      setSelectedTransaction(transaction);
     }
   };
 
-  // When transaction details are loaded, show the appropriate modal
+  // Enrich receipt data when details arrive — do not block opening the modal.
   useEffect(() => {
-    if (transactionDetailsData?.data && selectedTransaction) {
-      const details = transactionDetailsData.data;
-      const metadata = details.metadata || {};
-      const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
-      const status = details.status || selectedTransaction.status;
-      
-      // Update transaction with details from API
-      const updatedTransaction: SendTransaction = {
-        ...selectedTransaction,
+    if (!transactionDetailsData?.data || !selectedTransactionId) return;
+
+    const details = transactionDetailsData.data;
+    const metadata = details.metadata || {};
+    const recipientInfo = {
+      ...(metadata.recipientInfo || {}),
+      ...(details.recipientInfo || {}),
+    };
+
+    setSelectedTransaction((prev) => {
+      if (!prev || prev.id !== String(selectedTransactionId)) return prev;
+
+      return {
+        ...prev,
         transferAmount: `N${parseFloat(details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         fee: `N${parseFloat(details.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         paymentAmount: `N${parseFloat(details.totalAmount || details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-        transactionId: details.reference || selectedTransaction.transactionId,
-        accountName: recipientInfo.name || recipientInfo.accountName || metadata.accountName || selectedTransaction.accountName,
-        accountNumber: metadata.accountNumber || recipientInfo.accountNumber || recipientInfo.phone || recipientInfo.phoneNumber || selectedTransaction.accountNumber,
-        country: details.country || selectedTransaction.country,
-        bank: metadata.bankName || recipientInfo.bankName || selectedTransaction.bank,
+        transactionId: details.reference || prev.transactionId,
+        accountName: recipientInfo.name || recipientInfo.accountName || details.accountName || metadata.accountName || prev.accountName,
+        accountNumber:
+          recipientInfo.rhinoxPayId ||
+          metadata.recipientRhinoxPayId ||
+          details.rhinoxPayId ||
+          details.accountNumber ||
+          metadata.accountNumber ||
+          recipientInfo.accountNumber ||
+          recipientInfo.phone ||
+          recipientInfo.phoneNumber ||
+          prev.accountNumber,
+        rhinoxPayId:
+          recipientInfo.rhinoxPayId ||
+          metadata.recipientRhinoxPayId ||
+          details.rhinoxPayId ||
+          prev.rhinoxPayId,
+        channel: details.channel || prev.channel,
+        country: details.country || prev.country,
+        bank: details.bankName || metadata.bankName || recipientInfo.bankName || prev.bank,
+        recipientName: recipientInfo.name || recipientInfo.accountName || details.accountName || prev.recipientName,
+        paymentMethod: details.paymentMethod || details.channel || prev.paymentMethod,
       };
+    });
+  }, [transactionDetailsData, selectedTransactionId]);
 
-      if (status === 'failed' || status === 'Failed') {
-        setShowErrorModal(true);
-        setShowReceiptModal(false);
-      } else {
-        setShowReceiptModal(true);
-        setShowErrorModal(false);
-      }
-      setSelectedTransaction(updatedTransaction);
-    }
-  }, [transactionDetailsData, selectedTransaction]);
+  const receiptTransaction = useMemo(() => {
+    if (!selectedTransaction) return null;
+
+    const details = transactionDetailsData?.data;
+    return mapTransactionReceiptTransaction(details || {}, {
+      amount: selectedTransaction.transferAmount?.replace(/[N₦,]/g, '') || selectedTransaction.amountNGN?.replace(/[N₦,]/g, ''),
+      currency: 'NGN',
+      country: selectedTransaction.country || details?.country || 'NG',
+      recipientName: selectedTransaction.recipientName || selectedTransaction.accountName,
+      accountName: selectedTransaction.accountName || selectedTransaction.recipientName,
+      bankName: selectedTransaction.bank || details?.bankName,
+      accountNumber: selectedTransaction.accountNumber || details?.accountNumber,
+      rhinoxPayId: selectedTransaction.rhinoxPayId,
+      paymentMethod: selectedTransaction.paymentMethod,
+    });
+  }, [selectedTransaction, transactionDetailsData?.data]);
 
   // Filter transactions (additional client-side filtering if needed)
   // Note: Most filtering is done by API, but we can add client-side filters here
@@ -469,7 +532,6 @@ const SendTransactionsScreen = () => {
                   key={transaction.id}
                   style={styles.transactionItem}
                   onPress={() => handleTransactionPress(transaction)}
-                  disabled={isLoadingTransactionDetails}
                 >
                   <View style={styles.transactionIconContainer}>
                     <View style={styles.transactionIconCircle}>
@@ -510,48 +572,28 @@ const SendTransactionsScreen = () => {
       </ScrollView>
 
       {/* Transaction Receipt Modal */}
-      {selectedTransaction && (
+      {receiptTransaction && (
         <TransactionReceiptModal
-          visible={showReceiptModal && !isLoadingTransactionDetails}
+          visible={showReceiptModal}
           transaction={{
-            ...selectedTransaction,
-            status: selectedTransaction.status,
+            ...receiptTransaction,
+            status: selectedTransaction?.status || receiptTransaction.status,
           }}
-          onClose={() => {
-            setShowReceiptModal(false);
-            setSelectedTransaction(null);
-            setSelectedTransactionId(null);
-          }}
+          onClose={clearSelectedTransaction}
         />
       )}
 
       {/* Transaction Error Modal */}
       {selectedTransaction && (
         <TransactionErrorModal
-          visible={showErrorModal && !isLoadingTransactionDetails}
+          visible={showErrorModal}
           transaction={selectedTransaction}
           onRetry={() => {
-            // TODO: Implement retry logic
             setShowErrorModal(false);
-            setSelectedTransaction(null);
-            setSelectedTransactionId(null);
+            clearSelectedTransaction();
           }}
-          onCancel={() => {
-            setShowErrorModal(false);
-            setSelectedTransaction(null);
-            setSelectedTransactionId(null);
-          }}
+          onCancel={clearSelectedTransaction}
         />
-      )}
-
-      {/* Loading overlay for transaction details */}
-      {isLoadingTransactionDetails && (
-        <Modal visible={true} transparent={true} animationType="fade">
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color="#A9EF45" />
-            <ThemedText style={styles.loadingOverlayText}>Loading transaction details...</ThemedText>
-          </View>
-        </Modal>
       )}
     </View>
   );
@@ -869,18 +911,6 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
-  },
-  loadingOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingOverlayText: {
-    fontSize: 14 * SCALE,
-    fontWeight: '400',
-    color: '#FFFFFF',
-    marginTop: 10 * SCALE,
   },
 });
 

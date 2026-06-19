@@ -18,7 +18,8 @@ import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import TransactionErrorModal from '../components/TransactionErrorModal';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
-import { useGetDeposits } from '../../queries/transactionHistory.queries';
+import { useGetDeposits, useGetTransactionDetails } from '../../queries/transactionHistory.queries';
+import { buildEnrichedReceiptFromDetails, enrichReceiptTransaction, resolveSenderInfo } from '../../utils/transferReceipt';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -31,8 +32,13 @@ interface FundTransaction {
   amountUSD: string;
   date: string;
   status: 'Successful' | 'Pending' | 'Failed' | 'Cancelled';
-  paymentMethod?: 'Bank Transfer' | 'Mobile Money' | 'Conversion' | 'P2P Transaction';
-  // For receipt modal
+  paymentMethod?: string;
+  channel?: string;
+  transferDirection?: 'incoming' | 'outgoing';
+  senderName?: string;
+  rhinoxPayId?: string;
+  recipientName?: string;
+  transactionType?: 'fund' | 'deposit';
   transferAmount?: string;
   fee?: string;
   paymentAmount?: string;
@@ -56,6 +62,7 @@ const FundTransactionsScreen = () => {
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<FundTransaction | null>(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
 
@@ -106,6 +113,8 @@ const FundTransactionsScreen = () => {
         return 'Conversion';
       case 'p2p':
         return 'P2P Transaction';
+      case 'rhionx_user':
+        return 'RhinoxPay Transfer';
       default:
         return undefined;
     }
@@ -132,6 +141,8 @@ const FundTransactionsScreen = () => {
     offset: 0,
   });
 
+  const { data: transactionDetailsData } = useGetTransactionDetails(selectedTransactionId || 0);
+
   // Transform API data to UI format
   const fundTransactions: FundTransaction[] = useMemo(() => {
     if (!depositsData?.data?.transactions || !Array.isArray(depositsData.data.transactions)) {
@@ -140,9 +151,11 @@ const FundTransactionsScreen = () => {
 
     return depositsData.data.transactions.map((tx: any) => {
       const status = mapStatusToUI(tx.status);
-      const paymentMethod = mapChannelToPaymentMethod(tx.channel);
+      const paymentMethod = mapChannelToPaymentMethod(tx.channel) || tx.paymentMethod;
       const amount = parseFloat(tx.amount || '0');
       const currency = tx.currency || 'NGN';
+      const sender = resolveSenderInfo(tx);
+      const isRhinoxReceive = tx.channel === 'rhionx_user' || Boolean(sender.name);
       
       // Format amounts
       const amountFormatted = formatAmount(amount, currency);
@@ -163,24 +176,38 @@ const FundTransactionsScreen = () => {
 
       return {
         id: String(tx.id),
-        transactionTitle: tx.normalizedType || `Fund Wallet - ${paymentMethod || 'Deposit'}`,
+        transactionTitle:
+          tx.normalizedType ||
+          (isRhinoxReceive && sender.name
+            ? `RhinoxPay Received - ${sender.name}`
+            : `Fund Wallet - ${paymentMethod || 'Deposit'}`),
         amountNGN: amountFormatted,
         amountUSD: currency === 'USD' ? amountFormatted : `$${formatAmount(amount * 0.001, 'USD').replace('$', '')}`, // Approximate conversion
         date: date,
         status: status,
-        paymentMethod: paymentMethod,
+        paymentMethod: isRhinoxReceive ? 'RhinoxPay Transfer' : paymentMethod,
+        channel: tx.channel,
+        transactionType: 'fund' as const,
+        transferDirection: isRhinoxReceive ? ('incoming' as const) : undefined,
+        senderName: sender.name,
+        rhinoxPayId: sender.rhinoxPayId,
         transferAmount: amountFormatted,
         fee: feeFormatted,
         paymentAmount: formatAmount(creditedAmount, currency),
-        country: formatCountryForReceipt(tx.country || (tx.channel === 'bank_transfer' ? 'NG' : undefined)),
-        bank: tx.virtualAccount?.bankName || tx.bankAccount?.bankName || undefined,
-        accountNumber: tx.virtualAccount?.accountNumber || tx.bankAccount?.accountNumber || undefined,
-        accountName: tx.virtualAccount?.accountName || tx.bankAccount?.accountName || undefined,
+        country: isRhinoxReceive
+          ? undefined
+          : formatCountryForReceipt(tx.country || (tx.channel === 'bank_transfer' ? 'NG' : undefined)),
+        bank: isRhinoxReceive ? 'RhinoxPay Wallet' : tx.virtualAccount?.bankName || tx.bankAccount?.bankName || undefined,
+        accountNumber: isRhinoxReceive
+          ? sender.rhinoxPayId
+          : tx.virtualAccount?.accountNumber || tx.bankAccount?.accountNumber || undefined,
+        accountName: isRhinoxReceive ? sender.name : tx.virtualAccount?.accountName || tx.bankAccount?.accountName || undefined,
+        recipientName: sender.name,
         transactionId: tx.reference || String(tx.id),
         dateTime: dateTime,
-        fundingRoute: paymentMethod || tx.channel,
-        route: paymentMethod || tx.channel,
-        provider: paymentMethod || tx.provider?.name || undefined,
+        fundingRoute: isRhinoxReceive ? undefined : paymentMethod || tx.channel,
+        route: isRhinoxReceive ? undefined : paymentMethod || tx.channel,
+        provider: isRhinoxReceive ? 'RhinoxPay Transfer' : paymentMethod || tx.provider?.name || undefined,
       };
     });
   }, [depositsData?.data?.transactions]);
@@ -218,14 +245,55 @@ const FundTransactionsScreen = () => {
   };
 
   const handleTransactionPress = (transaction: FundTransaction) => {
+    const transactionId = parseInt(transaction.id, 10);
+    if (!isNaN(transactionId)) {
+      setSelectedTransactionId(transactionId);
+    }
+
     if (transaction.status === 'Failed') {
       setSelectedTransaction(transaction);
       setShowErrorModal(true);
     } else {
-      setSelectedTransaction(transaction);
+      setSelectedTransaction(enrichReceiptTransaction(transaction));
       setShowReceiptModal(true);
     }
   };
+
+  useEffect(() => {
+    if (!transactionDetailsData?.data || !selectedTransactionId) return;
+
+    const details = transactionDetailsData.data;
+    const mapped = buildEnrichedReceiptFromDetails(details, {}, { transactionType: 'fund' });
+
+    setSelectedTransaction((prev) => {
+      if (!prev || prev.id !== String(selectedTransactionId)) return prev;
+      return enrichReceiptTransaction({
+        ...prev,
+        ...mapped,
+        transactionType: 'fund',
+        status: prev.status,
+        fundingRoute: mapped.transferDirection === 'incoming' ? undefined : prev.fundingRoute,
+        route: mapped.transferDirection === 'incoming' ? undefined : prev.route,
+      });
+    });
+  }, [transactionDetailsData, selectedTransactionId]);
+
+  const receiptTransaction = useMemo(() => {
+    if (!selectedTransaction) return null;
+    const details = transactionDetailsData?.data;
+    if (details) {
+      const mapped = buildEnrichedReceiptFromDetails(details, {}, { transactionType: 'fund' });
+      return enrichReceiptTransaction({
+        ...selectedTransaction,
+        ...mapped,
+        transactionType: 'fund' as const,
+        status: selectedTransaction.status,
+        fundingRoute: mapped.transferDirection === 'incoming' ? undefined : selectedTransaction.fundingRoute,
+        route: mapped.transferDirection === 'incoming' ? undefined : selectedTransaction.route,
+      });
+    }
+    return enrichReceiptTransaction(selectedTransaction);
+  }, [selectedTransaction, transactionDetailsData?.data]);
 
   const filteredTransactions = useMemo(() => {
     return fundTransactions.filter((transaction) => {
@@ -553,16 +621,18 @@ const FundTransactionsScreen = () => {
       </ScrollView>
 
       {/* Transaction Receipt Modal */}
-      {selectedTransaction && (
+      {receiptTransaction && (
         <TransactionReceiptModal
           visible={showReceiptModal}
           transaction={{
-            ...selectedTransaction,
-            status: selectedTransaction.status,
+            ...receiptTransaction,
+            transactionType: 'fund',
+            status: selectedTransaction?.status || receiptTransaction.status,
           }}
           onClose={() => {
             setShowReceiptModal(false);
             setSelectedTransaction(null);
+            setSelectedTransactionId(null);
           }}
         />
       )}

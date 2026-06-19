@@ -15,18 +15,32 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
-import { useGetTransferEligibility } from '../../../queries/transfer.queries';
+import { useGetTransferEligibility, validateRecipient, buildValidateRecipientParams, useGetTransferReceipt } from '../../../queries/transfer.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetP2PTransactions } from '../../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../../utils/customAlert';
+import { showTransferEligibilityAlert } from '../../../utils/transferEligibilityAlert';
+import { syncSecurityConfirmationSettings } from '../../../utils/apiClient';
+import {
+  afterPinEntryComplete,
+  checkSecurityRequirements,
+  getMissingVerificationMessage,
+  getSecurityVerificationSubtitle,
+  isTransactionConfirmEnabled,
+  prepareTransactionConfirmPayload,
+  proceedAfterTransactionInitiate,
+  type SecurityVerificationResult,
+} from '../../../utils/securityVerification';
+import { mapTransactionReceiptTransaction } from '../../../utils/transferReceipt';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -56,6 +70,7 @@ interface RecentTransaction {
 
 const SendFundsScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute<any>();
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
@@ -71,21 +86,7 @@ const SendFundsScreen = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -95,6 +96,9 @@ const SendFundsScreen = () => {
   const [amount, setAmount] = useState('');
   const [walletId, setWalletId] = useState('');
   const [userName, setUserName] = useState('');
+  const [recipientEmail, setRecipientEmail] = useState('');
+  const [validatedRecipient, setValidatedRecipient] = useState<any>(null);
+  const [isValidatingRecipient, setIsValidatingRecipient] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<string>('NG');
   const [selectedCountryName, setSelectedCountryName] = useState('Nigeria');
   const [showCountryModal, setShowCountryModal] = useState(false);
@@ -110,6 +114,18 @@ const SendFundsScreen = () => {
   const [authenticatorCode, setAuthenticatorCode] = useState('');
   const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [securityRequirements, setSecurityRequirements] = useState<SecurityVerificationResult>({
+    required: false,
+    methods: { pin: false, email: false, twoFA: false },
+  });
+  const [canConfirmSecurity, setCanConfirmSecurity] = useState(false);
+  const [receiptTransactionId, setReceiptTransactionId] = useState<number | null>(null);
+  const [transferSnapshot, setTransferSnapshot] = useState<{
+    amount: string;
+    userName: string;
+    walletId: string;
+    country: string;
+  } | null>(null);
   const [scannedQRCode, setScannedQRCode] = useState<string | null>(null);
 
   // Get currency from country code
@@ -207,6 +223,40 @@ const SendFundsScreen = () => {
     });
   }, [transactionsData?.data?.transactions, selectedCountryName]);
 
+  // Keep security settings in sync when opening send screen
+  useFocusEffect(
+    React.useCallback(() => {
+      syncSecurityConfirmationSettings()
+        .then(() => checkSecurityRequirements())
+        .then(setSecurityRequirements)
+        .catch(() => {
+          checkSecurityRequirements().then(setSecurityRequirements);
+        });
+    }, [])
+  );
+
+  useEffect(() => {
+    if (!showSecurityModal) {
+      setCanConfirmSecurity(false);
+      return;
+    }
+
+    let mounted = true;
+    isTransactionConfirmEnabled({
+      pin: securityRequirements.methods.pin ? pin : undefined,
+      emailOtp: emailCode,
+      twoFACode: authenticatorCode,
+    }).then((enabled) => {
+      if (mounted) {
+        setCanConfirmSecurity(enabled);
+      }
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [showSecurityModal, pin, emailCode, authenticatorCode, securityRequirements]);
+
   // Initiate transfer mutation
   const initiateMutation = useInitiateTransfer({
     onSuccess: (data: any) => {
@@ -219,12 +269,34 @@ const SendFundsScreen = () => {
       setPendingTransactionData(data?.data);
       
       if (transactionId) {
-        // Convert to number if it's a string
         const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
         if (!isNaN(id)) {
           setPendingTransactionId(id);
           setShowSummaryModal(false);
-          setShowSecurityModal(true);
+          setPin('');
+          setEmailCode('');
+          setAuthenticatorCode('');
+          proceedAfterTransactionInitiate(id, {
+            showVerificationModal: async () => {
+              const requirements = await checkSecurityRequirements();
+              setSecurityRequirements(requirements);
+              if (requirements.methods.pin) {
+                setShowPinModal(true);
+              } else {
+                setShowSecurityModal(true);
+              }
+              if (requirements.methods.email) {
+                showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+              }
+            },
+            confirm: (payload) => {
+              verifyMutation.mutate({
+                transactionId: payload.transactionId,
+                ...(payload.pin ? { pin: payload.pin } : {}),
+                ...(payload.emailOtp ? { emailCode: payload.emailOtp } : {}),
+              });
+            },
+          });
         } else {
           showErrorAlert('Error', 'Invalid transaction ID received');
         }
@@ -241,23 +313,28 @@ const SendFundsScreen = () => {
   // Verify transfer mutation
   const verifyMutation = useVerifyTransfer({
     onSuccess: (data) => {
+      setShowPinModal(false);
       setShowSecurityModal(false);
       setEmailCode('');
       setAuthenticatorCode('');
       setPin('');
-      setPendingTransactionId(null);
-      setPendingTransactionData(null);
-      
-      // Reset form
-      setAmount('');
-      setWalletId('');
-      setUserName('');
-      
-      // Refresh balances and transactions
+
+      const verifiedData = data?.data || data;
+      if (verifiedData) {
+        setPendingTransactionData(verifiedData);
+      }
+      if (pendingTransactionId) {
+        setReceiptTransactionId(pendingTransactionId);
+      }
+      setTransferSnapshot({
+        amount,
+        userName,
+        walletId,
+        country: selectedCountryName,
+      });
+
       refetchBalances();
       refetchTransactions();
-      
-      // Show success modal
       setShowSuccessModal(true);
     },
     onError: (error: any) => {
@@ -274,6 +351,19 @@ const SendFundsScreen = () => {
     const calculatedAmount = (balanceNum * parseFloat(numericValue)) / 100;
     setAmount(calculatedAmount.toLocaleString('en-US', { maximumFractionDigits: 0 }));
   };
+
+  // Pre-fill recipient when navigated from SendToRhinoxPayUser
+  useEffect(() => {
+    const recipient = route.params?.recipient;
+    if (!recipient) {
+      return;
+    }
+
+    setValidatedRecipient(recipient);
+    setUserName(recipient.name || '');
+    setRecipientEmail(recipient.email || '');
+    setWalletId(recipient.rhinoxPayId || recipient.email || '');
+  }, [route.params?.recipient]);
 
   // Request camera permission when QR scanner opens
   useEffect(() => {
@@ -317,25 +407,46 @@ const SendFundsScreen = () => {
     
     // Close scanner
     setShowQRScanner(false);
-    showInfoAlert('QR Code Scanned', 'Wallet ID has been filled in');
+    showInfoAlert('QR Code Scanned', 'Rhinox Pay ID has been filled in');
+  };
+
+  const lookupRecipient = async (input: string) => {
+    const params = buildValidateRecipientParams(input);
+    if (!params) {
+      throw new Error('Please enter a valid Rhinox Pay ID or email');
+    }
+
+    setIsValidatingRecipient(true);
+    try {
+      const result = await validateRecipient(params);
+      const recipient = result?.data;
+      if (!recipient) {
+        throw new Error('Recipient not found');
+      }
+
+      setValidatedRecipient(recipient);
+      setUserName(recipient.name || '');
+      setRecipientEmail(recipient.email || '');
+      if (recipient.rhinoxPayId) {
+        setWalletId(recipient.rhinoxPayId);
+      }
+      return recipient;
+    } finally {
+      setIsValidatingRecipient(false);
+    }
   };
 
   const handleWalletIdChange = (text: string) => {
     setWalletId(text);
-    // TODO: Fetch user name from API based on wallet ID
-    // For now, we'll validate on proceed
-    if (text.length < 8) {
-      setUserName('');
-    }
+    setValidatedRecipient(null);
+    setUserName('');
+    setRecipientEmail('');
   };
 
-  const handleProceed = () => {
+  const handleProceed = async () => {
     // Check eligibility first
     if (!isEligible) {
-      showWarningAlert(
-        'KYC Required',
-        eligibilityData?.data?.message || 'You need to complete KYC verification before sending funds.'
-      );
+      showTransferEligibilityAlert(navigation, eligibilityData?.data);
       return;
     }
 
@@ -358,25 +469,30 @@ const SendFundsScreen = () => {
       return;
     }
 
-    // Validate wallet ID (should be email or wallet ID)
-    if (walletId.length < 5) {
-      showErrorAlert('Error', 'Please enter a valid wallet ID or email');
+    const normalizedWalletId = walletId.trim();
+    if (normalizedWalletId.length < 6) {
+      showErrorAlert('Error', 'Please enter a valid Rhinox Pay ID or email');
       return;
     }
 
-    setShowSummaryModal(true);
+    try {
+      await lookupRecipient(normalizedWalletId);
+      setShowSummaryModal(true);
+    } catch (error: any) {
+      showErrorAlert('Error', error?.message || 'Recipient not found. Please check the Rhinox Pay ID or email.');
+    }
   };
 
   const handleSummaryProceed = () => {
+    if (!validatedRecipient) {
+      showErrorAlert('Error', 'Please validate the recipient first');
+      return;
+    }
     if (!walletId || !amount) {
       showErrorAlert('Error', 'Please fill in all required fields');
       return;
     }
 
-    // Determine if walletId is an email or wallet ID
-    const isEmail = walletId.includes('@');
-    
-    // Initiate transfer
     const initiateData: any = {
       amount: amount.replace(/,/g, ''),
       currency: currency,
@@ -384,15 +500,45 @@ const SendFundsScreen = () => {
       channel: 'rhionx_user',
     };
 
-    if (isEmail) {
-      initiateData.recipientEmail = walletId;
+    if (validatedRecipient.rhinoxPayId) {
+      initiateData.recipientRhinoxPayId = validatedRecipient.rhinoxPayId;
+    } else if (validatedRecipient.email) {
+      initiateData.recipientEmail = validatedRecipient.email.toLowerCase();
+    } else if (validatedRecipient.userId) {
+      initiateData.recipientUserId = String(validatedRecipient.userId);
     } else {
-      // Try to extract user ID if it's a numeric wallet ID
-      // For now, we'll use recipientEmail or recipientUserId based on what we have
-      initiateData.recipientEmail = walletId; // API might accept wallet ID as email
+      showErrorAlert('Error', 'Unable to resolve recipient details');
+      return;
     }
 
     initiateMutation.mutate(initiateData);
+  };
+
+  const completeVerifiedTransfer = async (pinValue?: string) => {
+    if (!pendingTransactionId) {
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
+      return;
+    }
+
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, {
+      pin: pinValue,
+      emailOtp: emailCode,
+      twoFACode: authenticatorCode,
+    });
+
+    if (!result.payload) {
+      showWarningAlert(
+        'Security Verification Required',
+        result.errorMessage || getMissingVerificationMessage(['verification'])
+      );
+      return;
+    }
+
+    verifyMutation.mutate({
+      transactionId: result.payload.transactionId,
+      ...(result.payload.pin ? { pin: result.payload.pin } : {}),
+      ...(result.payload.emailOtp ? { emailCode: result.payload.emailOtp } : {}),
+    });
   };
 
   const handlePinPress = (num: string) => {
@@ -406,10 +552,21 @@ const SendFundsScreen = () => {
       setPin(newPin);
 
       if (newPin.length === 5) {
-        // Auto proceed to security verification
-        setTimeout(() => {
-          setShowPinModal(false);
-          setShowSecurityModal(true);
+        setTimeout(async () => {
+          await afterPinEntryComplete(newPin, {
+            onProceed: async () => {
+              setShowPinModal(false);
+              await completeVerifiedTransfer(newPin);
+            },
+            onShowAdditionalVerification: () => {
+              setShowPinModal(false);
+              setShowSecurityModal(true);
+            },
+            onInvalid: (message) => {
+              showWarningAlert('Security Verification Required', message);
+              setPin('');
+            },
+          });
         }, 300);
       }
     }
@@ -420,23 +577,8 @@ const SendFundsScreen = () => {
   };
 
 
-  const handleSecurityComplete = () => {
-    if (!pin || pin.length < 4) {
-      showErrorAlert('Error', 'Please enter your PIN');
-      return;
-    }
-
-    if (!pendingTransactionId) {
-      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
-      return;
-    }
-
-    // Verify transfer with email code and PIN
-    verifyMutation.mutate({
-      transactionId: Number(pendingTransactionId),
-      emailCode,
-      pin: pin,
-    });
+  const handleSecurityComplete = async () => {
+    await completeVerifiedTransfer(securityRequirements.methods.pin ? pin : undefined);
   };
 
   const handleViewTransaction = () => {
@@ -452,9 +594,43 @@ const SendFundsScreen = () => {
 
   const handleReceiptClose = () => {
     setShowReceiptModal(false);
-    // Navigate back to Home tab instead of Settings tab
+    setReceiptTransactionId(null);
+    setTransferSnapshot(null);
+    setPendingTransactionId(null);
+    setPendingTransactionData(null);
+    setAmount('');
+    setWalletId('');
+    setUserName('');
+    setValidatedRecipient(null);
     (navigation as any).navigate('Home', { screen: 'HomeMain' });
   };
+
+  const {
+    data: receiptData,
+    isLoading: isLoadingReceipt,
+  } = useGetTransferReceipt(
+    receiptTransactionId ? String(receiptTransactionId) : '',
+    {
+      enabled: showReceiptModal && !!receiptTransactionId,
+    }
+  );
+
+  const receiptTransaction = (() => {
+    const details = receiptData?.data || pendingTransactionData;
+    const snapshot = transferSnapshot;
+    if (!details && !snapshot) {
+      return null;
+    }
+
+    return mapTransactionReceiptTransaction(details || {}, {
+      amount: snapshot?.amount?.replace(/,/g, ''),
+      currency,
+      country: snapshot?.country || selectedCountryName,
+      recipientName: snapshot?.userName || userName || validatedRecipient?.name,
+      accountName: snapshot?.userName || userName || validatedRecipient?.name,
+      rhinoxPayId: snapshot?.walletId || walletId || validatedRecipient?.rhinoxPayId,
+    });
+  })();
 
 
   return (
@@ -588,7 +764,7 @@ const SendFundsScreen = () => {
             <View style={styles.inputField}>
               <TextInput
                 style={styles.textInput}
-                placeholder="Enter Unique Wallet ID"
+                placeholder="Enter Rhinox Pay ID (e.g. RXP12345678)"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
                 value={walletId}
                 onChangeText={handleWalletIdChange}
@@ -612,15 +788,23 @@ const SendFundsScreen = () => {
                 </View>
               </View>
             )}
+            {!!recipientEmail && (
+              <View style={[styles.inputField, {backgroundColor: '#020C19', borderWidth: 0.3, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
+                <View style={styles.accountNameContainer}>
+                  <ThemedText style={styles.accountNameLabel}>User Email</ThemedText>
+                  <ThemedText style={styles.accountNameValue}>{recipientEmail}</ThemedText>
+                </View>
+              </View>
+            )}
           </View>
 
           {/* Proceed Button */}
           <TouchableOpacity
-            style={[styles.proceedButton, (!walletId || !amount || initiateMutation.isPending) && styles.proceedButtonDisabled]}
+            style={[styles.proceedButton, (!walletId || !amount || initiateMutation.isPending || isValidatingRecipient) && styles.proceedButtonDisabled]}
             onPress={handleProceed}
-            disabled={!walletId || !amount || initiateMutation.isPending}
+            disabled={!walletId || !amount || initiateMutation.isPending || isValidatingRecipient}
           >
-            {initiateMutation.isPending ? (
+            {initiateMutation.isPending || isValidatingRecipient ? (
               <ActivityIndicator size="small" color="#000000" />
             ) : (
               <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
@@ -934,19 +1118,29 @@ const SendFundsScreen = () => {
                   <ThemedText style={styles.summaryDetailValue}>{selectedCountryName}</ThemedText>
                 </View>
                 <View style={styles.summaryDetailRow}>
-                  <ThemedText style={styles.summaryDetailLabel}>Rhinoxpay ID</ThemedText>
+                  <ThemedText style={styles.summaryDetailLabel}>Rhinox Pay ID</ThemedText>
                   <View style={styles.summaryDetailValueRow}>
                     <Image
                       source={require('../../../assets/login/memoji.png')}
                       style={styles.summaryProfileIcon}
                       resizeMode="cover"
                     />
-                    <ThemedText style={styles.summaryDetailValue}>{walletId}</ThemedText>
+                    <ThemedText style={styles.summaryDetailValue}>
+                      {validatedRecipient?.rhinoxPayId || walletId}
+                    </ThemedText>
                   </View>
                 </View>
                 <View style={styles.summaryDetailRow}>
                   <ThemedText style={styles.summaryDetailLabel}>Account Name</ThemedText>
-                  <ThemedText style={styles.summaryDetailValue}>{userName}</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>
+                    {validatedRecipient?.name || userName || '—'}
+                  </ThemedText>
+                </View>
+                <View style={styles.summaryDetailRow}>
+                  <ThemedText style={styles.summaryDetailLabel}>Email</ThemedText>
+                  <ThemedText style={styles.summaryDetailValue}>
+                    {validatedRecipient?.email || recipientEmail || '—'}
+                  </ThemedText>
                 </View>
                 <View style={[styles.summaryDetailRow, {borderBottomRightRadius: 10, borderBottomLeftRadius: 10, borderWidth: 0.5, borderColor: 'rgba(255, 255, 255, 0.2)'}]}>
                   <ThemedText style={styles.summaryDetailLabel}>Fee</ThemedText>
@@ -1170,40 +1364,46 @@ const SendFundsScreen = () => {
               </View>
 
               <ThemedText style={styles.securityTitle}>Security Verification</ThemedText>
-              <ThemedText style={styles.securitySubtitle}>Verify via email and your authenticator app</ThemedText>
+              <ThemedText style={styles.securitySubtitle}>
+                {getSecurityVerificationSubtitle(securityRequirements.methods)}
+              </ThemedText>
 
-              <View style={styles.securityInputWrapper}>
-                <ThemedText style={styles.securityInputLabel}>Email Code (Optional)</ThemedText>
-                <View style={styles.securityInputField}>
-                  <TextInput
-                    style={styles.securityInput}
-                    placeholder="Input Code sent to your email (or leave empty)"
-                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                    value={emailCode}
-                    onChangeText={setEmailCode}
-                    keyboardType="numeric"
-                  />
+              {securityRequirements.methods.email && (
+                <View style={styles.securityInputWrapper}>
+                  <ThemedText style={styles.securityInputLabel}>Email Code</ThemedText>
+                  <View style={styles.securityInputField}>
+                    <TextInput
+                      style={styles.securityInput}
+                      placeholder="Input code sent to your email"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={emailCode}
+                      onChangeText={setEmailCode}
+                      keyboardType="numeric"
+                    />
+                  </View>
                 </View>
-              </View>
+              )}
 
-              <View style={styles.securityInputWrapper}>
-                <ThemedText style={styles.securityInputLabel}>Authenticator App Code (Optional)</ThemedText>
-                <View style={styles.securityInputField}>
-                  <TextInput
-                    style={styles.securityInput}
-                    placeholder="Input Code from your authenticator app (optional)"
-                    placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                    value={authenticatorCode}
-                    onChangeText={setAuthenticatorCode}
-                    keyboardType="numeric"
-                  />
+              {securityRequirements.methods.twoFA && (
+                <View style={styles.securityInputWrapper}>
+                  <ThemedText style={styles.securityInputLabel}>Authenticator App Code</ThemedText>
+                  <View style={styles.securityInputField}>
+                    <TextInput
+                      style={styles.securityInput}
+                      placeholder="Input code from your authenticator app"
+                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                      value={authenticatorCode}
+                      onChangeText={setAuthenticatorCode}
+                      keyboardType="numeric"
+                    />
+                  </View>
                 </View>
-              </View>
+              )}
 
               <TouchableOpacity
-                style={[styles.proceedButton, (!pin || pin.length < 4 || verifyMutation.isPending) && styles.proceedButtonDisabled]}
+                style={[styles.proceedButton, (!canConfirmSecurity || verifyMutation.isPending) && styles.proceedButtonDisabled]}
                 onPress={handleSecurityComplete}
-                disabled={!pin || pin.length < 4 || verifyMutation.isPending}
+                disabled={!canConfirmSecurity || verifyMutation.isPending}
               >
                 {verifyMutation.isPending ? (
                   <ActivityIndicator size="small" color="#000000" />
@@ -1220,41 +1420,32 @@ const SendFundsScreen = () => {
       <TransactionSuccessModal
         visible={showSuccessModal}
         transaction={{
-          amount: `N${amount.replace(/,/g, '')}`,
-          fee: 'N0',
+          amount: `N${(transferSnapshot?.amount || amount).replace(/,/g, '')}`,
+          fee: pendingTransactionData?.fee ? `N${pendingTransactionData.fee}` : 'N0',
           transactionType: 'send',
         }}
         onViewTransaction={handleViewTransaction}
         onCancel={handleSuccessCancel}
       />
 
-      {/* Transaction Receipt Modal */}
-      <TransactionReceiptModal
-        visible={showReceiptModal}
-        transaction={(() => {
-          const dateValue = pendingTransactionData?.completedAt || pendingTransactionData?.createdAt;
-          return {
-            transactionType: 'send',
-            transactionTitle: `Send Funds - ${userName}`,
-            transferAmount: `N${amount.replace(/,/g, '')}`,
-            fee: pendingTransactionData?.fee ? `N${pendingTransactionData.fee}` : 'N0',
-            paymentAmount: pendingTransactionData?.totalAmount ? `N${pendingTransactionData.totalAmount}` : `N${amount.replace(/,/g, '')}`,
-            country: selectedCountryName,
-            recipientName: userName,
-            transactionId: pendingTransactionData?.reference || (pendingTransactionId ? String(pendingTransactionId) : undefined),
-            dateTime: dateValue ? new Date(dateValue).toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            }) : undefined,
-            paymentMethod: pendingTransactionData?.paymentMethod || 'RhinoxPay ID',
-            status: pendingTransactionData?.status,
-          };
-        })()}
-        onClose={handleReceiptClose}
-      />
+      {receiptTransaction && (
+        <TransactionReceiptModal
+          visible={showReceiptModal && !isLoadingReceipt}
+          transaction={receiptTransaction}
+          onClose={handleReceiptClose}
+        />
+      )}
+
+      {isLoadingReceipt && showReceiptModal && (
+        <Modal visible transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <ActivityIndicator size="large" color="#A9EF45" />
+            <ThemedText style={{ color: '#FFFFFF', marginTop: 12 * SCALE, fontSize: 14 * SCALE }}>
+              Loading receipt...
+            </ThemedText>
+          </View>
+        </Modal>
+      )}
     </KeyboardAvoidingView>
   );
 };

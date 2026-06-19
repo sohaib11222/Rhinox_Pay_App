@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -21,7 +21,7 @@ import TransactionSuccessModal from '../../components/TransactionSuccessModal';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
-import { useGetMobileMoneyProviders, useGetBankDetails } from '../../../queries/deposit.queries';
+import { useGetMobileMoneyProviders, useGetBankDetails, getDepositStatus } from '../../../queries/deposit.queries';
 import { useInitiateDeposit, useConfirmDeposit } from '../../../mutations/deposit.mutations';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
@@ -29,6 +29,11 @@ import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import * as Clipboard from 'expo-clipboard';
 import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -53,21 +58,7 @@ const Fund = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -84,6 +75,8 @@ const Fund = () => {
   const [showCountryModal, setShowCountryModal] = useState(false);
   const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
   const [pendingTransactionData, setPendingTransactionData] = useState<any>(null);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const paymentCompletedRef = useRef(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [pin, setPin] = useState('');
   const [lastPressedButton, setLastPressedButton] = useState<string | null>(null);
@@ -117,10 +110,29 @@ const Fund = () => {
 
   // Get currency symbol based on country
   const getCurrencySymbol = () => {
-    return 'N';
+    switch (currency) {
+      case 'NGN':
+        return '₦';
+      case 'KES':
+        return 'Ksh';
+      case 'GHS':
+        return '₵';
+      case 'ZAR':
+        return 'R';
+      default:
+        return '';
+    }
   };
 
   const currencySymbol = getCurrencySymbol();
+
+  const isWaitingForBankPayment = useMemo(() => {
+    return (
+      selectedChannel === 'bank_transfer' &&
+      pendingTransactionId !== null &&
+      !!pendingTransactionData?.virtualAccount
+    );
+  }, [selectedChannel, pendingTransactionId, pendingTransactionData?.virtualAccount]);
 
   // Fetch wallet balances
   const {
@@ -172,6 +184,117 @@ const Fund = () => {
     if (!name) return 'N/A';
     return name.replace(/\s*\(Pay\s+NGN\s+[\d,.]+\)\s*/i, '').trim();
   };
+
+  const handleDepositCompleted = useCallback((statusData: any) => {
+    if (paymentCompletedRef.current) {
+      return;
+    }
+    paymentCompletedRef.current = true;
+
+    const transactionAmount = String(
+      statusData?.amount || pendingTransactionData?.amount || amount.replace(/,/g, '') || '0'
+    ).replace(/,/g, '');
+    const transactionFee = String(
+      statusData?.fee || pendingTransactionData?.fee || '0'
+    ).replace(/,/g, '');
+
+    const amountNum = parseFloat(transactionAmount);
+    const feeNum = parseFloat(transactionFee) || 0;
+
+    setSuccessTransactionData({
+      amount: amountNum.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      fee: feeNum.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+      currency,
+      currencySymbol,
+      country: selectedCountryName,
+      transactionId: statusData?.id
+        ? String(statusData.id)
+        : pendingTransactionId
+        ? String(pendingTransactionId)
+        : undefined,
+      paymentMethod: 'Bank Transfer',
+    });
+
+    setPendingTransactionId(null);
+    setPendingTransactionData(null);
+    setAmount('');
+    setBankDetails(null);
+    refetchBalances();
+    setShowSuccessModal(true);
+  }, [
+    amount,
+    currency,
+    currencySymbol,
+    pendingTransactionData,
+    pendingTransactionId,
+    refetchBalances,
+    selectedCountryName,
+  ]);
+
+  const checkPaymentStatus = useCallback(async (options?: { silent?: boolean }) => {
+    if (!pendingTransactionId || paymentCompletedRef.current) {
+      return null;
+    }
+
+    setIsCheckingPayment(true);
+    try {
+      const response = await getDepositStatus(String(pendingTransactionId));
+      const statusData = response?.data;
+      const status = statusData?.status;
+
+      if (status === 'completed') {
+        handleDepositCompleted(statusData);
+        return statusData;
+      }
+
+      if (status === 'failed' || status === 'cancelled') {
+        paymentCompletedRef.current = false;
+        setPendingTransactionId(null);
+        setPendingTransactionData(null);
+        showErrorAlert(
+          'Payment Not Completed',
+          statusData?.message || 'Your bank transfer was not confirmed. Please try again.'
+        );
+        return statusData;
+      }
+
+      if (!options?.silent) {
+        showInfoAlert(
+          'Still Waiting',
+          'We have not received your bank transfer yet. Complete the transfer with the reference shown above, then check again in a moment.'
+        );
+      }
+
+      return statusData;
+    } catch (error: any) {
+      if (!options?.silent) {
+        showErrorAlert('Error', error?.message || 'Failed to check payment status');
+      }
+      return null;
+    } finally {
+      setIsCheckingPayment(false);
+    }
+  }, [handleDepositCompleted, pendingTransactionId]);
+
+  useEffect(() => {
+    if (!isWaitingForBankPayment || paymentCompletedRef.current) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      checkPaymentStatus({ silent: true });
+    }, 5000);
+
+    checkPaymentStatus({ silent: true });
+
+    return () => clearInterval(intervalId);
+  }, [checkPaymentStatus, isWaitingForBankPayment]);
 
   // Fetch countries from API
   const {
@@ -301,12 +424,28 @@ const Fund = () => {
         (data as any)?.transactionId;
       
       setPendingTransactionData(data?.data);
+      paymentCompletedRef.current = false;
       
       // Set transaction ID for both channels
       if (transactionId) {
         const id = typeof transactionId === 'string' ? parseInt(transactionId, 10) : transactionId;
         if (!isNaN(id)) {
           setPendingTransactionId(id);
+
+          if (selectedChannel === 'bank_transfer') {
+            const virtualAccount = data?.data?.virtualAccount || {};
+            setBankDetails({
+              ...virtualAccount,
+              reference: data?.data?.reference,
+              merchantOrderId: data?.data?.merchantOrderId,
+              orderNo: data?.data?.orderNo,
+            });
+          } else {
+            proceedAfterTransactionInitiate(id, {
+              showVerificationModal: () => setShowPinModal(true),
+              confirm: (payload) => confirmMutation.mutate(payload),
+            });
+          }
         } else {
           showErrorAlert('Error', 'Invalid transaction ID received');
           return;
@@ -314,19 +453,6 @@ const Fund = () => {
       } else {
         showErrorAlert('Error', 'Transaction ID not found in response');
         return;
-      }
-      
-      if (selectedChannel === 'bank_transfer') {
-        const virtualAccount = data?.data?.virtualAccount || {};
-        setBankDetails({
-          ...virtualAccount,
-          reference: data?.data?.reference,
-          merchantOrderId: data?.data?.merchantOrderId,
-          orderNo: data?.data?.orderNo,
-        });
-      } else {
-        // For mobile money, show PIN modal directly
-        setShowPinModal(true);
       }
     },
     onError: (error: any) => {
@@ -520,6 +646,7 @@ const Fund = () => {
 
     if (selectedChannel === 'bank_transfer') {
       if (pendingTransactionData?.virtualAccount) {
+        checkPaymentStatus();
         return;
       }
       // For bank transfer, initiate deposit to get reference
@@ -608,33 +735,23 @@ const Fund = () => {
   };
 
   const handleConfirmDeposit = async (pinToUse?: string) => {
-    // Use the provided pinToUse, or get the current pin state
     const pinValue = pinToUse || pin;
-    
-    // Validate PIN length - must be exactly 5 digits
-    if (!pinValue || typeof pinValue !== 'string' || pinValue.length !== 5) {
-      console.log('[Fund] PIN validation failed:', { pinValue, length: pinValue?.length, type: typeof pinValue });
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
-      return;
-    }
 
-    // Validate that PIN contains only digits
-    if (!/^\d{5}$/.test(pinValue)) {
-      console.log('[Fund] PIN contains non-digits:', pinValue);
-      showErrorAlert('Error', 'PIN must contain only numbers');
-      return;
-    }
-
-    if (pendingTransactionId !== null && pendingTransactionId !== undefined) {
-      console.log('[Fund] Confirming deposit with transaction ID:', pendingTransactionId);
-      confirmMutation.mutate({
-        transactionId: pendingTransactionId,
-        pin: pinValue,
-      });
-    } else {
-      console.log('[Fund] Transaction ID not found:', pendingTransactionId);
+    if (pendingTransactionId === null || pendingTransactionId === undefined) {
       showErrorAlert('Error', 'Transaction ID not found. Please try again.');
+      return;
     }
+
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, {
+      pin: pinValue,
+    });
+
+    if (!result.payload) {
+      showErrorAlert('Error', result.errorMessage || 'Verification required');
+      return;
+    }
+
+    confirmMutation.mutate(result.payload);
   };
 
   const filteredProviders = providers.filter((provider) =>
@@ -648,6 +765,9 @@ const Fund = () => {
     const isValidAmount = !isNaN(numericAmount) && numericAmount > 0;
 
     if (selectedChannel === 'bank_transfer') {
+      if (isWaitingForBankPayment) {
+        return true;
+      }
       return hasAmount && isValidAmount && !isLoadingBankDetails && !!bankDetails && !initiateMutation.isPending;
     } else if (selectedChannel === 'mobile_money') {
       return (
@@ -659,7 +779,7 @@ const Fund = () => {
       );
     }
     return false;
-  }, [selectedChannel, selectedProvider, momoNumber, amount, bankDetails, isLoadingBankDetails, initiateMutation.isPending]);
+  }, [selectedChannel, selectedProvider, momoNumber, amount, bankDetails, isLoadingBankDetails, initiateMutation.isPending, isWaitingForBankPayment]);
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
@@ -671,6 +791,9 @@ const Fund = () => {
       
       if (selectedChannel === 'bank_transfer') {
         promises.push(refetchBankDetails());
+        if (isWaitingForBankPayment) {
+          await checkPaymentStatus({ silent: true });
+        }
       } else if (selectedChannel === 'mobile_money') {
         promises.push(refetchProviders());
       }
@@ -834,20 +957,26 @@ const Fund = () => {
 
           {/* Amount Input Section */}
           <View style={styles.amountSection}>
-            <TextInput
-              style={styles.amountInput}
-              value={amount ? `${amount}${currencySymbol}` : ''}
-              onChangeText={(text) => {
-                // Remove currency symbols and commas
-                const numericValue = text.replace(/[KshNGHCZAR,]/g, '').replace(/\s/g, '');
-                if (numericValue === '' || /^\d+$/.test(numericValue)) {
-                  setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
-                }
-              }}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor="rgba(255, 255, 255, 0.5)"
-            />
+            <View style={styles.amountInputRow}>
+              {currencySymbol ? (
+                <ThemedText style={styles.amountInputPrefix}>{currencySymbol}</ThemedText>
+              ) : null}
+              <TextInput
+                style={styles.amountInput}
+                value={amount}
+                onChangeText={(text) => {
+                  const numericValue = text
+                    .replace(/[₦KshGHCZR,NGH\s]/gi, '')
+                    .replace(/\s/g, '');
+                  if (numericValue === '' || /^\d+$/.test(numericValue)) {
+                    setAmount(numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, ','));
+                  }
+                }}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+              />
+            </View>
             <View style={styles.amountDivider} />
           </View>
 
@@ -921,9 +1050,9 @@ const Fund = () => {
                     )}
                   </View>
                 ) : (
-                  <View style={[styles.inputField, { justifyContent: 'center', alignItems: 'center', paddingVertical: 20 }]}>
-                    <MaterialCommunityIcons name="bank-plus" size={24 * SCALE} color="#A9EF45" />
-                    <ThemedText style={[styles.inputLabel, { marginTop: 10, textAlign: 'center' }]}>
+                  <View style={[styles.inputField, styles.depositPromptField]}>
+                    <MaterialCommunityIcons name="bank-plus" size={20 * SCALE} color="#A9EF45" />
+                    <ThemedText style={styles.depositPromptText}>
                       Enter an amount to generate bank transfer details for this deposit.
                     </ThemedText>
                   </View>
@@ -988,7 +1117,9 @@ const Fund = () => {
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
                 <ThemedText style={styles.warningText}>
-                  Include the reference number in your bank transfer narration
+                  {isWaitingForBankPayment
+                    ? 'Checking payment automatically every few seconds after you transfer'
+                    : 'Include the reference number in your bank transfer narration'}
                 </ThemedText>
               </View>
               <View style={styles.warningRow}>
@@ -999,7 +1130,7 @@ const Fund = () => {
               </View>
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <ThemedText style={styles.warningText}>Fee : {pendingTransactionData?.fee || '0.00'}{currencySymbol}</ThemedText>
+                <ThemedText style={styles.warningText}>Fee : {currencySymbol}{pendingTransactionData?.fee || '0.00'}</ThemedText>
               </View>
             </>
           ) : (
@@ -1016,7 +1147,7 @@ const Fund = () => {
               </View>
               <View style={styles.warningRow}>
                 <MaterialCommunityIcons name="alert-circle" size={14 * SCALE} color="#A9EF45" />
-                <ThemedText style={styles.warningText}>Fee : {pendingTransactionData?.fee || '0.00'}{currencySymbol}</ThemedText>
+                <ThemedText style={styles.warningText}>Fee : {currencySymbol}{pendingTransactionData?.fee || '0.00'}</ThemedText>
               </View>
             </>
           )}
@@ -1031,18 +1162,21 @@ const Fund = () => {
         <TouchableOpacity
           style={[styles.proceedButton, !isProceedEnabled && styles.proceedButtonDisabled]}
           onPress={handleProceed}
-          disabled={!isProceedEnabled || initiateMutation.isPending}
+          disabled={!isProceedEnabled || initiateMutation.isPending || isCheckingPayment}
         >
-          {initiateMutation.isPending ? (
+          {initiateMutation.isPending || isCheckingPayment ? (
             <ActivityIndicator size="small" color="#000000" />
           ) : (
             <ThemedText style={styles.proceedButtonText}>
-              {selectedChannel === 'bank_transfer' 
-                ? (pendingTransactionData?.virtualAccount ? 'Waiting for Payment' : 'Proceed')
-                : 'Proceed'}
+              {isWaitingForBankPayment ? 'Check Payment Status' : 'Proceed'}
             </ThemedText>
           )}
         </TouchableOpacity>
+        {isWaitingForBankPayment && (
+          <ThemedText style={styles.waitingHintText}>
+            Auto-checking payment status...
+          </ThemedText>
+        )}
       </View>
 
 
@@ -1331,8 +1465,8 @@ const Fund = () => {
       <TransactionSuccessModal
         visible={showSuccessModal}
         transaction={{
-          amount: successTransactionData ? `${successTransactionData.amount}${successTransactionData.currencySymbol}` : `${amount}${currencySymbol}`,
-          fee: successTransactionData ? `${successTransactionData.fee}${successTransactionData.currencySymbol}` : `20${currencySymbol}`,
+          amount: successTransactionData ? `${successTransactionData.currencySymbol}${successTransactionData.amount}` : `${currencySymbol}${amount}`,
+          fee: successTransactionData ? `${successTransactionData.currencySymbol}${successTransactionData.fee}` : `${currencySymbol}20`,
           transactionType: 'deposit',
           networkProvider: successTransactionData?.provider,
           mobileNumber: successTransactionData?.mobileNumber,
@@ -1354,17 +1488,17 @@ const Fund = () => {
         transaction={{
           transactionType: 'deposit',
           transactionTitle: successTransactionData 
-            ? `${successTransactionData.amount}${successTransactionData.currencySymbol} Deposited`
-            : `${amount}${currencySymbol} Deposited`,
+            ? `${successTransactionData.currencySymbol}${successTransactionData.amount} Deposited`
+            : `${currencySymbol}${amount} Deposited`,
           transferAmount: successTransactionData 
-            ? `${successTransactionData.amount}${successTransactionData.currencySymbol}`
-            : `${amount}${currencySymbol}`,
+            ? `${successTransactionData.currencySymbol}${successTransactionData.amount}`
+            : `${currencySymbol}${amount}`,
           amountNGN: successTransactionData 
-            ? `${successTransactionData.amount}${successTransactionData.currencySymbol}`
-            : `${amount}${currencySymbol}`,
+            ? `${successTransactionData.currencySymbol}${successTransactionData.amount}`
+            : `${currencySymbol}${amount}`,
           fee: successTransactionData 
-            ? `${successTransactionData.fee}${successTransactionData.currencySymbol}`
-            : `20${currencySymbol}`,
+            ? `${successTransactionData.currencySymbol}${successTransactionData.fee}`
+            : `${currencySymbol}20`,
           mobileNumber: successTransactionData?.mobileNumber || momoNumber,
           provider: successTransactionData?.provider || providers.find((p) => p.id === selectedProvider)?.name || '',
           accountName: successTransactionData?.accountName || accountName,
@@ -1588,15 +1722,28 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF08',
     borderRadius: 10 * 1,
   },
+  amountInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 90,
+    paddingBottom: 90 * 1,
+    gap: 4 * SCALE,
+  },
+  amountInputPrefix: {
+    fontSize: 50 * 1,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    fontFamily: 'Agbalumo-Regular',
+  },
   amountInput: {
     fontSize: 50 * 1,
     fontWeight: '500',
     color: '#FFFFFF',
-    textAlign: 'center',
-    paddingTop: 90,
-    paddingBottom: 90 * 1,
+    textAlign: 'left',
     padding: 0,
     margin: 0,
+    minWidth: 40 * SCALE,
     fontFamily: 'Agbalumo-Regular',
   },
   amountDivider: {
@@ -1621,6 +1768,20 @@ const styles = StyleSheet.create({
     fontSize: 14 * 1,
     fontWeight: '400',
     color: '#FFFFFF',
+  },
+  depositPromptField: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16 * SCALE,
+    gap: 8 * SCALE,
+  },
+  depositPromptText: {
+    fontSize: 11 * SCALE,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.65)',
+    textAlign: 'center',
+    lineHeight: 16 * SCALE,
+    paddingHorizontal: 12 * SCALE,
   },
   inputPlaceholder: {
     color: 'rgba(255, 255, 255, 0.5)',
@@ -1680,6 +1841,13 @@ const styles = StyleSheet.create({
     fontSize: 14 * 1,
     fontWeight: '400',
     color: '#000000',
+  },
+  waitingHintText: {
+    marginTop: 10 * SCALE,
+    fontSize: 11 * 1,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
   },
   bottomSpacer: {
     height: 100 * SCALE,

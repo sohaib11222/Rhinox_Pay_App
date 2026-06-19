@@ -20,6 +20,7 @@ import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { getBaseSymbol } from '../../../utils/cryptoSymbols';
 import { useCreateSellAd, useUpdateP2PAd } from '../../../mutations/p2p.mutations';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
@@ -167,49 +168,67 @@ const CreateSellAd = () => {
     });
   }, [countriesData]);
 
-  // Transform crypto currencies from virtual accounts
+
   const cryptos: Crypto[] = useMemo(() => {
+    const unified = balancesData?.data?.cryptoUnified;
+    if (Array.isArray(unified) && unified.length > 0) {
+      return unified.map((item: any) => {
+        let icon = require('../../../assets/login/usdt-coin.png');
+        if (item.symbol === 'BTC') {
+          icon = require('../../../assets/login/bitcoin-coin.png');
+        }
+        return {
+          id: item.symbol,
+          name: item.symbol,
+          symbol: item.symbol,
+          icon,
+        };
+      });
+    }
+
     if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data)) {
-      // Default fallback
       return [
         { id: '1', name: 'Bitcoin', symbol: 'BTC', icon: require('../../../assets/login/bitcoin-coin.png') },
         { id: '2', name: 'USDT', symbol: 'USDT', icon: require('../../../assets/login/usdt-coin.png') },
       ];
     }
-    
-    const cryptoMap = new Map<string, Crypto>();
-    
-    virtualAccountsData.data.forEach((account: any) => {
-      if (account.currency && !cryptoMap.has(account.currency)) {
-        let icon = require('../../../assets/login/usdt-coin.png');
-        if (account.currency === 'BTC' || account.currency === 'Bitcoin') {
-          icon = require('../../../assets/login/bitcoin-coin.png');
-        } else if (account.currency === 'USDT' || account.currency === 'Tether') {
-          icon = require('../../../assets/login/usdt-coin.png');
-        }
-        
-        cryptoMap.set(account.currency, {
-          id: account.currency,
-          name: account.currencyName || account.currency,
-          symbol: account.currency,
-          icon: icon,
-        });
-      }
-    });
-    
-    return Array.from(cryptoMap.values());
-  }, [virtualAccountsData]);
 
-  // Get crypto balance for selected crypto
+    const cryptoMap = new Map<string, Crypto>();
+    virtualAccountsData.data.forEach((account: any) => {
+      const base = getBaseSymbol(account.currency || '');
+      if (!base || cryptoMap.has(base)) return;
+      let icon = require('../../../assets/login/usdt-coin.png');
+      if (base === 'BTC') {
+        icon = require('../../../assets/login/bitcoin-coin.png');
+      }
+      cryptoMap.set(base, {
+        id: base,
+        name: account.currencyName || base,
+        symbol: base,
+        icon,
+      });
+    });
+
+    return Array.from(cryptoMap.values());
+  }, [balancesData?.data?.cryptoUnified, virtualAccountsData]);
+
   const cryptoBalance = useMemo(() => {
+    const base = getBaseSymbol(selectedCryptoSymbol);
+    const unified = balancesData?.data?.cryptoUnified;
+    if (Array.isArray(unified)) {
+      const item = unified.find((u: any) => getBaseSymbol(u.symbol) === base);
+      if (item) {
+        return item.totalAvailable || item.totalBalance || '0';
+      }
+    }
     if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
       return '0';
     }
     const wallet = balancesData.data.crypto.find(
-      (w: any) => w.currency === selectedCryptoSymbol
+      (w: any) => getBaseSymbol(w.currency) === base
     );
-    return wallet?.balance || '0';
-  }, [balancesData?.data?.crypto, selectedCryptoSymbol]);
+    return wallet?.balance || wallet?.availableBalance || '0';
+  }, [balancesData?.data?.crypto, balancesData?.data?.cryptoUnified, selectedCryptoSymbol]);
 
   // Get fiat balance for selected currency
   const fiatBalance = useMemo(() => {

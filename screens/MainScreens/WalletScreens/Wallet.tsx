@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -14,24 +14,78 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { ThemedText } from '../../../components';
+import { ThemedText, WalletFlag, CryptoIcon } from '../../../components';
+import { getCryptoIconSource } from '../../../utils/cryptoIcons';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import TransactionErrorModal from '../../components/TransactionErrorModal';
 import { useGetWallets, useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetHomeData, useGetHomeTransactions } from '../../../queries/home.queries';
-import { useGetVirtualAccounts } from '../../../queries/crypto.queries';
+import { useGetVirtualAccounts, useGetUnifiedBalances, type UnifiedBalance } from '../../../queries/crypto.queries';
 import { useGetTransactionDetails } from '../../../queries/transactionHistory.queries';
+import { mapTransferReceiptTransaction, buildEnrichedReceiptFromDetails } from '../../../utils/transferReceipt';
 import { useGetCountries } from '../../../queries/country.queries';
+import { useGetExchangeRates } from '../../../queries/exchange.queries';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
-
+import {
+  isNairaFiatSupported,
+  showMobileMoneyComingSoon,
+  showNairaOnlyComingSoon,
+} from '../../../utils/fiatFeatureAvailability';
+import {
+  filterSupportedCountries,
+  getCurrencyFromSupportedCountryCode,
+  isSelectableFiatWallet,
+} from '../../../utils/supportedCountries';
+import { resolveFlagUri } from '../../../utils/walletFlags';
+import { getTabBarScrollPadding } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
+const FIAT_CARD_TEXT = '#000000';
+const FIAT_CARD_MUTED = 'rgba(0, 0, 0, 0.5)';
+
+const buildExchangeRateMap = (rates: any[] | undefined) => {
+  const map = new Map<string, number>();
+  if (!Array.isArray(rates)) return map;
+
+  rates.forEach((rate) => {
+    if (rate?.isActive === false) return;
+    const fromCurrency = String(rate.fromCurrency || '').toUpperCase();
+    const toCurrency = String(rate.toCurrency || '').toUpperCase();
+    const rateValue = parseFloat(rate.rate);
+    if (!fromCurrency || !toCurrency || Number.isNaN(rateValue)) return;
+    map.set(`${fromCurrency}_${toCurrency}`, rateValue);
+  });
+
+  return map;
+};
+
+const convertFiatToUSD = (
+  amount: number,
+  currency: string,
+  rateMap: Map<string, number>
+) => {
+  const normalizedCurrency = currency.toUpperCase();
+  if (normalizedCurrency === 'USD') return amount;
+
+  const directRate = rateMap.get(`${normalizedCurrency}_USD`);
+  if (directRate) return amount * directRate;
+
+  const inverseRate = rateMap.get(`USD_${normalizedCurrency}`);
+  if (inverseRate && inverseRate > 0) return amount / inverseRate;
+
+  const toNgnRate = rateMap.get(`${normalizedCurrency}_NGN`);
+  const ngnToUsdRate = rateMap.get('NGN_USD');
+  if (toNgnRate && ngnToUsdRate) return amount * toNgnRate * ngnToUsdRate;
+
+  return 0;
+};
 
 // Types for API integration
 interface Wallet {
@@ -40,9 +94,8 @@ interface Wallet {
   currencyName: string;
   balance: string;
   balanceUSD: string;
-  flagIcon?: any;
-  icon?: any;
   userName: string;
+  rawData?: any;
 }
 
 interface QuickAction {
@@ -76,6 +129,9 @@ interface CryptoAsset {
 
 const Wallet = () => {
   const navigation = useNavigation();
+  const route = useRoute();
+  const insets = useSafeAreaInsets();
+  const scrollBottomPadding = getTabBarScrollPadding(insets.bottom, 40 * SCALE);
   const [activeTab, setActiveTab] = useState<'fiat' | 'crypto'>('fiat');
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
@@ -102,7 +158,7 @@ const Wallet = () => {
   const [sendFundsSelectedCountryName, setSendFundsSelectedCountryName] = useState('Nigeria');
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string } | null>(null);
   const [showFundWalletModal, setShowFundWalletModal] = useState(false);
   const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
@@ -110,6 +166,27 @@ const Wallet = () => {
   const [fundWalletAssetSearchTerm, setFundWalletAssetSearchTerm] = useState('');
   const [fundWalletSelectedCountry, setFundWalletSelectedCountry] = useState<string>('NG');
   const [fundWalletSelectedCountryName, setFundWalletSelectedCountryName] = useState('Nigeria');
+
+  const openSendFundsModal = useCallback((walletType: 'Fiat' | 'Crypto' = 'Fiat') => {
+    setSendFundsWalletType(walletType);
+    setShowSendFundsModal(true);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const params = (route.params as {
+        openSendFundsModal?: boolean;
+        sendFundsWalletType?: 'Fiat' | 'Crypto';
+      }) || {};
+      if (params.openSendFundsModal) {
+        openSendFundsModal(params.sendFundsWalletType === 'Crypto' ? 'Crypto' : 'Fiat');
+        navigation.setParams({
+          openSendFundsModal: undefined,
+          sendFundsWalletType: undefined,
+        } as never);
+      }
+    }, [route.params, navigation, openSendFundsModal])
+  );
 
   // Fetch user data for name
   const { data: homeData, isLoading: isLoadingUser } = useGetHomeData();
@@ -129,20 +206,36 @@ const Wallet = () => {
     refetch: refetchBalances 
   } = useGetWalletBalances();
 
-  // Fetch virtual accounts for crypto
+  // Fetch virtual accounts for crypto (per-network detail)
   const { 
     data: virtualAccountsData, 
     isLoading: isLoadingVirtualAccounts, 
     refetch: refetchVirtualAccounts 
   } = useGetVirtualAccounts();
 
+  const {
+    data: unifiedBalancesData,
+    isLoading: isLoadingUnifiedBalances,
+    refetch: refetchUnifiedBalances,
+  } = useGetUnifiedBalances();
+
   // Fetch countries for modals
   const {
     data: countriesData,
     isLoading: isLoadingCountries,
   } = useGetCountries();
-  
-  const countries = countriesData?.data || [];
+
+  const countries = useMemo(
+    () => filterSupportedCountries(countriesData?.data || []),
+    [countriesData?.data]
+  );
+
+  const { data: exchangeRatesData } = useGetExchangeRates({ activeOnly: true });
+
+  const exchangeRateMap = useMemo(
+    () => buildExchangeRateMap(exchangeRatesData?.data),
+    [exchangeRatesData?.data]
+  );
 
   // Fetch home transactions (both fiat and crypto)
   const { 
@@ -219,42 +312,40 @@ const Wallet = () => {
   };
 
   // Get currency from country code
-  const getCurrencyFromCountryCode = (countryCode: string): string => {
-    const currencyMap: { [key: string]: string } = {
-      'NG': 'NGN',
-      'KE': 'KES',
-      'GH': 'GHS',
-      'ZA': 'ZAR',
-      'BW': 'BWP',
-      'TZ': 'TZS',
-      'UG': 'UGX',
-    };
-    return currencyMap[countryCode] || 'NGN';
-  };
+  const getCurrencyFromCountryCode = (countryCode: string): string =>
+    getCurrencyFromSupportedCountryCode(countryCode);
 
   // Transform API wallets to UI format - MUST BE DEFINED FIRST
   const fiatWallets: Wallet[] = useMemo(() => {
-    if (!walletsData?.data || !Array.isArray(walletsData.data)) return [];
-    
-    // Filter for active fiat wallets
-    const fiatWalletsFromAPI = walletsData.data.filter((w: any) => w.type === 'fiat' && w.isActive !== false);
-    
-    return fiatWalletsFromAPI.map((w: any) => {
-      const balance = formatBalance(w.balance || '0');
-      const flagUri = w.flag ? `${API_BASE_URL.replace('/api', '')}${w.flag}` : null;
-      
-      return {
-        id: String(w.id),
-        currencyCode: w.currency || '',
-        currencyName: getCurrencyName(w.currency, w),
-        balance: balance,
-        balanceUSD: `$${formatBalance(parseFloat(w.balance || '0') * 0.001)}`, // Placeholder conversion
-        icon: flagUri ? { uri: flagUri } : require('../../../assets/login/nigeria-flag.png'),
-        userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User' : 'User',
-        rawData: w,
-      };
-    });
-  }, [walletsData?.data, user]);
+    const fiatFromBalances = balancesData?.data?.fiat;
+    const fiatSource = Array.isArray(fiatFromBalances) && fiatFromBalances.length > 0
+      ? fiatFromBalances
+      : (Array.isArray(walletsData?.data)
+          ? walletsData.data.filter((wallet: any) => wallet.type === 'fiat' && wallet.isActive !== false)
+          : []);
+
+    return fiatSource
+      .filter((wallet: any) => {
+        const currency = String(wallet.currency || '').toUpperCase();
+        return wallet.isActive !== false && isSelectableFiatWallet(currency);
+      })
+      .map((wallet: any) => {
+        const currency = String(wallet.currency || '').toUpperCase();
+        const numericBalance = parseFloat(wallet.balance || wallet.availableBalance || '0');
+        const balance = formatBalance(numericBalance);
+        const usdAmount = convertFiatToUSD(numericBalance, currency, exchangeRateMap);
+
+        return {
+          id: String(wallet.id),
+          currencyCode: currency,
+          currencyName: getCurrencyName(currency, wallet),
+          balance,
+          balanceUSD: `$${formatBalance(usdAmount)}`,
+          userName: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'User' : 'User',
+          rawData: wallet,
+        };
+      });
+  }, [balancesData?.data?.fiat, walletsData?.data, user, countries, exchangeRateMap]);
 
   // Get crypto wallets from balances data
   const cryptoWallets = useMemo(() => {
@@ -324,129 +415,72 @@ const Wallet = () => {
     };
   }, [cryptoWallets, selectedAsset, isLoadingBalances]);
 
-  // Get wallet ID - should be user's email, not numeric wallet ID
+  // Platform Rhinox Pay ID (not email)
   const walletId = useMemo(() => {
-    // Use user's email if available
-    if (user?.email) {
-      return user.email;
+    if (user?.rhinoxPayId) {
+      return user.rhinoxPayId;
     }
-    // Fallback to first fiat wallet ID if email not available
-    if (fiatWallets.length > 0) {
-      return fiatWallets[0].id;
-    }
-    return 'NGN1234';
-  }, [fiatWallets, user?.email]);
+    return 'Generating ID...';
+  }, [user?.rhinoxPayId]);
 
-  // Transform API virtual accounts to UI format
+  const mapUnifiedToCryptoAsset = (item: UnifiedBalance): CryptoAsset => {
+    const balance = parseFloat(item.totalAvailable || item.totalBalance || '0');
+    const symbol = item.symbol;
+    const trend: 'up' | 'down' = balance > 0 ? 'up' : 'down';
+    const trendData = [20, 30, 25, 40, 35, 50, 45];
+
+    let icon = getCryptoIconSource(symbol);
+
+    let usdValue = balance;
+    if (symbol !== 'USDT' && symbol !== 'USDC') {
+      usdValue = balance * 0.001;
+    }
+
+    const formattedBalance =
+      balance === 0 ? '0' : balance.toFixed(8).replace(/\.?0+$/, '');
+
+    return {
+      id: symbol,
+      name: getCurrencyName(symbol),
+      ticker: symbol,
+      balance: formattedBalance,
+      balanceUSD: usdValue > 0 ? `$${formatBalance(usdValue)}` : '$0.00',
+      icon,
+      trend,
+      trendData,
+      rawData: item,
+    };
+  };
+
   const cryptoAssets: CryptoAsset[] = useMemo(() => {
-    // Use virtual accounts data if available, otherwise fallback to balancesData
-    // Ensure accountsData is always an array
-    let accountsData: any[] = [];
-    if (virtualAccountsData?.data) {
-      accountsData = Array.isArray(virtualAccountsData.data) ? virtualAccountsData.data : [];
+    const unifiedList: UnifiedBalance[] | undefined =
+      unifiedBalancesData?.data ?? balancesData?.data?.cryptoUnified;
+
+    if (Array.isArray(unifiedList) && unifiedList.length > 0) {
+      return unifiedList.map(mapUnifiedToCryptoAsset);
     }
-    
-    if (!Array.isArray(accountsData) || accountsData.length === 0) {
-      // Fallback to balancesData if virtual accounts not available
-      if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) return [];
-      
-      return balancesData.data.crypto.map((asset: any) => {
-        const balance = parseFloat(asset.balance || '0');
-        const balanceInUSDT = parseFloat(asset.balanceInUSDT || '0');
-        const iconUri = asset.icon ? `${API_BASE_URL.replace('/api', '')}${asset.icon}` : null;
-        
-        // Determine trend (placeholder - would need price history)
-        const trend: 'up' | 'down' = balanceInUSDT > 0 ? 'up' : 'down';
-        const trendData = [20, 30, 25, 40, 35, 50, 45]; // Placeholder data
-        
-        return {
-          id: String(asset.id),
-          name: getCurrencyName(asset.currency),
-          ticker: asset.currency || '',
-          balance: balance.toFixed(8).replace(/\.?0+$/, ''), // Remove trailing zeros
-          balanceUSD: `$${formatBalance(balanceInUSDT)}`,
-          icon: iconUri ? { uri: iconUri } : require('../../../assets/login/bitcoin-coin.png'),
-          trend: trend,
-          trendData: trendData,
-          rawData: asset,
-        };
-      });
+
+    if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
+      return [];
     }
-    
-    // Transform virtual accounts to crypto assets format
-    return accountsData
-      .filter((account: any) => account.active !== false) // Only active accounts
-      .map((account: any) => {
-        const balance = parseFloat(account.accountBalance || account.availableBalance || '0');
-        const currency = account.currency || '';
-        const blockchain = account.blockchain || '';
-        
-        // Get currency name
-        const currencyName = getCurrencyName(currency);
-        
-        // Determine trend (placeholder - would need price history)
-        const trend: 'up' | 'down' = balance > 0 ? 'up' : 'down';
-        const trendData = [20, 30, 25, 40, 35, 50, 45]; // Placeholder data
-        
-        // Get icon based on currency
-        let icon = require('../../../assets/login/bitcoin-coin.png'); // Default
-        if (currency.includes('BTC') || currency === 'BTC') {
-          icon = require('../../../assets/login/bitcoin-coin.png');
-        } else if (currency.includes('ETH') || currency === 'ETH') {
-          icon = require('../../../assets/login/usdt-coin.png'); // Placeholder for ETH
-        } else if (currency.includes('USDT') || currency.includes('USDC')) {
-          icon = require('../../../assets/login/usdt-coin.png');
-        } else if (currency.includes('BNB') || currency === 'BNB') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        } else if (currency.includes('SOL') || currency === 'SOL') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        } else if (currency.includes('DOGE') || currency === 'DOGE') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        } else if (currency.includes('LTC') || currency === 'LTC') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        } else if (currency.includes('XRP') || currency === 'XRP') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        } else if (currency.includes('TRX') || currency === 'TRX') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        } else if (currency.includes('MATIC') || currency === 'MATIC') {
-          icon = require('../../../assets/login/bitcoin-coin.png'); // Placeholder
-        }
-        
-        // Format balance - show at least 8 decimal places for crypto, remove trailing zeros
-        const formattedBalance = balance === 0 
-          ? '0' 
-          : balance.toFixed(8).replace(/\.?0+$/, '');
-        
-        // Calculate USD value
-        // USDT and USDC are stablecoins pegged to USD (1:1)
-        // For other cryptos, check if balanceInUSDT is available from API, otherwise use placeholder
-        let usdValue = 0;
-        if (currency.includes('USDT') || currency.includes('USDC')) {
-          // USDT/USDC are 1:1 with USD
-          usdValue = balance;
-        } else if (account.balanceInUSDT !== undefined && account.balanceInUSDT !== null) {
-          // Use API-provided USDT conversion if available
-          usdValue = parseFloat(account.balanceInUSDT || '0');
-        } else {
-          // Fallback: use placeholder conversion (would need actual price API in production)
-          // For now, assume very low value to avoid showing incorrect balances
-          usdValue = balance * 0.001;
-        }
-        const balanceUSD = usdValue > 0 ? `$${formatBalance(usdValue)}` : '$0.00';
-        
-        return {
-          id: String(account.id),
-          name: currencyName,
-          ticker: currency,
-          balance: formattedBalance,
-          balanceUSD: balanceUSD,
-          icon: icon,
-          trend: trend,
-          trendData: trendData,
-          rawData: account, // Store full account data for search/filtering
-        };
-      });
-  }, [virtualAccountsData?.data, balancesData?.data?.crypto]);
+
+    return balancesData.data.crypto.map((asset: any) => {
+      const balance = parseFloat(asset.balance || '0');
+      const balanceInUSDT = parseFloat(asset.balanceInUSDT || '0');
+      const trend: 'up' | 'down' = balanceInUSDT > 0 ? 'up' : 'down';
+      return {
+        id: String(asset.id),
+        name: getCurrencyName(asset.currency),
+        ticker: asset.currency || '',
+        balance: balance.toFixed(8).replace(/\.?0+$/, ''),
+        balanceUSD: `$${formatBalance(balanceInUSDT)}`,
+        icon: getCryptoIconSource(asset.currency),
+        trend,
+        trendData: [20, 30, 25, 40, 35, 50, 45],
+        rawData: asset,
+      };
+    });
+  }, [unifiedBalancesData?.data, balancesData?.data?.crypto, balancesData?.data?.cryptoUnified]);
 
   // Calculate total crypto balance from API (always in USD for now)
   const totalCryptoBalanceUSD = useMemo(() => {
@@ -458,7 +492,6 @@ const Wallet = () => {
       }
     }
     
-    // Calculate from crypto assets first (most accurate after our fixes)
     if (cryptoAssets && cryptoAssets.length > 0) {
       const total = cryptoAssets.reduce((sum, asset) => {
         const usdValue = parseFloat(asset.balanceUSD.replace(/[$,]/g, ''));
@@ -468,35 +501,9 @@ const Wallet = () => {
         return total;
       }
     }
-    
-    // Calculate from virtual accounts if available
-    if (virtualAccountsData?.data && Array.isArray(virtualAccountsData.data)) {
-      const activeAccounts = virtualAccountsData.data.filter((account: any) => account.active !== false);
-      // Sum all account balances converted to USDT/USD
-      const total = activeAccounts.reduce((sum: number, account: any) => {
-        const balance = parseFloat(account.availableBalance || account.accountBalance || '0');
-        const currency = account.currency || '';
-        
-        // USDT and USDC are stablecoins pegged to USD (1:1)
-        if (currency.includes('USDT') || currency.includes('USDC')) {
-          return sum + balance;
-        }
-        
-        // Use API-provided USDT conversion if available
-        if (account.balanceInUSDT !== undefined && account.balanceInUSDT !== null) {
-          const usdtValue = parseFloat(account.balanceInUSDT || '0');
-          return sum + (isNaN(usdtValue) ? 0 : usdtValue);
-        }
-        
-        // Fallback: use placeholder conversion (would need actual price API in production)
-        return sum + (balance * 0.001);
-      }, 0);
-      return total;
-    }
-    
-    // Final fallback: return 0 if no data available
+
     return 0;
-  }, [balancesData?.data?.totals?.cryptoInUSDT, virtualAccountsData?.data, cryptoAssets]);
+  }, [balancesData?.data?.totals?.cryptoInUSDT, cryptoAssets]);
 
   // Currency options for dropdown
   const currencyOptions = [
@@ -851,7 +858,8 @@ const Wallet = () => {
         refetchWallets(),
         refetchBalances(),
         refetchTransactions(),
-        refetchVirtualAccounts(), // Add virtual accounts refresh
+        refetchVirtualAccounts(),
+        refetchUnifiedBalances(),
       ]);
       console.log('[Wallet] Wallet data refreshed successfully');
     } catch (error) {
@@ -933,7 +941,7 @@ const Wallet = () => {
       <StatusBar barStyle="light-content" backgroundColor="#020c19" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={{ paddingBottom: scrollBottomPadding }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -1030,73 +1038,47 @@ const Wallet = () => {
           contentContainerStyle={styles.walletsScrollContent}
           style={styles.walletsScrollView}
         >
-              {currentWallets.map((wallet, index) => {
-                const fiatCardStyle = getFiatCardStyle(wallet.id);
-
-                return (
+              {currentWallets.map((wallet) => (
             <View key={wallet.id} style={styles.walletCard}>
-                    <LinearGradient
-                      colors={fiatGradients[wallet.id] || fiatGradientsFallback[index % fiatGradientsFallback.length]}
-                      start={fiatCardStyle!.gradientStart}
-                      end={fiatCardStyle!.gradientEnd}
-                      style={[
-                        styles.walletCardContainer,
-                        {
-                          borderRadius: fiatCardStyle!.borderRadius,
-                          borderWidth: fiatCardStyle!.borderWidth,
-                          borderColor: fiatCardStyle!.borderColor,
-                          padding: fiatCardStyle!.padding,
-                        },
-                      ]}
-                    >
+                    <View style={[styles.walletCardContainer, styles.fiatWalletCardWhite]}>
                   {/* Currency Code - Top Left */}
-                      <ThemedText style={[styles.walletCurrencyCodeTop, { color: fiatCardStyle!.color }]}>
+                      <ThemedText style={[styles.walletCurrencyCodeTop, { color: FIAT_CARD_TEXT }]}>
                         {wallet.currencyCode}
                       </ThemedText>
                   
                   {/* Flag Icon - Top Right */}
                   <View style={styles.walletIconTopRight}>
-                    {wallet.icon ? (
-                      <Image
-                        source={wallet.icon}
-                        style={styles.walletIconTop}
-                        resizeMode="cover"
-                      />
-                    ) : wallet.flagIcon ? (
-                      <Image
-                        source={wallet.flagIcon}
-                        style={styles.walletIconTop}
-                        resizeMode="cover"
-                      />
-                    ) : null}
+                    <WalletFlag
+                      currency={wallet.currencyCode}
+                      apiFlag={wallet.rawData?.flag}
+                      countries={countries}
+                      size={36 * SCALE}
+                    />
                   </View>
 
                   {/* Wallet Balance Section */}
                   <View style={styles.walletBalanceSectionFiat}>
-                        <ThemedText style={[styles.walletBalanceLabel, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                        <ThemedText style={[styles.walletBalanceLabel, { color: FIAT_CARD_MUTED }]}>
                           Wallet balance
                         </ThemedText>
                     {balanceVisible ? (
                       <>
                         <View style={styles.walletBalanceAmountContainer}>
-                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalancePrefix, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
-                            {wallet.balance.includes('N') ? '₦' : wallet.balance.includes('ksh') ? 'ksh' : ''}
+                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalanceMain, { color: FIAT_CARD_TEXT }]}>
+                            {wallet.balance.split('.')[0] || '0'}
                           </ThemedText>
-                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalanceMain, { color: fiatCardStyle!.color }]}>
-                            {wallet.balance.replace(/[Nksh₦]/g, '').split('.')[0] || '0'}
-                          </ThemedText>
-                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalanceDecimal, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                              <ThemedText fontFamily='Agbalumo-Regular' style={[styles.walletBalanceDecimal, { color: FIAT_CARD_MUTED }]}>
                             .{wallet.balance.split('.')[1] || '00'}
                           </ThemedText>
                         </View>
-                            {/* <ThemedText style={[styles.walletBalanceUSD, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}> */}
-                            {/* {wallet.balanceUSD} */}
-                            {/* </ThemedText> */}
+                            <ThemedText style={[styles.walletBalanceUSD, { color: FIAT_CARD_MUTED }]}>
+                            {wallet.balanceUSD}
+                            </ThemedText>
                       </>
                     ) : (
                       <>
-                            <ThemedText style={[styles.walletBalanceAmount, { color: fiatCardStyle!.color }]}>••••••</ThemedText>
-                            <ThemedText style={[styles.walletBalanceUSD, { color: fiatCardStyle!.color === '#000000' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>••••</ThemedText>
+                            <ThemedText style={[styles.walletBalanceAmount, { color: FIAT_CARD_TEXT }]}>••••••</ThemedText>
+                            <ThemedText style={[styles.walletBalanceUSD, { color: FIAT_CARD_MUTED }]}>••••</ThemedText>
                       </>
                     )}
                   </View>
@@ -1109,18 +1091,12 @@ const Wallet = () => {
                     <MaterialCommunityIcons
                       name={balanceVisible ? 'eye' : 'eye-off'}
                       size={20 * SCALE}
-                          color={fiatCardStyle!.color}
+                          color={FIAT_CARD_TEXT}
                     />
                   </TouchableOpacity>
-
-                  {/* User Name */}
-                      <ThemedText style={[styles.walletUserName, { color: fiatCardStyle!.color }]}>
-                        {wallet.userName}
-                      </ThemedText>
-                </LinearGradient>
+                </View>
             </View>
-                );
-              })}
+              ))}
         </ScrollView>
 
         {/* Navigation Controls - Left/Right Chevrons */}
@@ -1145,15 +1121,12 @@ const Wallet = () => {
                 style={styles.quickActionButton}
                 onPress={() => {
                   if (action.id === '1' && action.title === 'Send') {
-                    // Open Send Funds modal (same as home screen)
-                    setShowSendFundsModal(true);
+                    openSendFundsModal('Fiat');
                   } else if (action.id === '2' && action.title === 'Fund') {
                     // Open Fund Wallet modal (same as home screen)
                     setShowFundWalletModal(true);
                   } else if (action.id === '3' && action.title === 'Withdraw') {
-                    // Navigate to Withdrawal screen in Wallet stack
-                    // @ts-ignore - allow parent route name
-                    navigation.navigate('Withdrawal' as never);
+                    openSendFundsModal('Fiat');
                   } else if (action.id === '4' && action.title === 'Convert') {
                     // Navigate to Conversion screen in Settings stack
                     // @ts-ignore - allow parent route name
@@ -1206,7 +1179,7 @@ const Wallet = () => {
                 <View style={styles.totalBalanceHeader}>
                   <ThemedText style={styles.totalBalanceLabel}>Total Balance</ThemedText>
                 </View>
-                {isLoadingBalances || isLoadingVirtualAccounts ? (
+                {isLoadingBalances || isLoadingUnifiedBalances ? (
                   <ActivityIndicator size="small" color="#FFFFFF" style={{ marginVertical: 20 }} />
                 ) : balanceVisible ? (
                   <ThemedText fontFamily='Agbalumo-Regular' style={styles.totalBalanceAmount}>
@@ -1220,8 +1193,8 @@ const Wallet = () => {
                 <View style={styles.cryptoOverlaidActionsCard}>
                   {cryptoQuickActions.map((action) => {
                     // Check if data is loaded for this action
-                    const isDataLoading = isLoadingVirtualAccounts || isLoadingBalances;
-                    const hasData = !isDataLoading && (virtualAccountsData?.data || balancesData?.data);
+                    const isDataLoading = isLoadingUnifiedBalances || isLoadingBalances;
+                    const hasData = !isDataLoading && (unifiedBalancesData?.data || balancesData?.data);
                     
                     // Buttons should be enabled when data is loaded, not disabled during loading
                     const isButtonDisabled = isDataLoading || !hasData;
@@ -1235,9 +1208,7 @@ const Wallet = () => {
                           setFundWalletType('Crypto');
                           setShowFundWalletModal(true);
                         } else if (action.id === '2' && action.title === 'Withdraw') {
-                          // Open Send Funds modal with Crypto type (same as home screen)
-                          setSendFundsWalletType('Crypto');
-                          setShowSendFundsModal(true);
+                          openSendFundsModal('Crypto');
                         } else if (action.id === '3' && action.title === 'P2P') {
                           // Navigate to P2PTransactions screen in Transactions stack
                           (navigation as any).navigate('Transactions', {
@@ -1315,7 +1286,7 @@ const Wallet = () => {
                 </View>
               )}
 
-              {isLoadingVirtualAccounts ? (
+              {isLoadingUnifiedBalances && cryptoAssets.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                   <ActivityIndicator size="small" color="#A9EF45" />
                 </View>
@@ -1344,10 +1315,10 @@ const Wallet = () => {
                     }}
                   >
                     <View style={styles.cryptoAssetIconContainer}>
-                      <Image
-                        source={asset.icon}
+                      <CryptoIcon
+                        currency={asset.ticker}
+                        size={40 * SCALE}
                         style={styles.cryptoAssetIcon}
-                        resizeMode="cover"
                       />
                     </View>
                     <View style={styles.cryptoAssetInfo}>
@@ -1392,10 +1363,9 @@ const Wallet = () => {
         <View style={styles.walletIdCard}>
           <View style={styles.walletIdHeader}>
             <View style={styles.walletIdInfo}>
-              <ThemedText style={styles.walletIdTitle}>Wallet ID</ThemedText>
+              <ThemedText style={styles.walletIdTitle}>Rhinox Pay ID</ThemedText>
               <ThemedText style={styles.walletIdDescription}>
-                Here is your unique wallet id, you can use it to recieve funds from another
-                RhinoxPay user or through P2P
+                Your unique Rhinox Pay ID for receiving funds from other RhinoxPay users or P2P
               </ThemedText>
             </View>
             <View style={styles.walletIdActions}>
@@ -1499,7 +1469,6 @@ const Wallet = () => {
           </>
         )}
 
-        {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
 
@@ -1600,13 +1569,13 @@ const Wallet = () => {
       <Modal
         visible={showQRModal}
         transparent={true}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowQRModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.qrModalContainer}>
+        <View style={styles.qrModalOverlay}>
+          <View style={[styles.qrModalContainer, { paddingBottom: 24 * SCALE + insets.bottom }]}>
             <View style={styles.qrModalHeader}>
-              <ThemedText style={styles.qrModalTitle}>Wallet QR Code</ThemedText>
+              <ThemedText style={styles.qrModalTitle}>Rhinox Pay ID QR Code</ThemedText>
               <TouchableOpacity
                 onPress={() => setShowQRModal(false)}
                 style={styles.closeButton}
@@ -1712,22 +1681,42 @@ const Wallet = () => {
             
             // Add type-specific fields
             if (transactionType === 'send' || transactionType === 'cryptoWithdrawal') {
-              const metadata = details.metadata || {};
-              const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
-              baseTransaction.recipientName = recipientInfo.name || recipientInfo.accountName || metadata.accountName || details.accountName;
-              baseTransaction.accountName = recipientInfo.accountName || recipientInfo.name || metadata.accountName || details.accountName;
-              baseTransaction.accountNumber = metadata.accountNumber || recipientInfo.accountNumber || recipientInfo.phone || recipientInfo.phoneNumber || details.accountNumber;
-              baseTransaction.bank = metadata.bankName || recipientInfo.bankName || details.bankName;
-              baseTransaction.country = formatCountryForReceipt(details.country);
+              const rhinoxMapped = mapTransferReceiptTransaction(details, {}, {
+                transactionType: transactionType === 'cryptoWithdrawal' ? 'withdrawal' : 'send',
+              });
+              Object.assign(baseTransaction, {
+                recipientName: rhinoxMapped.recipientName,
+                accountName: rhinoxMapped.accountName,
+                accountNumber: rhinoxMapped.accountNumber,
+                bank: rhinoxMapped.bank,
+                rhinoxPayId: rhinoxMapped.rhinoxPayId,
+                channel: rhinoxMapped.channel || details.channel,
+                paymentMethod:
+                  rhinoxMapped.paymentMethod ||
+                  details.paymentMethod ||
+                  details.channel,
+                country: rhinoxMapped.country || formatCountryForReceipt(details.country),
+              });
             } else if (transactionType === 'fund' || transactionType === 'deposit') {
-              const virtualAccount = details.virtualAccount || {};
-              baseTransaction.fundingRoute = details.channel;
-              baseTransaction.provider = details.channel === 'bank_transfer' ? 'Bank Transfer' : details.paymentMethod || details.channel;
-              baseTransaction.paymentMethod = details.paymentMethod || (details.channel === 'bank_transfer' ? 'Bank Transfer' : undefined);
-              baseTransaction.country = formatCountryForReceipt(details.country || (details.channel === 'bank_transfer' ? 'NG' : undefined));
-              baseTransaction.bank = virtualAccount.bankName || details.bankAccount?.bankName;
-              baseTransaction.accountNumber = virtualAccount.accountNumber || details.bankAccount?.accountNumber;
-              baseTransaction.accountName = virtualAccount.accountName || details.bankAccount?.accountName;
+              const receiveMapped = buildEnrichedReceiptFromDetails(details, {}, { transactionType });
+              Object.assign(baseTransaction, {
+                ...receiveMapped,
+                transactionType: receiveMapped.transactionType || transactionType,
+                country: receiveMapped.transferDirection === 'incoming'
+                  ? undefined
+                  : receiveMapped.country || formatCountryForReceipt(details.country || (details.channel === 'bank_transfer' ? 'NG' : undefined)),
+                fundingRoute: receiveMapped.transferDirection === 'incoming'
+                  ? undefined
+                  : details.paymentMethod || details.channel,
+                route: receiveMapped.transferDirection === 'incoming'
+                  ? undefined
+                  : details.paymentMethod || details.channel,
+                provider: receiveMapped.transferDirection === 'incoming'
+                  ? 'RhinoxPay Transfer'
+                  : details.channel === 'bank_transfer'
+                    ? 'Bank Transfer'
+                    : details.paymentMethod || details.channel,
+              });
             } else if (transactionType === 'convert') {
               baseTransaction.recipientName = details.metadata?.toCurrency || details.currency;
             } else if (transactionType === 'billPayment') {
@@ -1958,7 +1947,7 @@ const Wallet = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (Rhinox Pay ID)</ThemedText>
                             <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
                           </View>
                         </LinearGradient>
@@ -1967,6 +1956,10 @@ const Wallet = () => {
                       {/* Bank Account Option */}
                       <TouchableOpacity
                         onPress={() => {
+                          if (!isNairaFiatSupported(sendFundsSelectedCountry, getCurrencyFromCountryCode(sendFundsSelectedCountry))) {
+                            showNairaOnlyComingSoon('Bank withdrawals');
+                            return;
+                          }
                           setShowSendFundsModal(false);
                           (navigation as any).navigate('Settings', {
                             screen: 'SendFundsDirect',
@@ -1996,10 +1989,7 @@ const Wallet = () => {
                       {/* Mobile Money Option */}
                       <TouchableOpacity
                         onPress={() => {
-                          setShowSendFundsModal(false);
-                          (navigation as any).navigate('Settings', {
-                            screen: 'MobileFund',
-                          });
+                          showMobileMoneyComingSoon();
                         }}
                       >
                         <LinearGradient
@@ -2017,7 +2007,7 @@ const Wallet = () => {
                           </View>
                           <View style={styles.sendFundsTextContainer}>
                             <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
-                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send via mobile moneyt</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Coming soon</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -2064,19 +2054,19 @@ const Wallet = () => {
                       >
                         {selectedAsset ? (
                           <>
-                            <Image
-                              source={selectedAsset.icon}
+                            <CryptoIcon
+                              currency={selectedAsset.name}
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
                           </>
                         ) : (
                           <>
-                            <Image
-                              source={require('../../../assets/CurrencyBtc.png')}
+                            <CryptoIcon
+                              currency="BTC"
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
                           </>
@@ -2113,7 +2103,7 @@ const Wallet = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (Rhinox Pay ID)</ThemedText>
                             <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
                           </View>
                         </LinearGradient>
@@ -2211,14 +2201,12 @@ const Wallet = () => {
                   }
                   
                   return filteredWallets.map((wallet: any) => {
-                    let icon = require('../../../assets/CurrencyBtc.png');
                     const currency = wallet.currency || wallet.symbol || '';
                     
                     const asset = {
                       id: String(wallet.id || wallet.currency || wallet.symbol || ''),
                       name: currency,
                       balance: wallet.balance || wallet.availableBalance || '0',
-                      icon: icon,
                     };
                     const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
                     return (
@@ -2231,10 +2219,10 @@ const Wallet = () => {
                           setAssetSearchTerm('');
                         }}
                       >
-                        <Image
-                          source={asset.icon}
+                        <CryptoIcon
+                          currency={asset.name}
+                          size={40 * SCALE}
                           style={styles.assetItemIcon}
-                          resizeMode="cover"
                         />
                         <View style={styles.assetItemInfo}>
                           <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
@@ -2461,8 +2449,11 @@ const Wallet = () => {
                       {/* Bank Transfer Option */}
                       <TouchableOpacity
                         onPress={() => {
+                          if (!isNairaFiatSupported(fundWalletSelectedCountry, getCurrencyFromCountryCode(fundWalletSelectedCountry))) {
+                            showNairaOnlyComingSoon('Fiat deposits');
+                            return;
+                          }
                           setShowFundWalletModal(false);
-                          // Navigate directly to Fund screen since we're already in Wallet stack
                           (navigation as any).navigate('Fund');
                         }}
                       >
@@ -2489,7 +2480,7 @@ const Wallet = () => {
                       {/* Mobile Money Option */}
                       <TouchableOpacity
                         onPress={() => {
-                          showWarningAlert('Under Maintenance', 'Mobile money funding is temporarily unavailable. Please use bank transfer.');
+                          showMobileMoneyComingSoon();
                         }}
                       >
                         <LinearGradient
@@ -2507,7 +2498,7 @@ const Wallet = () => {
                           </View>
                           <View style={styles.sendFundsTextContainer}>
                             <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
-                            <ThemedText style={styles.sendFundsOptionSubtitle}>Mobile money funding is under maintenance</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Coming soon</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -2575,19 +2566,19 @@ const Wallet = () => {
                       >
                         {selectedAsset ? (
                           <>
-                            <Image
-                              source={selectedAsset.icon}
+                            <CryptoIcon
+                              currency={selectedAsset.name}
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
                           </>
                         ) : (
                           <>
-                            <Image
-                              source={require('../../../assets/CurrencyBtc.png')}
+                            <CryptoIcon
+                              currency="BTC"
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
                           </>
@@ -2722,14 +2713,12 @@ const Wallet = () => {
                   }
                   
                   return filteredWallets.map((wallet: any) => {
-                    let icon = require('../../../assets/CurrencyBtc.png');
                     const currency = wallet.currency || wallet.symbol || '';
                     
                     const asset = {
                       id: String(wallet.id || wallet.currency || wallet.symbol || ''),
                       name: currency,
                       balance: wallet.balance || wallet.availableBalance || '0',
-                      icon: icon,
                     };
                     const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
                     return (
@@ -2742,10 +2731,10 @@ const Wallet = () => {
                           setFundWalletAssetSearchTerm('');
                         }}
                       >
-                        <Image
-                          source={asset.icon}
+                        <CryptoIcon
+                          currency={asset.name}
+                          size={40 * SCALE}
                           style={styles.assetItemIcon}
-                          resizeMode="cover"
                         />
                         <View style={styles.assetItemInfo}>
                           <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
@@ -2862,9 +2851,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#020c19',
   },
-  scrollContent: {
-    paddingBottom: 100 * SCALE,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2964,6 +2950,10 @@ const styles = StyleSheet.create({
     borderWidth: 0.3,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     position: 'relative',
+  },
+  fiatWalletCardWhite: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(0, 0, 0, 0.12)',
   },
   walletCardGradient: {
     borderRadius: 15 * SCALE,
@@ -3203,6 +3193,7 @@ const styles = StyleSheet.create({
     borderRadius: 15 * SCALE,
     padding: 14 * SCALE,
     marginHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 8 * SCALE,
   },
   recentTransactionsHeader: {
     flexDirection: 'row',
@@ -3284,9 +3275,6 @@ const styles = StyleSheet.create({
     fontSize: 8 * 1,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
-  },
-  bottomSpacer: {
-    height: 100 * SCALE,
   },
   // Crypto Wallet Styles
   totalBalanceCardWrapper: {
@@ -3561,12 +3549,18 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#FFFFFF',
   },
+  qrModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'flex-end',
+  },
   qrModalContainer: {
     backgroundColor: '#020c19',
-    borderRadius: 20 * SCALE,
-    padding: 20 * SCALE,
+    borderTopLeftRadius: 30 * SCALE,
+    borderTopRightRadius: 30 * SCALE,
+    paddingTop: 20 * SCALE,
+    paddingHorizontal: 20 * SCALE,
     width: '100%',
-    maxWidth: 350 * SCALE,
     borderWidth: 0.3,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
@@ -3593,6 +3587,7 @@ const styles = StyleSheet.create({
     marginBottom: 20 * SCALE,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
   },
   qrWalletId: {
     fontSize: 20 * 1,
@@ -3980,6 +3975,9 @@ const styles = StyleSheet.create({
     fontSize: 11.2,
     fontWeight: '400',
     color: '#000000',
+  },
+  bottomSpacer: {
+    height: 12 * SCALE,
   },
 });
 

@@ -20,6 +20,7 @@ import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
 import { useGetP2PAdDetails } from '../../../queries/p2p.queries';
 import { useCreateP2POrder } from '../../../mutations/p2p.mutations';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
+import { getBaseSymbol } from '../../../utils/cryptoSymbols';
 import { useGetPaymentMethods } from '../../../queries/paymentSettings.queries';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
@@ -162,17 +163,32 @@ const SellOrder = () => {
     return adData?.maxOrder ? parseFloat(adData.maxOrder) : 0;
   }, [adData]);
 
-  // Get crypto balance
+  // Get crypto balance (unified pool for USDT/USDC)
   const cryptoBalance = useMemo(() => {
+    const cryptoCurrency = adData?.cryptoCurrency || 'USDT';
+    const baseSymbol = getBaseSymbol(cryptoCurrency);
+
+    const unified = balancesData?.data?.cryptoUnified;
+    if (Array.isArray(unified)) {
+      const unifiedItem = unified.find(
+        (u: any) => u.symbol === baseSymbol || getBaseSymbol(u.symbol) === baseSymbol
+      );
+      if (unifiedItem) {
+        return unifiedItem.totalAvailable || unifiedItem.totalBalance || '0';
+      }
+    }
+
     if (!balancesData?.data?.crypto || !Array.isArray(balancesData.data.crypto)) {
       return '0';
     }
-    const cryptoCurrency = adData?.cryptoCurrency || 'USDT';
     const wallet = balancesData.data.crypto.find(
-      (w: any) => w.currency === cryptoCurrency || w.currency?.toUpperCase() === cryptoCurrency.toUpperCase()
+      (w: any) =>
+        w.currency === cryptoCurrency ||
+        w.currency?.toUpperCase() === cryptoCurrency.toUpperCase() ||
+        getBaseSymbol(w.currency) === baseSymbol
     );
-    return wallet?.balance || '0';
-  }, [balancesData?.data?.crypto, adData?.cryptoCurrency]);
+    return wallet?.balance || wallet?.availableBalance || '0';
+  }, [balancesData?.data?.crypto, balancesData?.data?.cryptoUnified, adData?.cryptoCurrency]);
 
   // Check if user has sufficient balance
   const hasBalance = useMemo(() => {
@@ -366,7 +382,10 @@ const SellOrder = () => {
     // Check crypto balance
     const availableBalance = parseFloat(cryptoBalance);
     if (cryptoAmount > availableBalance) {
-      showErrorAlert('Insufficient Balance', `You have ${availableBalance.toFixed(8)} ${adData?.cryptoCurrency || 'USDT'} available`);
+      showErrorAlert(
+        'Insufficient Balance',
+        `You have ${availableBalance.toFixed(8)} ${getBaseSymbol(adData?.cryptoCurrency || 'USDT')} available across all networks`
+      );
       return;
     }
 
@@ -609,7 +628,7 @@ const SellOrder = () => {
                       styles.balanceValue,
                       !hasBalance && styles.balanceValueError
                     ]}>
-                      {adData?.cryptoCurrency || 'USDT'} {parseFloat(cryptoBalance).toFixed(8)}
+                      {getBaseSymbol(adData?.cryptoCurrency || 'USDT')} {parseFloat(cryptoBalance).toFixed(8)}
                     </ThemedText>
                   )}
                 </View>
@@ -617,7 +636,7 @@ const SellOrder = () => {
                   <View style={styles.errorMessageContainer}>
                     <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
                     <ThemedText style={styles.errorMessage}>
-                      You don't have any {adData?.cryptoCurrency || 'USDT'} balance. Please deposit first.
+                      You don't have any {getBaseSymbol(adData?.cryptoCurrency || 'USDT')} balance. Please deposit first.
                     </ThemedText>
                   </View>
                 )}
@@ -625,7 +644,7 @@ const SellOrder = () => {
                   <View style={styles.errorMessageContainer}>
                     <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
                     <ThemedText style={styles.errorMessage}>
-                      Amount exceeds your balance of {parseFloat(cryptoBalance).toFixed(8)} {adData?.cryptoCurrency || 'USDT'}
+                      Amount exceeds your balance of {parseFloat(cryptoBalance).toFixed(8)} {getBaseSymbol(adData?.cryptoCurrency || 'USDT')}
                     </ThemedText>
                   </View>
                 )}
@@ -671,7 +690,7 @@ const SellOrder = () => {
                       styles.balanceValue,
                       !hasBalance && styles.balanceValueError
                     ]}>
-                      {adData?.cryptoCurrency || 'USDT'} {parseFloat(cryptoBalance).toFixed(8)}
+                      {getBaseSymbol(adData?.cryptoCurrency || 'USDT')} {parseFloat(cryptoBalance).toFixed(8)}
                     </ThemedText>
                   )}
                 </View>
@@ -679,7 +698,7 @@ const SellOrder = () => {
                   <View style={styles.errorMessageContainer}>
                     <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
                     <ThemedText style={styles.errorMessage}>
-                      You don't have any {adData?.cryptoCurrency || 'USDT'} balance. Please deposit first.
+                      You don't have any {getBaseSymbol(adData?.cryptoCurrency || 'USDT')} balance. Please deposit first.
                     </ThemedText>
                   </View>
                 )}
@@ -687,7 +706,7 @@ const SellOrder = () => {
                   <View style={styles.errorMessageContainer}>
                     <MaterialCommunityIcons name="alert-circle" size={16 * SCALE} color="#ff0000" />
                     <ThemedText style={styles.errorMessage}>
-                      Amount exceeds your balance of {parseFloat(cryptoBalance).toFixed(8)} {adData?.cryptoCurrency || 'USDT'}
+                      Amount exceeds your balance of {parseFloat(cryptoBalance).toFixed(8)} {getBaseSymbol(adData?.cryptoCurrency || 'USDT')}
                     </ThemedText>
                   </View>
                 )}

@@ -15,9 +15,11 @@ export interface InitiateTransferRequest {
   currency: string;
   countryCode: string;
   channel: 'rhionx_user' | 'bank_account' | 'mobile_money';
+  blockchain?: string; // Required for USDT/USDC multi-network transfers
   paymentMethodId?: number; // Required for bank_account channel
   recipientEmail?: string;
   recipientUserId?: string;
+  recipientRhinoxPayId?: string;
   accountNumber?: string;
   bankName?: string;
   bankCode?: string;
@@ -50,14 +52,19 @@ export const useInitiateTransfer = (
  * Verify and complete transfer with PIN
  */
 export interface VerifyTransferRequest {
-  transactionId: number; // API expects integer
-  emailCode?: string; // Backward compatible for older screens; backend currently verifies PIN only.
-  pin: string;
+  transactionId: number;
+  pin?: string;
+  emailOtp?: string;
+  emailCode?: string;
 }
 
 export const verifyTransfer = async (data: VerifyTransferRequest): Promise<ApiResponse> => {
   try {
-    const response = await apiClient.post(API_ROUTES.TRANSFER.VERIFY, data);
+    const response = await apiClient.post(API_ROUTES.TRANSFER.VERIFY, {
+      transactionId: data.transactionId,
+      pin: data.pin,
+      emailOtp: data.emailOtp ?? data.emailCode,
+    });
     return response.data;
   } catch (error: any) {
     throw handleApiError(error);

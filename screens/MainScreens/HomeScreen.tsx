@@ -16,34 +16,37 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { ThemedText } from '../../components';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { ThemedText, WalletFlag, CryptoIcon } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import TransactionReceiptModal from '../components/TransactionReceiptModal';
 import { useGetHomeData, useGetHomeTransactions } from '../../queries/home.queries';
+import { useGetUnreadNotificationCount } from '../../queries/notification.queries';
 import { useGetWalletBalances } from '../../queries/wallet.queries';
 import { useGetVirtualAccounts } from '../../queries/crypto.queries';
 import { useGetCountries } from '../../queries/country.queries';
 import { useGetTransactionDetails } from '../../queries/transactionHistory.queries';
 import { API_BASE_URL } from '../../utils/apiConfig';
 import { showWarningAlert } from '../../utils/customAlert';
+import {
+  isNairaFiatSupported,
+  showMobileMoneyComingSoon,
+  showNairaOnlyComingSoon,
+} from '../../utils/fiatFeatureAvailability';
+import { enrichReceiptTransaction, buildEnrichedReceiptFromDetails, buildEnrichedReceiptFromListItem } from '../../utils/transferReceipt';
+import {
+  filterSupportedCountries,
+  getCurrencyFromSupportedCountryCode,
+  isSelectableFiatWallet,
+  resolveUserCountry,
+} from '../../utils/supportedCountries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9; // Scale factor from Figma to actual device
 
 // Currency mapping based on country code
-const getCurrencyFromCountryCode = (countryCode: string): string => {
-  const currencyMap: { [key: string]: string } = {
-    'NG': 'NGN',
-    'KE': 'KES',
-    'GH': 'GHS',
-    'ZA': 'ZAR',
-    'BW': 'BWP',
-    'TZ': 'TZS',
-    'UG': 'UGX',
-  };
-  return currencyMap[countryCode] || 'NGN';
-};
+const getCurrencyFromCountryCode = (countryCode: string): string =>
+  getCurrencyFromSupportedCountryCode(countryCode);
 
 const COUNTRIES = [
   { id: 1, name: 'Nigeria', flag: '🇳🇬', selected: false },
@@ -57,6 +60,21 @@ const COUNTRIES = [
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const {
+    data: unreadNotificationsData,
+    refetch: refetchUnreadNotifications,
+  } = useGetUnreadNotificationCount({
+    refetchInterval: 60000,
+  });
+  const unreadNotificationCount =
+    unreadNotificationsData?.data?.count ?? unreadNotificationsData?.count ?? 0;
+
+  useFocusEffect(
+    useCallback(() => {
+      refetchUnreadNotifications();
+    }, [refetchUnreadNotifications])
+  );
+
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [promoBannerIndex, setPromoBannerIndex] = useState(0);
   const promoBannerRef = useRef<FlatList>(null);
@@ -72,7 +90,7 @@ const HomeScreen = () => {
   const [sendFundsSelectedCountryName, setSendFundsSelectedCountryName] = useState('Nigeria');
   const [showAssetModal, setShowAssetModal] = useState(false);
   const [assetSearchTerm, setAssetSearchTerm] = useState('');
-  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string; icon: any } | null>(null);
+  const [selectedAsset, setSelectedAsset] = useState<{ id: string; name: string; balance: string } | null>(null);
   const [showFundWalletModal, setShowFundWalletModal] = useState(false);
   const [fundWalletType, setFundWalletType] = useState<'Fiat' | 'Crypto'>('Fiat');
   const [showFundWalletCountryModal, setShowFundWalletCountryModal] = useState(false);
@@ -117,7 +135,11 @@ const HomeScreen = () => {
   const { data: countriesData, isLoading: isLoadingCountries } = useGetCountries({
     queryKey: ['countries'],
   });
-  const countries = countriesData?.data || [];
+  const countries = useMemo(
+    () => filterSupportedCountries(countriesData?.data || []),
+    [countriesData?.data]
+  );
+  const hasInitializedCountry = useRef(false);
 
   // Extract data from API responses
   const homeDataResponse = homeData?.data;
@@ -126,10 +148,29 @@ const HomeScreen = () => {
   // Get wallets from /wallets/balances endpoint (preferred) or fallback to homeData
   const walletsBalancesData = walletsData?.data;
   const fiatWalletsFromAPI = walletsBalancesData?.fiat || homeDataResponse?.wallets || [];
-  const cryptoWalletsFromAPI = walletsBalancesData?.crypto || homeDataResponse?.cryptoWallets || [];
+  const cryptoWalletsFromAPI = useMemo(() => {
+    const unified = walletsBalancesData?.cryptoUnified;
+    if (Array.isArray(unified) && unified.length > 0) {
+      return unified.map((item: any) => ({
+        id: item.symbol,
+        currency: item.symbol,
+        symbol: item.symbol,
+        balance: item.totalAvailable || item.totalBalance || '0',
+        availableBalance: item.totalAvailable || item.totalBalance || '0',
+        active: true,
+        isUnifiedStable: item.isUnifiedStable,
+        networks: item.networks,
+      }));
+    }
+    return walletsBalancesData?.crypto || homeDataResponse?.cryptoWallets || [];
+  }, [walletsBalancesData?.cryptoUnified, walletsBalancesData?.crypto, homeDataResponse?.cryptoWallets]);
   
   // Combine wallets from both sources - use active wallets only
   const allFiatWallets = fiatWalletsFromAPI.filter((w: any) => w.isActive !== false);
+  const selectableFiatWallets = useMemo(
+    () => allFiatWallets.filter((w: any) => isSelectableFiatWallet(w.currency)),
+    [allFiatWallets]
+  );
   const allCryptoWallets = cryptoWalletsFromAPI.filter((w: any) => w.active !== false);
   const allWallets = [...allFiatWallets, ...allCryptoWallets];
 
@@ -205,23 +246,22 @@ const HomeScreen = () => {
     return currencyNames[currency] || currency;
   };
 
-  // Initialize selected country from user's country
+  // Initialize selected country from user's supported African country (fallback: Nigeria)
   useEffect(() => {
-    if (user?.country && !selectedCountry) {
-      setSelectedCountry(user.country.id);
-      setSelectedCountryName(user.country.name);
-    }
-    // Initialize fund wallet country
-    if (user?.country && !fundWalletSelectedCountry) {
-      setFundWalletSelectedCountry(user.country.code || 'NG');
-      setFundWalletSelectedCountryName(user.country.name || 'Nigeria');
-    }
-    // Initialize send funds country
-    if (user?.country && !sendFundsSelectedCountry) {
-      setSendFundsSelectedCountry(user.country.code || 'NG');
-      setSendFundsSelectedCountryName(user.country.name || 'Nigeria');
-    }
-  }, [user?.country]);
+    if (countries.length === 0 || hasInitializedCountry.current) return;
+
+    const resolvedCountry = resolveUserCountry(user?.country, countries);
+    const countryCode = resolvedCountry.code || 'NG';
+
+    setSelectedCountry(resolvedCountry.id || null);
+    setSelectedCountryName(resolvedCountry.name || 'Nigeria');
+    setFundWalletSelectedCountry(countryCode);
+    setFundWalletSelectedCountryName(resolvedCountry.name || 'Nigeria');
+    setSendFundsSelectedCountry(countryCode);
+    setSendFundsSelectedCountryName(resolvedCountry.name || 'Nigeria');
+    setSelectedFiatCurrency(getCurrencyFromCountryCode(countryCode));
+    hasInitializedCountry.current = true;
+  }, [user?.country, countries]);
 
   // Track if we've initialized selectedAsset to prevent infinite loops
   const hasInitializedAsset = useRef(false);
@@ -248,7 +288,6 @@ const HomeScreen = () => {
           id: walletId,
           name: walletName,
           balance: walletBalance,
-          icon: require('../../assets/CurrencyBtc.png'),
         });
         hasInitializedAsset.current = true;
         lastWalletDataHash.current = walletHash;
@@ -344,8 +383,7 @@ const HomeScreen = () => {
 
   // Balance data for Fiat - based on selected currency
   const fiatBalance = useMemo(() => {
-    // Find wallet matching selected currency
-    const selectedWallet = allFiatWallets.find((w: any) => 
+    const selectedWallet = selectableFiatWallets.find((w: any) => 
       (w.currency || '').toUpperCase() === selectedFiatCurrency.toUpperCase()
     );
     
@@ -368,17 +406,28 @@ const HomeScreen = () => {
       decimals: '00',
       fullAmount: '0.00',
     };
-  }, [allFiatWallets, selectedFiatCurrency]);
+  }, [selectableFiatWallets, selectedFiatCurrency]);
 
-  // Initialize selected currency to first available wallet or NGN
+  // Keep selected fiat currency aligned with available African wallets
   useEffect(() => {
-    if (allFiatWallets.length > 0 && !allFiatWallets.some((w: any) => 
-      (w.currency || '').toUpperCase() === selectedFiatCurrency.toUpperCase()
-    )) {
-      // If selected currency doesn't exist, set to first available wallet
-      setSelectedFiatCurrency(allFiatWallets[0]?.currency || 'NGN');
+    const visibleFiatWallets = allFiatWallets.filter((wallet: any) =>
+      isSelectableFiatWallet(wallet.currency)
+    );
+
+    if (visibleFiatWallets.length === 0) return;
+
+    const hasSelectedWallet = visibleFiatWallets.some(
+      (wallet: any) => (wallet.currency || '').toUpperCase() === selectedFiatCurrency.toUpperCase()
+    );
+
+    if (!hasSelectedWallet) {
+      const preferredCurrency = getCurrencyFromCountryCode(sendFundsSelectedCountry);
+      const preferredWallet = visibleFiatWallets.find(
+        (wallet: any) => (wallet.currency || '').toUpperCase() === preferredCurrency.toUpperCase()
+      );
+      setSelectedFiatCurrency(preferredWallet?.currency || visibleFiatWallets[0]?.currency || 'NGN');
     }
-  }, [allFiatWallets]);
+  }, [allFiatWallets, selectedFiatCurrency, sendFundsSelectedCountry]);
 
   const cryptoBalance = {
     currency: cryptoWallets[0]?.currency || 'BTC',
@@ -590,77 +639,93 @@ const HomeScreen = () => {
   };
 
   const mapHomeTransactionType = (tx: any) => {
-    const source = `${tx.title || ''} ${tx.rawData?.type || ''} ${tx.rawData?.channel || ''} ${tx.rawData?.description || ''}`.toLowerCase();
+    const type = (tx.rawData?.type || '').toLowerCase();
+    const channel = (tx.rawData?.channel || '').toLowerCase();
+    const reference = String(tx.rawData?.reference || tx.rawData?.transactionId || '').toUpperCase();
+    const source = `${tx.title || ''} ${type} ${channel} ${tx.rawData?.description || ''}`.toLowerCase();
+
     if (source.includes('p2p')) return 'p2p' as const;
     if (source.includes('bill')) return 'billPayment' as const;
+    if (
+      type === 'deposit' ||
+      reference.endsWith('-CREDIT') ||
+      (channel.includes('rhionx') && (type === 'deposit' || source.includes('received')))
+    ) {
+      return 'fund' as const;
+    }
+    if (type === 'transfer' && channel.includes('rhionx')) return 'send' as const;
     if (source.includes('deposit') || source.includes('fund') || source.includes('bank_transfer')) return 'fund' as const;
     if (source.includes('convert')) return 'convert' as const;
     return 'send' as const;
   };
 
   useEffect(() => {
-    if (!selectedTransactionDetailsData?.data || !selectedTransaction) return;
+    if (!selectedTransactionDetailsData?.data || !selectedTransactionId) return;
 
     const details = selectedTransactionDetailsData.data;
-    const metadata = details.metadata || {};
-    const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
-    const virtualAccount = details.virtualAccount || {};
-    const bankAccount = details.bankAccount || {};
     const transactionType = mapHomeTransactionType({
-      ...selectedTransaction,
       rawData: details,
-      title: details.description || selectedTransaction.transactionTitle,
+      title: details.description,
     });
-    const currency = details.currency || 'NGN';
-    const symbol = currency === 'NGN' ? '₦' : currency;
-    const amount = `${symbol}${parseFloat(details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const rhinoxReceipt = buildEnrichedReceiptFromDetails(
+      details,
+      {
+        recipientName:
+          details.senderInfo?.name ||
+          details.recipientInfo?.name ||
+          details.recipientInfo?.accountName,
+        rhinoxPayId:
+          details.senderInfo?.rhinoxPayId ||
+          details.recipientInfo?.rhinoxPayId ||
+          details.metadata?.recipientRhinoxPayId,
+        country: details.country,
+      },
+      { transactionType }
+    );
     const dateValue = details.completedAt || details.createdAt;
 
-    setSelectedTransaction({
-      ...selectedTransaction,
-      transactionType,
-      transactionTitle: sanitizeTransactionText(details.description || details.normalizedType || selectedTransaction.transactionTitle),
-      amountNGN: amount,
-      transferAmount: amount,
-      paymentAmount: details.totalAmount
-        ? `${symbol}${parseFloat(details.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : amount,
-      fee: `${symbol}${parseFloat(details.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      country: formatCountryForReceipt(details.country || (details.channel === 'bank_transfer' ? 'NG' : undefined)),
-      bank: virtualAccount.bankName || bankAccount.bankName || metadata.bankName || recipientInfo.bankName,
-      accountNumber: virtualAccount.accountNumber || bankAccount.accountNumber || metadata.accountNumber || recipientInfo.accountNumber,
-      accountName: virtualAccount.accountName || bankAccount.accountName || metadata.accountName || recipientInfo.accountName || recipientInfo.name,
-      recipientName: recipientInfo.name || recipientInfo.accountName || virtualAccount.accountName || selectedTransaction.recipientName,
-      transactionId: details.reference || (details.id ? String(details.id) : selectedTransaction.transactionId),
-      paymentMethod: details.paymentMethod || (details.channel === 'bank_transfer' ? 'Bank Transfer' : selectedTransaction.paymentMethod),
-      p2pType: details.p2pType || details.p2pOrder?.p2pType || selectedTransaction.p2pType,
-      price: details.price || details.p2pOrder?.price || selectedTransaction.price,
-      totalQty: details.totalQty || (
-        details.p2pOrder?.cryptoAmount && details.p2pOrder?.cryptoCurrency
-          ? `${details.p2pOrder.cryptoAmount} ${details.p2pOrder.cryptoCurrency}`
-          : selectedTransaction.totalQty
-      ),
-      merchantName: details.merchantName || details.p2pOrder?.peer?.name || selectedTransaction.merchantName,
-      merchantContact: details.merchantContact || details.p2pOrder?.peer?.email || details.p2pOrder?.peer?.phone || selectedTransaction.merchantContact,
-      orderId: details.orderId || details.p2pOrder?.id || selectedTransaction.orderId,
-      chatName: details.chatName || details.p2pOrder?.peer?.name || selectedTransaction.chatName,
-      chatEmail: details.chatEmail || details.p2pOrder?.peer?.email || selectedTransaction.chatEmail,
-      billerType: details.billerType || details.provider?.name || details.category?.name || selectedTransaction.billerType,
-      mobileNumber: details.mobileNumber || details.accountNumber || selectedTransaction.mobileNumber,
-      plan: details.plan?.name || details.plan || selectedTransaction.plan,
-      fundingRoute: transactionType === 'fund' ? (details.paymentMethod || 'Bank Transfer') : selectedTransaction.fundingRoute,
-      route: transactionType === 'fund' ? (details.paymentMethod || 'Bank Transfer') : selectedTransaction.route,
-      provider: transactionType === 'fund' ? (details.paymentMethod || 'Bank Transfer') : selectedTransaction.provider,
-      dateTime: dateValue
-        ? new Date(dateValue).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : selectedTransaction.dateTime,
-      status: details.status || selectedTransaction.status,
+    setSelectedTransaction((prev) => {
+      if (!prev) return prev;
+      return enrichReceiptTransaction({
+        ...prev,
+        ...rhinoxReceipt,
+        transactionType: rhinoxReceipt.transactionType || transactionType,
+        transactionTitle: sanitizeTransactionText(
+          details.description || details.normalizedType || prev.transactionTitle
+        ),
+        status: details.status || prev.status,
+        fundingRoute: rhinoxReceipt.transferDirection === 'incoming' ? undefined : prev.fundingRoute,
+        route: rhinoxReceipt.transferDirection === 'incoming' ? undefined : prev.route,
+        provider: rhinoxReceipt.transferDirection === 'incoming' ? 'RhinoxPay Transfer' : prev.provider,
+        dateTime: dateValue
+          ? new Date(dateValue).toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          : prev.dateTime,
+        p2pType: details.p2pType || details.p2pOrder?.p2pType || prev.p2pType,
+        price: details.price || details.p2pOrder?.price || prev.price,
+        totalQty:
+          details.totalQty ||
+          (details.p2pOrder?.cryptoAmount && details.p2pOrder?.cryptoCurrency
+            ? `${details.p2pOrder.cryptoAmount} ${details.p2pOrder.cryptoCurrency}`
+            : prev.totalQty),
+        merchantName: details.merchantName || details.p2pOrder?.peer?.name || prev.merchantName,
+        merchantContact:
+          details.merchantContact ||
+          details.p2pOrder?.peer?.email ||
+          details.p2pOrder?.peer?.phone ||
+          prev.merchantContact,
+        orderId: details.orderId || details.p2pOrder?.id || prev.orderId,
+        chatName: details.chatName || details.p2pOrder?.peer?.name || prev.chatName,
+        chatEmail: details.chatEmail || details.p2pOrder?.peer?.email || prev.chatEmail,
+        billerType: details.billerType || details.provider?.name || details.category?.name || prev.billerType,
+        mobileNumber: details.mobileNumber || details.accountNumber || prev.mobileNumber,
+        plan: details.plan?.name || details.plan || prev.plan,
+      });
     });
   }, [selectedTransactionDetailsData?.data, selectedTransactionId]);
 
@@ -674,47 +739,18 @@ const HomeScreen = () => {
   // Handle transaction press - map simple transaction data to modal format
   const handleTransactionPress = (transaction: typeof transactions[0]) => {
     const rawData = transaction.rawData || {};
-    const virtualAccount = rawData.virtualAccount || {};
-    const bankAccount = rawData.bankAccount || {};
-    const transactionType = mapHomeTransactionType(transaction);
-    // Map the simple transaction data to the format expected by TransactionReceiptModal
-    const mappedTransaction = {
-      transactionTitle: transaction.title,
-      transactionId: rawData.reference || (transaction.id ? String(transaction.id) : undefined),
+    const mappedTransaction = buildEnrichedReceiptFromListItem(rawData, {
+      title: transaction.title,
       dateTime: transaction.date,
-      amountNGN: transaction.amount,
       status: transaction.status,
+      listAmount: transaction.amount,
+    });
+    const transactionType = mappedTransaction.transactionType || mapHomeTransactionType(transaction);
+
+    setSelectedTransaction({
+      ...mappedTransaction,
       transactionType,
-      recipientName: rawData.recipientInfo?.name || rawData.recipientInfo?.accountName || virtualAccount.accountName || rawData.accountName,
-      accountName: virtualAccount.accountName || bankAccount.accountName || rawData.recipientInfo?.accountName || rawData.recipientInfo?.name || rawData.accountName,
-      accountNumber: virtualAccount.accountNumber || bankAccount.accountNumber || rawData.metadata?.accountNumber || rawData.recipientInfo?.accountNumber || rawData.accountNumber,
-      bank: virtualAccount.bankName || bankAccount.bankName || rawData.metadata?.bankName || rawData.recipientInfo?.bankName || rawData.bankName,
-      country: formatCountryForReceipt(rawData.country || (rawData.channel === 'bank_transfer' ? 'NG' : undefined)),
-      transferAmount: transaction.amount,
-      fee: '0.00',
-      paymentAmount: transaction.amount,
-      paymentMethod: rawData.paymentMethod || (rawData.channel === 'bank_transfer' ? 'Bank Transfer' : undefined),
-      p2pType: rawData.p2pType || rawData.p2pOrder?.p2pType,
-      price: rawData.price || rawData.p2pOrder?.price,
-      totalQty: rawData.totalQty || (
-        rawData.p2pOrder?.cryptoAmount && rawData.p2pOrder?.cryptoCurrency
-          ? `${rawData.p2pOrder.cryptoAmount} ${rawData.p2pOrder.cryptoCurrency}`
-          : undefined
-      ),
-      merchantName: rawData.merchantName || rawData.p2pOrder?.peer?.name,
-      merchantContact: rawData.merchantContact || rawData.p2pOrder?.peer?.email || rawData.p2pOrder?.peer?.phone,
-      orderId: rawData.orderId || rawData.metadata?.orderId || rawData.p2pOrder?.id,
-      chatName: rawData.chatName || rawData.p2pOrder?.peer?.name,
-      chatEmail: rawData.chatEmail || rawData.p2pOrder?.peer?.email,
-      billerType: rawData.billerType || rawData.provider?.name || rawData.category?.name || rawData.metadata?.providerName,
-      mobileNumber: rawData.mobileNumber || rawData.accountNumber || rawData.metadata?.accountNumber,
-      plan: rawData.plan?.name || rawData.plan || rawData.metadata?.itemName,
-      fundingRoute: transactionType === 'fund' ? (rawData.paymentMethod || 'Bank Transfer') : undefined,
-      route: transactionType === 'fund' ? (rawData.paymentMethod || 'Bank Transfer') : undefined,
-      provider: transactionType === 'fund' ? (rawData.paymentMethod || 'Bank Transfer') : undefined,
-    };
-    
-    setSelectedTransaction(mappedTransaction);
+    });
     setSelectedTransactionId(Number(transaction.id) || null);
     setShowReceiptModal(true);
   };
@@ -811,6 +847,13 @@ const HomeScreen = () => {
           >
             <View style={styles.iconCircle}>
               <MaterialCommunityIcons name="bell" size={24 * SCALE} color="#FFFFFF" />
+              {unreadNotificationCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <ThemedText style={styles.notificationBadgeText}>
+                    {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                  </ThemedText>
+                </View>
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -929,33 +972,17 @@ const HomeScreen = () => {
               const isFirst = index === 0;
               // All wallets in filteredWallets are fiat (NGN and KSH only)
               const isFiat = true;
-              const flagUri = wallet.flag ? `${API_BASE_URL.replace('/api', '')}${wallet.flag}` : null;
               const currencyName = getCurrencyName(wallet.currency, wallet);
-              
-              // Determine flag image based on currency
-              let flagImageSource;
-              if (flagUri) {
-                flagImageSource = { uri: flagUri };
-              } else {
-                // Fallback to country flag based on currency
-                const currency = (wallet.currency || '').toUpperCase();
-                if (currency === 'NGN') {
-                  flagImageSource = require('../../assets/login/nigeria-flag.png');
-                } else if (currency === 'KES' || currency === 'KSH') {
-                  // Use Kenya flag - you may need to add this asset
-                  flagImageSource = require('../../assets/login/nigeria-flag.png'); // TODO: Replace with Kenya flag asset
-                } else {
-                  flagImageSource = require('../../assets/login/nigeria-flag.png');
-                }
-              }
-              
+
               const WalletCardContent = (
                 <>
                   <View style={styles.walletCardContent}>
-                    <Image
-                      source={flagImageSource}
+                    <WalletFlag
+                      currency={wallet.currency}
+                      apiFlag={wallet.flag}
+                      countries={countries}
+                      size={33}
                       style={styles.walletIcon}
-                      resizeMode="cover"
                     />
                     <View style={styles.walletInfo}>
                       <ThemedText style={[styles.walletCode, !isFirst && styles.walletCodeDark]}>
@@ -1286,59 +1313,59 @@ const HomeScreen = () => {
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ActivityIndicator size="small" color="#A9EF45" />
               </View>
-            ) : allFiatWallets.length === 0 ? (
+            ) : selectableFiatWallets.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)' }}>
                   No fiat wallets available
                 </ThemedText>
               </View>
             ) : (
-              <ScrollView style={styles.modalList}>
-                {allFiatWallets.map((wallet: any) => {
+              <ScrollView
+                style={styles.fiatWalletModalList}
+                showsVerticalScrollIndicator={false}
+              >
+                {selectableFiatWallets.map((wallet: any) => {
                   const currency = (wallet.currency || '').toUpperCase();
                   const isSelected = currency === selectedFiatCurrency.toUpperCase();
-                  const flagUri = wallet.flag ? `${API_BASE_URL.replace('/api', '')}${wallet.flag}` : null;
-                  const country = countries.find((c: any) => 
-                    getCurrencyFromCountryCode(c.code || '') === currency
-                  );
-                  
+
                   return (
                     <TouchableOpacity
-                      key={wallet.id}
-                      style={styles.countryItem}
+                      key={wallet.id || currency}
+                      style={[
+                        styles.fiatWalletOption,
+                        isSelected && styles.fiatWalletOptionSelected,
+                      ]}
                       onPress={() => {
                         setSelectedFiatCurrency(wallet.currency || currency);
                         setShowFiatWalletModal(false);
                       }}
+                      activeOpacity={0.8}
                     >
-                      {flagUri ? (
-                        <Image
-                          source={{ uri: flagUri }}
-                          style={styles.countryFlagImage}
-                          resizeMode="cover"
+                      <View style={styles.fiatWalletOptionLeft}>
+                        <WalletFlag
+                          currency={wallet.currency || currency}
+                          apiFlag={wallet.flag}
+                          countries={countries}
+                          size={36}
+                          style={styles.fiatWalletFlag}
                         />
-                      ) : country?.flag ? (
-                        <Image
-                          source={{ uri: `${API_BASE_URL.replace('/api', '')}${country.flag}` }}
-                          style={styles.countryFlagImage}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <ThemedText style={styles.countryFlag}>{currency}</ThemedText>
-                      )}
-                      <View style={{ flex: 1 }}>
-                        <ThemedText style={styles.countryName}>
-                          {getCurrencyName(wallet.currency, wallet)}
-                        </ThemedText>
-                        <ThemedText style={{ fontSize: 10, color: 'rgba(255, 255, 255, 0.5)' }}>
-                          {formatBalance(wallet.balance || '0')} {wallet.currency}
-                        </ThemedText>
+                        <View style={styles.fiatWalletOptionText}>
+                          <ThemedText style={styles.fiatWalletOptionName} numberOfLines={1}>
+                            {getCurrencyName(wallet.currency, wallet)}
+                          </ThemedText>
+                          <ThemedText style={styles.fiatWalletOptionCode}>{currency}</ThemedText>
+                        </View>
                       </View>
-                      <MaterialCommunityIcons
-                        name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
-                        size={24}
-                        color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
-                      />
+                      <View style={styles.fiatWalletOptionRight}>
+                        <ThemedText style={styles.fiatWalletOptionBalance} numberOfLines={1}>
+                          {formatBalance(wallet.balance || '0')} {currency}
+                        </ThemedText>
+                        <MaterialCommunityIcons
+                          name={isSelected ? 'radiobox-marked' : 'radiobox-blank'}
+                          size={22}
+                          color={isSelected ? '#A9EF45' : 'rgba(255, 255, 255, 0.35)'}
+                        />
+                      </View>
                     </TouchableOpacity>
                   );
                 })}
@@ -1508,7 +1535,7 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (Rhinox Pay ID)</ThemedText>
                             <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
                           </View>
                         </LinearGradient>
@@ -1517,6 +1544,10 @@ const HomeScreen = () => {
                       {/* Bank Account Option */}
                       <TouchableOpacity
                         onPress={() => {
+                          if (!isNairaFiatSupported(sendFundsSelectedCountry, getCurrencyFromCountryCode(sendFundsSelectedCountry))) {
+                            showNairaOnlyComingSoon('Bank withdrawals');
+                            return;
+                          }
                           setShowSendFundsModal(false);
                           (navigation as any).navigate('Settings', {
                             screen: 'SendFundsDirect',
@@ -1546,10 +1577,7 @@ const HomeScreen = () => {
                       {/* Mobile Money Option */}
                       <TouchableOpacity
                         onPress={() => {
-                          setShowSendFundsModal(false);
-                          (navigation as any).navigate('Settings', {
-                            screen: 'MobileFund',
-                          });
+                          showMobileMoneyComingSoon();
                         }}
                       >
                         <LinearGradient
@@ -1567,7 +1595,7 @@ const HomeScreen = () => {
                           </View>
                           <View style={styles.sendFundsTextContainer}>
                             <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
-                            <ThemedText style={styles.sendFundsOptionSubtitle}>Send via mobile moneyt</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Coming soon</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -1615,19 +1643,19 @@ const HomeScreen = () => {
                       >
                         {selectedAsset ? (
                           <>
-                            <Image
-                              source={selectedAsset.icon}
+                            <CryptoIcon
+                              currency={selectedAsset.name}
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
                           </>
                         ) : (
                           <>
-                            <Image
-                              source={require('../../assets/CurrencyBtc.png')}
+                            <CryptoIcon
+                              currency="BTC"
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
                           </>
@@ -1664,7 +1692,7 @@ const HomeScreen = () => {
                             />
                           </View>
                           <View style={styles.sendFundsTextContainer}>
-                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (User ID)</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionTitle}>RhionX User (Rhinox Pay ID)</ThemedText>
                             <ThemedText style={styles.sendFundsOptionSubtitle}>Send funds immediately to another rhinoxuser anywhere in Africa.</ThemedText>
                           </View>
                         </LinearGradient>
@@ -1785,22 +1813,11 @@ const HomeScreen = () => {
                   }
                   
                   return filteredWallets.map((wallet: any) => {
-                    // Map currency to icon
-                    let icon = require('../../assets/CurrencyBtc.png');
                     const currency = wallet.currency || wallet.symbol || '';
-                    if (currency === 'BTC' || currency === 'Bitcoin') {
-                      icon = require('../../assets/CurrencyBtc.png');
-                    } else if (currency === 'USDT' || currency === 'Tether') {
-                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
-                    } else if (currency === 'ETH' || currency === 'Ethereum') {
-                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
-                    }
-                    
                     const asset = {
                       id: String(wallet.id || wallet.currency || wallet.symbol || ''),
                       name: currency,
                       balance: wallet.balance || '0',
-                      icon: icon,
                     };
                     const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
                     return (
@@ -1813,10 +1830,10 @@ const HomeScreen = () => {
                           setAssetSearchTerm(''); // Reset search when selecting
                         }}
                       >
-                        <Image
-                          source={asset.icon}
+                        <CryptoIcon
+                          currency={asset.name}
+                          size={40 * SCALE}
                           style={styles.assetItemIcon}
-                          resizeMode="cover"
                         />
                         <View style={styles.assetItemInfo}>
                           <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
@@ -2043,8 +2060,11 @@ const HomeScreen = () => {
                       {/* Bank Transfer Option */}
                       <TouchableOpacity
                         onPress={() => {
+                          if (!isNairaFiatSupported(fundWalletSelectedCountry, getCurrencyFromCountryCode(fundWalletSelectedCountry))) {
+                            showNairaOnlyComingSoon('Fiat deposits');
+                            return;
+                          }
                           setShowFundWalletModal(false);
-                          // Navigate to Fund screen in Wallet stack (uses real API endpoints)
                           (navigation as any).navigate('Wallet', {
                             screen: 'Fund',
                           });
@@ -2073,7 +2093,7 @@ const HomeScreen = () => {
                       {/* Mobile Money Option */}
                       <TouchableOpacity
                         onPress={() => {
-                          showWarningAlert('Under Maintenance', 'Mobile money funding is temporarily unavailable. Please use bank transfer.');
+                          showMobileMoneyComingSoon();
                         }}
                       >
                         <LinearGradient
@@ -2091,7 +2111,7 @@ const HomeScreen = () => {
                           </View>
                           <View style={styles.sendFundsTextContainer}>
                             <ThemedText style={styles.sendFundsOptionTitle}>Mobile Money</ThemedText>
-                            <ThemedText style={styles.sendFundsOptionSubtitle}>Mobile money funding is under maintenance</ThemedText>
+                            <ThemedText style={styles.sendFundsOptionSubtitle}>Coming soon</ThemedText>
                           </View>
                         </LinearGradient>
                       </TouchableOpacity>
@@ -2159,19 +2179,19 @@ const HomeScreen = () => {
                       >
                         {selectedAsset ? (
                           <>
-                            <Image
-                              source={selectedAsset.icon}
+                            <CryptoIcon
+                              currency={selectedAsset.name}
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>{selectedAsset.name}</ThemedText>
                           </>
                         ) : (
                           <>
-                            <Image
-                              source={require('../../assets/CurrencyBtc.png')}
+                            <CryptoIcon
+                              currency="BTC"
+                              size={24 * SCALE}
                               style={styles.sendFundsAssetIcon}
-                              resizeMode="cover"
                             />
                             <ThemedText style={styles.sendFundsAssetNameText}>Bitcoin</ThemedText>
                           </>
@@ -2307,22 +2327,11 @@ const HomeScreen = () => {
                   }
                   
                   return filteredWallets.map((wallet: any) => {
-                    // Map currency to icon
-                    let icon = require('../../assets/CurrencyBtc.png');
                     const currency = wallet.currency || wallet.symbol || '';
-                    if (currency === 'BTC' || currency === 'Bitcoin') {
-                      icon = require('../../assets/CurrencyBtc.png');
-                    } else if (currency === 'USDT' || currency === 'Tether') {
-                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
-                    } else if (currency === 'ETH' || currency === 'Ethereum') {
-                      icon = require('../../assets/CurrencyBtc.png'); // Use default for now
-                    }
-                    
                     const asset = {
                       id: String(wallet.id || wallet.currency || wallet.symbol || ''),
                       name: currency,
                       balance: wallet.balance || '0',
-                      icon: icon,
                     };
                     const isSelected = selectedAsset?.id === asset.id || selectedAsset?.name === asset.name;
                     return (
@@ -2335,10 +2344,10 @@ const HomeScreen = () => {
                           setFundWalletAssetSearchTerm(''); // Reset search when selecting
                         }}
                       >
-                        <Image
-                          source={asset.icon}
+                        <CryptoIcon
+                          currency={asset.name}
+                          size={40 * SCALE}
                           style={styles.assetItemIcon}
-                          resizeMode="cover"
                         />
                         <View style={styles.assetItemInfo}>
                           <ThemedText style={styles.assetItemName}>{asset.name}</ThemedText>
@@ -2488,7 +2497,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   welcomeText: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
   },
@@ -2508,6 +2517,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16 * SCALE,
+    height: 16 * SCALE,
+    borderRadius: 8 * SCALE,
+    backgroundColor: '#FF4D4F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4 * SCALE,
+    borderWidth: 1,
+    borderColor: '#020c19',
+  },
+  notificationBadgeText: {
+    fontSize: 9 * SCALE,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    lineHeight: 12 * SCALE,
   },
   profileImage: {
     width: 26 * SCALE,
@@ -2596,7 +2626,7 @@ const styles = StyleSheet.create({
     minHeight: 123 * SCALE,
   },
   actionButtonText: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '300',
     color: '#A9EF45',
     marginTop: 5 * 1,
@@ -2618,7 +2648,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   viewAllText: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '400',
     color: '#A9EF45',
   },
@@ -2649,9 +2679,6 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   walletIcon: {
-    width: 33 * 1,
-    height: 33 * 1,
-    borderRadius: 16.5 * 1,
     marginBottom: 8 * 1,
   },
   walletInfo: {
@@ -2704,7 +2731,7 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   walletUsdAmount: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '500',
     color: 'rgba(255, 255, 255, 0.5)',
   },
@@ -2783,7 +2810,7 @@ const styles = StyleSheet.create({
     gap: 10 * SCALE,
   },
   filterButtonText: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '300',
     color: '#FFFFFF',
   },
@@ -2811,7 +2838,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   filterOptionText: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '400',
     color: '#FFFFFF',
   },
@@ -3136,7 +3163,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   sendFundsBalanceLabel: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
     marginBottom: 8 * SCALE,
@@ -3282,7 +3309,7 @@ const styles = StyleSheet.create({
     marginBottom: 4 * SCALE,
   },
   sendFundsRecentName: {
-    fontSize: 10 * 1,
+    fontSize: 12,
     fontWeight: '400',
     color: '#FFFFFF',
     marginBottom: 2 * SCALE,
@@ -3366,6 +3393,66 @@ const styles = StyleSheet.create({
     fontSize: 11.2,
     fontWeight: '400',
     color: '#FFFFFF',
+  },
+  fiatWalletModalList: {
+    maxHeight: 390,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  fiatWalletOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+  },
+  fiatWalletOptionSelected: {
+    borderColor: 'rgba(169, 239, 69, 0.45)',
+    backgroundColor: 'rgba(169, 239, 69, 0.08)',
+  },
+  fiatWalletOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+    minWidth: 0,
+  },
+  fiatWalletFlag: {
+    marginRight: 12,
+  },
+  fiatWalletOptionText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fiatWalletOptionName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  fiatWalletOptionCode: {
+    fontSize: 11,
+    fontWeight: '400',
+    color: 'rgba(255, 255, 255, 0.55)',
+  },
+  fiatWalletOptionRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+  },
+  fiatWalletOptionBalance: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    maxWidth: 110,
+    textAlign: 'right',
   },
   applyButton: {
     backgroundColor: '#A9EF45',

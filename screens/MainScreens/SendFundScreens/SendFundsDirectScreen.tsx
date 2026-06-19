@@ -26,9 +26,15 @@ import { useGetPaymentSettingsBanks } from '../../../queries/paymentSettings.que
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
-import { showErrorAlert } from '../../../utils/customAlert';
+import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import { mapTransactionReceiptTransaction } from '../../../utils/transferReceipt';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -73,21 +79,7 @@ const SendFundsDirectScreen = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -129,6 +121,9 @@ const SendFundsDirectScreen = () => {
   const {
     data: banksData,
     isLoading: isLoadingBanks,
+    isFetching: isFetchingBanks,
+    isError: isBanksError,
+    error: banksError,
     refetch: refetchBanks,
   } = useGetPaymentSettingsBanks({
     countryCode: selectedCountryCode,
@@ -156,6 +151,13 @@ const SendFundsDirectScreen = () => {
     {
       enabled: showReceiptModal && transactionId !== null,
     }
+  );
+
+  // Prefetch banks when screen opens so the list is ready before the modal opens.
+  useFocusEffect(
+    React.useCallback(() => {
+      refetchBanks();
+    }, [refetchBanks])
   );
 
   // Transform PalmPay bank list from API
@@ -404,9 +406,16 @@ const SendFundsDirectScreen = () => {
       return;
     }
 
-    if (hasVerifiedTransfer) {
+    if (hasVerifiedTransfer && transactionId) {
       setPin('');
-      setShowPinModal(true);
+      proceedAfterTransactionInitiate(transactionId, {
+        showVerificationModal: () => setShowPinModal(true),
+        confirm: (payload) =>
+          verifyTransferMutation.mutate({
+            transactionId: payload.transactionId,
+            pin: payload.pin ?? '',
+          }),
+      });
       return;
     }
 
@@ -468,19 +477,21 @@ const SendFundsDirectScreen = () => {
     setPin(pin.slice(0, -1));
   };
 
-  const handlePinVerification = (pinValue = pin) => {
+  const handlePinVerification = async (pinValue = pin) => {
     if (!transactionId) {
       showErrorAlert('Error', 'Transaction ID not found');
       return;
     }
-    if (!pinValue || pinValue.length !== 5) {
-      showErrorAlert('Validation Error', 'Please enter a valid 5-digit PIN');
+
+    const result = await prepareTransactionConfirmPayload(transactionId, { pin: pinValue });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
       return;
     }
 
     verifyTransferMutation.mutate({
-      transactionId: transactionId,
-      pin: pinValue,
+      transactionId: result.payload.transactionId,
+      pin: result.payload.pin ?? '',
     });
   };
 
@@ -835,14 +846,35 @@ const SendFundsDirectScreen = () => {
               />
             </View>
 
-            {isLoadingBanks ? (
+            {isLoadingBanks && filteredPaymentMethods.length === 0 ? (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ActivityIndicator size="small" color="#A9EF45" />
                 <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, marginTop: 10 }}>
                   Loading banks...
                 </ThemedText>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.35)', fontSize: 10 * SCALE, marginTop: 6, textAlign: 'center', paddingHorizontal: 24 }}>
+                  This may take longer on mobile data. Please wait.
+                </ThemedText>
+              </View>
+            ) : isBanksError && filteredPaymentMethods.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+                <ThemedText style={{ color: 'rgba(255, 255, 255, 0.7)', fontSize: 12 * SCALE, textAlign: 'center', marginBottom: 12 }}>
+                  {banksError?.message || 'Could not load banks. Check your connection and try again.'}
+                </ThemedText>
+                <TouchableOpacity
+                  style={styles.applyButton}
+                  onPress={() => refetchBanks()}
+                >
+                  <ThemedText style={styles.applyButtonText}>Retry</ThemedText>
+                </TouchableOpacity>
               </View>
             ) : filteredPaymentMethods.length > 0 ? (
+              <>
+                {isFetchingBanks && (
+                  <ThemedText style={{ color: 'rgba(255, 255, 255, 0.4)', fontSize: 10 * SCALE, textAlign: 'center', marginBottom: 8 }}>
+                    Updating bank list...
+                  </ThemedText>
+                )}
               <ScrollView style={styles.paymentMethodList} showsVerticalScrollIndicator={false}>
                 {filteredPaymentMethods.map((method) => (
                 <TouchableOpacity
@@ -859,6 +891,7 @@ const SendFundsDirectScreen = () => {
                 </TouchableOpacity>
                 ))}
               </ScrollView>
+              </>
             ) : (
               <View style={{ alignItems: 'center', paddingVertical: 40 }}>
                 <ThemedText style={{ color: 'rgba(255, 255, 255, 0.5)', fontSize: 12 * SCALE, textAlign: 'center', paddingHorizontal: 20 }}>
@@ -1175,44 +1208,18 @@ const SendFundsDirectScreen = () => {
       />
 
       {/* Transaction Receipt Modal */}
-      {receiptData?.data && (
+      {showReceiptModal && receiptData?.data && (
         <TransactionReceiptModal
           visible={showReceiptModal && !isLoadingReceipt}
-          transaction={(() => {
-            const details = receiptData.data;
-            const metadata = details.metadata || {};
-            const recipientInfo = details.recipientInfo || metadata.recipientInfo || {};
-            const currency = details.currency || selectedCurrency;
-            const symbol = currency === 'NGN' ? '₦' : currency;
-            const dateValue = details.date || details.completedAt || details.createdAt;
-
-            return {
-              transactionType: 'send',
-              transactionTitle: `Send Funds - ${recipientInfo.accountName || recipientInfo.name || accountName || 'Recipient'}`,
-              transferAmount: `${symbol}${parseFloat(details.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              fee: `${symbol}${parseFloat(details.fee || '0').toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              paymentAmount: details.totalAmount
-                ? `${symbol}${parseFloat(details.totalAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                : undefined,
-              country: details.country || selectedCountryName,
-              recipientName: recipientInfo.accountName || recipientInfo.name || accountName,
-              accountName: recipientInfo.accountName || recipientInfo.name || accountName,
-              bank: metadata.bankName || recipientInfo.bankName || selectedBank?.name,
-              accountNumber: metadata.accountNumber || recipientInfo.accountNumber || accountNumber,
-              transactionId: details.reference || details.transactionId || (transactionId ? String(transactionId) : undefined),
-              dateTime: dateValue
-                ? new Date(dateValue).toLocaleString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : undefined,
-              paymentMethod: details.paymentMethod || 'Bank Transfer',
-              status: details.status,
-            };
-          })()}
+          transaction={mapTransactionReceiptTransaction(receiptData.data, {
+            amount: amount.replace(/,/g, ''),
+            currency: selectedCurrency,
+            country: selectedCountryName,
+            recipientName: accountName,
+            accountName,
+            bankName: selectedBank?.name,
+            accountNumber,
+          })}
           onClose={handleReceiptClose}
         />
       )}

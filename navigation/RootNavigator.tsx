@@ -1,12 +1,13 @@
 import React, { useMemo, useEffect, useRef } from "react";
 import { NavigationContainer, NavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { View, ActivityIndicator } from "react-native";
 import OnboardingNavigator from "./OnboardingNavigator";
 import AuthNavigator from "./AuthNavigator";
 import MainNavigator from "./MainNavigator";
 import { CustomAlertProvider } from "../components";
+import AppLoadingScreen from "../components/AppLoadingScreen";
 import { useAuth } from "../hooks/useAuth";
+import { markSplashReady } from "../utils/splashReady";
 
 const RootStack = createNativeStackNavigator();
 
@@ -14,6 +15,12 @@ export default function RootNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
   const hasNavigatedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoading) {
+      markSplashReady("auth");
+    }
+  }, [isLoading]);
 
   // Determine initial route based on authentication state
   const initialRouteName = useMemo(() => {
@@ -53,9 +60,7 @@ export default function RootNavigator() {
   if (isLoading) {
     return (
       <CustomAlertProvider>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#020c19' }}>
-          <ActivityIndicator size="large" color="#A9EF45" />
-        </View>
+        <AppLoadingScreen />
       </CustomAlertProvider>
     );
   }

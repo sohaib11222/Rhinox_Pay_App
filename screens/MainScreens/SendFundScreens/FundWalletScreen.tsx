@@ -21,6 +21,13 @@ import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import * as Clipboard from 'expo-clipboard';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import { showWarningAlert } from '../../../utils/customAlert';
+import {
+    proceedAfterTransactionInitiate,
+    verifySecurityBeforeTransaction,
+    getMissingVerificationMessage,
+} from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -43,31 +50,17 @@ const FundWalletScreen = () => {
         React.useCallback(() => {
             const parent = navigation.getParent();
             if (parent) {
-                parent.setOptions({
-                    tabBarStyle: { display: 'none' },
-                });
-            }
-            return () => {
-                if (parent) {
-                    parent.setOptions({
-                        tabBarStyle: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                            borderTopWidth: 0,
-                            height: 75 * 0.8,
-                            paddingBottom: 10,
-                            paddingTop: 0,
-                            position: 'absolute',
-                            bottom: 26 * 0.8,
-                            borderRadius: 100,
-                            overflow: 'hidden',
-                            elevation: 0,
-                            width: SCREEN_WIDTH * 0.86,
-                            marginLeft: 30,
-                            shadowOpacity: 0,
-                        },
-                    });
-                }
-            };
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+      return () => {
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: defaultTabBarStyle,
+          });
+        }
+      };
         }, [navigation])
     );
 
@@ -115,7 +108,10 @@ const FundWalletScreen = () => {
     };
 
     const handlePaymentMade = () => {
-        setShowPinModal(true);
+        proceedAfterTransactionInitiate(0, {
+            showVerificationModal: () => setShowPinModal(true),
+            confirm: () => setShowSuccessModal(true),
+        });
     };
 
     const handlePinPress = (num: string) => {
@@ -147,11 +143,21 @@ const FundWalletScreen = () => {
         setPin(pin.slice(0, -1));
     };
 
-    const handleSecurityComplete = () => {
-        if (emailCode && authenticatorCode) {
-            setShowSecurityModal(false);
-            setShowSuccessModal(true);
+    const handleSecurityComplete = async () => {
+        const verification = await verifySecurityBeforeTransaction({
+            pin,
+            emailOtp: emailCode,
+            twoFACode: authenticatorCode,
+        });
+        if (!verification.success) {
+            showWarningAlert(
+                'Security Verification Required',
+                getMissingVerificationMessage(verification.missingVerifications)
+            );
+            return;
         }
+        setShowSecurityModal(false);
+        setShowSuccessModal(true);
     };
 
     const handleViewTransaction = () => {

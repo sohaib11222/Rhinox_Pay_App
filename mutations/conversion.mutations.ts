@@ -44,7 +44,8 @@ export const useInitiateConversion = (
  */
 export interface ConfirmConversionRequest {
   conversionReference: string;
-  pin: string;
+  pin?: string;
+  emailOtp?: string;
 }
 
 export const confirmConversion = async (

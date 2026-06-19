@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,20 +9,34 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Modal,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import * as LocalAuthentication from 'expo-local-authentication';
+import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
 import { ThemedText } from '../../components';
-import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword } from '../../mutations/auth.mutations';
-import { getBiometricEnabled, setBiometricEnabled, getAccessToken } from '../../utils/apiClient';
+import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useVerifyDeviceLogin } from '../../mutations/auth.mutations';
+import { getBiometricEnabled, hasStoredAuthSession, setAccessToken, setRefreshToken, clearTokens, setBiometricLocked } from '../../utils/apiClient';
+import { getOrCreateDeviceId } from '../../utils/deviceId';
+import OtpInput from '../../components/OtpInput';
+import KeyboardSafeModal from '../../components/KeyboardSafeModal';
+import { OTP_LENGTH } from '../../constants/otp';
+import {
+  getBiometricCapability,
+  getBiometricPromptMessage,
+  hasStoredBiometricSession,
+  promptBiometricAuth,
+  restoreSessionFromStorage,
+} from '../../utils/biometricAuth';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../utils/customAlert';
 import { useAuth } from '../../hooks/useAuth';
+import { getAuthHeroHeight, getAuthHeroImageWidth } from '../../utils/responsiveAuth';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
+  const { height: windowHeight } = useWindowDimensions();
+  const heroHeight = useMemo(() => getAuthHeroHeight(), [windowHeight]);
+  const heroImageWidth = useMemo(() => getAuthHeroImageWidth(), [windowHeight]);
   const { setAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,7 +44,7 @@ const LoginScreen = () => {
   const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
+  const [verificationCode, setVerificationCode] = useState<string[]>(Array(OTP_LENGTH).fill(''));
   const [emailVerified, setEmailVerified] = useState(false);
   const [otpVerified, setOtpVerified] = useState(false);
   const [countdown, setCountdown] = useState(59);
@@ -43,50 +57,98 @@ const LoginScreen = () => {
   const [biometricType, setBiometricType] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [biometricLoginEnabled, setBiometricLoginEnabled] = useState(false);
-  const [hasToken, setHasToken] = useState(false);
+  const [canUseBiometricLogin, setCanUseBiometricLogin] = useState(false);
+  const [showDeviceVerifyModal, setShowDeviceVerifyModal] = useState(false);
+  const [pendingLoginToken, setPendingLoginToken] = useState('');
+  const [deviceOtpCode, setDeviceOtpCode] = useState<string[]>(Array(OTP_LENGTH).fill(''));
+  const [deviceId, setDeviceId] = useState('');
+
+  useEffect(() => {
+    getOrCreateDeviceId().then(setDeviceId).catch(() => {});
+  }, []);
+
+  const navigateToMain = () => {
+    const rootNavigation = navigation.getParent()?.getParent();
+    if (rootNavigation) {
+      rootNavigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Main' as never }],
+        })
+      );
+      return;
+    }
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Main' as never }],
+      })
+    );
+  };
+
+  const completeLoginSuccess = async (data: any) => {
+    const accessToken = data?.data?.accessToken;
+    const refreshToken = data?.data?.refreshToken;
+    await clearTokens();
+    await setBiometricLocked(false);
+    if (accessToken) {
+      await setAccessToken(accessToken);
+      if (refreshToken) await setRefreshToken(refreshToken);
+      await setAuthenticated(accessToken);
+    }
+    await checkBiometricSession();
+    navigateToMain();
+  };
+
+  const verifyDeviceMutation = useVerifyDeviceLogin({
+    onSuccess: async (data) => {
+      setShowDeviceVerifyModal(false);
+      showSuccessAlert(
+        'Device Verified',
+        'You can enable biometric login from the fingerprint icon after signing in.',
+        () => completeLoginSuccess(data)
+      );
+    },
+    onError: (error: any) => {
+      showErrorAlert('Verification Failed', error.message || 'Invalid or expired code.');
+    },
+  });
 
   // Login mutation
   const loginMutation = useLogin({
     onSuccess: async (data) => {
-      console.log('[LoginScreen] Login successful');
-      const accessToken = data?.data?.accessToken;
-      const refreshToken = data?.data?.refreshToken;
-      
-      // Ensure tokens are cleared first (in case of re-login)
-      const { clearTokens } = await import('../../utils/apiClient');
-      await clearTokens();
-      console.log('[LoginScreen] Cleared any existing tokens before setting new ones');
-      
-      // Set both tokens
-      if (accessToken) {
-        const { setAccessToken, setRefreshToken } = await import('../../utils/apiClient');
-        await setAccessToken(accessToken);
-        console.log('[LoginScreen] Access token set');
-        
-        if (refreshToken) {
-          await setRefreshToken(refreshToken);
-          console.log('[LoginScreen] Refresh token set');
-        }
-        
-        // Update auth state
-        await setAuthenticated(accessToken);
+      if (data?.data?.requiresDeviceVerification) {
+        setPendingLoginToken(data.data.pendingLoginToken);
+        setDeviceOtpCode(Array(OTP_LENGTH).fill(''));
+        setShowDeviceVerifyModal(true);
+        showInfoAlert(
+          'Verify New Device',
+          data.data.message || 'Enter the code sent to your email to continue.'
+        );
+        return;
       }
-      
-      // Update token state after successful login
-      await checkToken();
-      // Check if user has biometric enabled and update preference
-      const biometricEnabled = await getBiometricEnabled();
-      if (biometricEnabled) {
-        console.log('[LoginScreen] Biometric login is enabled for this user');
-      } else {
-        console.log('[LoginScreen] Biometric login is disabled for this user');
-      }
-      // Navigate to Main screen on successful login
-      navigation.navigate('Main' as never);
+      await completeLoginSuccess(data);
     },
     onError: (error: any) => {
+      if (error?.code === 'EMAIL_NOT_VERIFIED' && error?.data?.userId) {
+        showWarningAlert(
+          'Email Verification Required',
+          error.message || 'Please verify your email before logging in.',
+          () => {
+            navigation.navigate(
+              'Register' as never,
+              {
+                verifyUserId: String(error.data.userId),
+                verifyEmail: email.trim(),
+              } as never
+            );
+          }
+        );
+        return;
+      }
       showErrorAlert(
-        'Login Failed',
+        !error?.status ? 'Connection Problem' : 'Login Failed',
         error.message || 'Invalid email or password. Please try again.'
       );
     },
@@ -100,7 +162,7 @@ const LoginScreen = () => {
       setCountdown(59); // Start countdown
       showSuccessAlert(
         'OTP Sent',
-        'A 5-digit code has been sent to your email address.'
+        'A 6-digit code has been sent to your email address.'
       );
     },
     onError: (error: any) => {
@@ -144,7 +206,7 @@ const LoginScreen = () => {
           setShowForgotPasswordModal(false);
           setShowChangePasswordModal(false);
           setForgotEmail('');
-          setVerificationCode('');
+          setVerificationCode(Array(OTP_LENGTH).fill(''));
           setEmailVerified(false);
           setOtpVerified(false);
           setNewPassword('');
@@ -186,14 +248,16 @@ const LoginScreen = () => {
   }, [showForgotPasswordModal, forgotPasswordStep]);
 
   // Check token availability
-  const checkToken = async () => {
+  const checkBiometricSession = async () => {
     try {
-      const token = await getAccessToken();
-      setHasToken(!!token);
-      console.log('[LoginScreen] Token check:', token ? 'Token exists' : 'No token found');
+      const [hasSession, biometricEnabled] = await Promise.all([
+        hasStoredAuthSession(),
+        getBiometricEnabled(),
+      ]);
+      setCanUseBiometricLogin(biometricEnabled && hasSession);
     } catch (error) {
-      console.error('[LoginScreen] Error checking token:', error);
-      setHasToken(false);
+      console.error('[LoginScreen] Error checking biometric session:', error);
+      setCanUseBiometricLogin(false);
     }
   };
 
@@ -201,13 +265,14 @@ const LoginScreen = () => {
   useEffect(() => {
     checkBiometrics();
     loadBiometricPreference();
-    checkToken();
+    checkBiometricSession();
   }, []);
 
-  // Re-check token when screen comes into focus
+  // Re-check session when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      checkToken();
+      loadBiometricPreference();
+      checkBiometricSession();
     }, [])
   );
 
@@ -223,40 +288,16 @@ const LoginScreen = () => {
   };
 
   const checkBiometrics = async () => {
-    const hasHardware = await LocalAuthentication.hasHardwareAsync();
-    if (hasHardware) {
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      if (isEnrolled) {
-        setIsBiometricAvailable(true);
-        const supportedTypes = await LocalAuthentication.supportedAuthenticationTypesAsync();
-        if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-          setBiometricType('Face ID');
-        } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-          setBiometricType('Fingerprint');
-        } else if (supportedTypes.includes(LocalAuthentication.AuthenticationType.IRIS)) {
-          setBiometricType('Iris');
-        }
-      }
-    }
+    const capability = await getBiometricCapability();
+    setIsBiometricAvailable(capability.isAvailable);
+    setBiometricType(capability.type);
   };
 
   const handleBiometricLogin = async () => {
-    // First check if token exists
-    const token = await getAccessToken();
-    if (!token) {
-      showWarningAlert(
-        'No Token Available',
-        'You are not logged in. Please use email and password to login first.'
-      );
-      setHasToken(false);
-      return;
-    }
-
-    // Check if biometric login is enabled in settings
     if (!biometricLoginEnabled) {
       showWarningAlert(
         'Biometric Login Disabled',
-        'Biometric login is disabled in your settings. Please enable it in Settings > Security > Login with biometrics, or use email and password to login.'
+        'Enable Login with biometrics in Settings > Security, or sign in with email and password.'
       );
       return;
     }
@@ -264,77 +305,95 @@ const LoginScreen = () => {
     if (!isBiometricAvailable) {
       showWarningAlert(
         'Biometrics Not Available',
-        'Your device does not support biometrics or it is not set up. Please use email and password to login.'
+        'Your device does not support biometrics or fingerprint is not set up. Please use email and password to login.'
       );
+      return;
+    }
+
+    const hasSession = await hasStoredBiometricSession();
+    if (!hasSession) {
+      showWarningAlert(
+        'Sign In Required',
+        'Please login with email and password once. After that, biometric login will work when you return.'
+      );
+      setCanUseBiometricLogin(false);
       return;
     }
 
     setIsScanning(true);
     try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: `Authenticate with your ${biometricType} to login`,
-        fallbackLabel: 'Use Password',
-        disableDeviceFallback: false,
-        cancelLabel: 'Cancel',
+      const capability = await getBiometricCapability();
+      const authResult = await promptBiometricAuth({
+        promptMessage: getBiometricPromptMessage(capability, 'login'),
       });
 
-      setIsScanning(false);
-
-      if (result.success) {
-        // Double-check token before navigating
-        const currentToken = await getAccessToken();
-        if (!currentToken) {
-          showErrorAlert(
-            'Authentication Failed',
-            'No authentication token found. Please login with email and password.'
-          );
-          setHasToken(false);
-          return;
-        }
-
-        // Check if user still has biometric enabled preference (in case it was disabled during auth)
-        const biometricEnabled = await getBiometricEnabled();
-        if (biometricEnabled) {
-          console.log('[LoginScreen] Biometric authentication successful, navigating to Main');
-          // Navigate to Main screen on successful authentication
-          navigation.navigate('Main' as never);
-        } else {
-          // If preference was disabled while authenticating, show message
-          showWarningAlert(
-            'Biometric Login Disabled',
-            'Biometric login has been disabled in settings. Please use email and password to login.'
-          );
-        }
-      } else {
-        if (result.error === 'user_cancel') {
-          // User cancelled - do nothing
-        } else {
+      if (!authResult.success) {
+        if (authResult.error !== 'user_cancel') {
           showErrorAlert(
             'Authentication Failed',
             'Biometric authentication failed. Please try again or use email and password.'
           );
         }
+        return;
       }
+
+      const activeToken = await restoreSessionFromStorage();
+      if (!activeToken) {
+        showErrorAlert(
+          'Authentication Failed',
+          'Could not restore your session. Please login with email and password.'
+        );
+        setCanUseBiometricLogin(false);
+        return;
+      }
+
+      await setAuthenticated(activeToken);
+      navigateToMain();
     } catch (error) {
       console.error('Biometric authentication error:', error);
-      setIsScanning(false);
       showErrorAlert(
         'Error',
         'An error occurred during biometric authentication. Please try again or use email and password.'
       );
+    } finally {
+      setIsScanning(false);
     }
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
       showWarningAlert('Validation Error', 'Please enter both email and password.');
       return;
     }
 
-    // Call login API
+    const resolvedDeviceId = deviceId || (await getOrCreateDeviceId());
+    setDeviceId(resolvedDeviceId);
+
     loginMutation.mutate({
       email: email.trim(),
       password: password,
+      deviceId: resolvedDeviceId,
+      deviceName:
+        Platform.OS === 'ios'
+          ? `iPhone (${Platform.Version})`
+          : `Android Device (${Platform.Version})`,
+    });
+  };
+
+  const handleVerifyDeviceOtp = () => {
+    const code = deviceOtpCode.join('');
+    if (code.length !== OTP_LENGTH) {
+      showWarningAlert('Validation Error', `Please enter the complete ${OTP_LENGTH}-digit code.`);
+      return;
+    }
+    verifyDeviceMutation.mutate({
+      pendingLoginToken,
+      code,
+      deviceId,
+      deviceName:
+        Platform.OS === 'ios'
+          ? `iPhone (${Platform.Version})`
+          : `Android Device (${Platform.Version})`,
     });
   };
 
@@ -345,7 +404,7 @@ const LoginScreen = () => {
     setShowForgotPasswordModal(true);
     setForgotPasswordStep('email');
     setForgotEmail('');
-    setVerificationCode('');
+    setVerificationCode(Array(OTP_LENGTH).fill(''));
     setEmailVerified(false);
     setOtpVerified(false);
     setNewPassword('');
@@ -368,14 +427,15 @@ const LoginScreen = () => {
   };
 
   const handleVerifyOtp = () => {
-    if (verificationCode.length !== 5) {
-      showWarningAlert('Validation Error', 'Please enter the complete 5-digit code.');
+    const otp = verificationCode.join('');
+    if (otp.length !== OTP_LENGTH) {
+      showWarningAlert('Validation Error', `Please enter the complete ${OTP_LENGTH}-digit code.`);
       return;
     }
 
     verifyOtpMutation.mutate({
       email: forgotEmail.trim(),
-      otp: verificationCode,
+      otp,
     });
   };
 
@@ -397,7 +457,7 @@ const LoginScreen = () => {
 
     resetPasswordMutation.mutate({
       email: forgotEmail.trim(),
-      otp: verificationCode,
+      otp: verificationCode.join(''),
       newPassword: newPassword,
     });
   };
@@ -415,18 +475,25 @@ const handleRegister = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Hero Section with Decorative Elements */}
-        <View style={styles.heroSection}>
+        <View style={[styles.heroSection, { height: heroHeight }]}>
           {/* Background Image */}
           <Image
             source={require('../../assets/login/hero-image.png')}
-            style={styles.heroImage}
+            style={[styles.heroImage, { width: heroImageWidth, height: heroHeight * 1.1 }]}
             resizeMode="cover"
           />
 
           {/* Circular Gradient Center */}
-          <View style={styles.circularGradient} />
+          <View style={styles.circularGradient}>
+            <Image
+              source={require('../../assets/login/rhinox-logo.png')}
+              style={styles.circularLogo}
+              resizeMode="contain"
+            />
+          </View>
 
           {/* Floating Decorative Elements */}
           <Image
@@ -486,8 +553,10 @@ const handleRegister = () => {
                 />
                 <TouchableOpacity
                   onPress={handleBiometricLogin}
-                  disabled={isScanning || !isBiometricAvailable || !biometricLoginEnabled || !hasToken}
+                  disabled={isScanning || !isBiometricAvailable || !biometricLoginEnabled}
                   style={styles.fingerprintButton}
+                  accessibilityLabel="Login with fingerprint"
+                  accessibilityRole="button"
                 >
                   {isScanning ? (
                     <ActivityIndicator size="small" color="#A9EF45" />
@@ -495,7 +564,7 @@ const handleRegister = () => {
                     <MaterialCommunityIcons
                       name="fingerprint"
                       size={24}
-                      color={isBiometricAvailable && biometricLoginEnabled && hasToken ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
+                      color={isBiometricAvailable && biometricLoginEnabled && canUseBiometricLogin ? "#A9EF45" : "rgba(255, 255, 255, 0.5)"}
                     />
                   )}
                 </TouchableOpacity>
@@ -571,14 +640,11 @@ const handleRegister = () => {
       </ScrollView>
 
       {/* Forgot Password Modal */}
-      <Modal
+      <KeyboardSafeModal
         visible={showForgotPasswordModal}
-        animationType="slide"
-        transparent={true}
         onRequestClose={() => setShowForgotPasswordModal(false)}
+        contentStyle={styles.forgotPasswordModalContent}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.forgotPasswordModalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Forgot Password</ThemedText>
@@ -610,7 +676,6 @@ const handleRegister = () => {
                   </View>
                 </View>
 
-                {/* Next Button */}
                 <TouchableOpacity
                   style={[
                     styles.modalProceedButton,
@@ -650,7 +715,7 @@ const handleRegister = () => {
                   )}
                   {emailVerified && (
                     <ThemedText style={styles.countdownText}>
-                      A 5 digit code has been sent to your registered email. Resend in{' '}
+                      A {OTP_LENGTH}-digit code has been sent to your registered email. Resend in{' '}
                       <ThemedText style={styles.countdownTimer}>
                         {String(Math.floor(countdown / 60)).padStart(2, '0')}:{String(countdown % 60).padStart(2, '0')} Sec
                       </ThemedText>
@@ -658,31 +723,23 @@ const handleRegister = () => {
                   )}
                 </View>
 
-                {/* Input Code Section */}
                 <View style={styles.modalSection}>
                   <ThemedText style={styles.modalSectionTitle}>Input Code</ThemedText>
-                  <View style={styles.modalInputWrapper}>
-                    <TextInput
-                      style={styles.modalInput}
-                      placeholder="Input code sent to email"
-                      placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                      value={verificationCode}
-                      onChangeText={setVerificationCode}
-                      keyboardType="number-pad"
-                      maxLength={5}
-                      editable={!verifyOtpMutation.isPending}
-                    />
-                  </View>
+                  <OtpInput
+                    value={verificationCode}
+                    onChange={setVerificationCode}
+                    onComplete={() => handleVerifyOtp()}
+                    disabled={verifyOtpMutation.isPending}
+                  />
                 </View>
 
-                {/* Verify Button */}
                 <TouchableOpacity
                   style={[
                     styles.modalProceedButton,
-                    (verificationCode.length !== 5 || verifyOtpMutation.isPending) && styles.modalButtonDisabled,
+                    (!verificationCode.every((d) => d !== '') || verifyOtpMutation.isPending) && styles.modalButtonDisabled,
                   ]}
                   onPress={handleVerifyOtp}
-                  disabled={verificationCode.length !== 5 || verifyOtpMutation.isPending}
+                  disabled={!verificationCode.every((d) => d !== '') || verifyOtpMutation.isPending}
                 >
                   {verifyOtpMutation.isPending ? (
                     <ActivityIndicator size="small" color="#000000" />
@@ -692,20 +749,14 @@ const handleRegister = () => {
                 </TouchableOpacity>
               </>
             )}
-          </View>
-        </View>
-      </Modal>
+      </KeyboardSafeModal>
 
       {/* Change Password Modal */}
-      <Modal
+      <KeyboardSafeModal
         visible={showChangePasswordModal}
-        animationType="slide"
-        transparent={true}
         onRequestClose={() => setShowChangePasswordModal(false)}
+        contentStyle={styles.changePasswordModalContent}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.changePasswordModalContent}>
-            {/* Header */}
             <View style={styles.changePasswordHeader}>
               <TouchableOpacity
                 onPress={() => {
@@ -725,7 +776,6 @@ const handleRegister = () => {
               </TouchableOpacity>
             </View>
 
-            {/* New Password Section */}
             <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>New Password</ThemedText>
               <View style={styles.modalInputWrapper}>
@@ -752,7 +802,6 @@ const handleRegister = () => {
               </View>
             </View>
 
-            {/* Re-enter Password Section */}
             <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>Re-enter new Password</ThemedText>
               <View style={styles.modalInputWrapper}>
@@ -779,7 +828,6 @@ const handleRegister = () => {
               </View>
             </View>
 
-            {/* Save Button */}
             <TouchableOpacity
               style={[
                 styles.modalSaveButton,
@@ -794,9 +842,49 @@ const handleRegister = () => {
                 <ThemedText style={styles.modalSaveButtonText}>Save</ThemedText>
               )}
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      </KeyboardSafeModal>
+
+      {/* New Device Verification Modal */}
+      <KeyboardSafeModal
+        visible={showDeviceVerifyModal}
+        onRequestClose={() => setShowDeviceVerifyModal(false)}
+        contentStyle={styles.forgotPasswordModalContent}
+      >
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>Verify New Device</ThemedText>
+              <TouchableOpacity
+                onPress={() => setShowDeviceVerifyModal(false)}
+                style={styles.closeButton}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+            <ThemedText style={styles.countdownText}>
+              Enter the {OTP_LENGTH}-digit code sent to your email to sign in from this device.
+            </ThemedText>
+            <View style={styles.modalSection}>
+              <OtpInput
+                value={deviceOtpCode}
+                onChange={setDeviceOtpCode}
+                onComplete={() => handleVerifyDeviceOtp()}
+                disabled={verifyDeviceMutation.isPending}
+              />
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.modalProceedButton,
+                (!deviceOtpCode.every((d) => d !== '') || verifyDeviceMutation.isPending) && styles.modalButtonDisabled,
+              ]}
+              onPress={handleVerifyDeviceOtp}
+              disabled={!deviceOtpCode.every((d) => d !== '') || verifyDeviceMutation.isPending}
+            >
+              {verifyDeviceMutation.isPending ? (
+                <ActivityIndicator size="small" color="#000000" />
+              ) : (
+                <ThemedText style={styles.modalProceedButtonText}>Verify Device</ThemedText>
+              )}
+            </TouchableOpacity>
+      </KeyboardSafeModal>
     </KeyboardAvoidingView>
   );
 };
@@ -813,14 +901,11 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     width: '100%',
-    height: 426,
     backgroundColor: '#FFFFFF',
     position: 'relative',
     overflow: 'hidden',
   },
   heroImage: {
-    width: 440,
-    height: 469,
     position: 'absolute',
     top: -18,
     left: 0,
@@ -834,6 +919,13 @@ const styles = StyleSheet.create({
     top: 141,
     left: '33%',
     opacity: 0.8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  circularLogo: {
+    width: 90,
+    height: 90,
   },
   floatingCoin: {
     position: 'absolute',
@@ -895,7 +987,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   subtitle: {
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: 14,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
   },
@@ -910,7 +1002,7 @@ const styles = StyleSheet.create({
     marginBottom: 21,
   },
   inputLabel: {
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: 14,
     fontWeight: '300',
     color: '#FFFFFF',
     marginBottom: 6,
@@ -927,7 +1019,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: 14,
     fontWeight: '300',
     color: '#FFFFFF',
     paddingVertical: 0,
@@ -947,7 +1039,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   forgotPasswordText: {
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: 14,
     fontWeight: '400',
     color: '#A9EF45',
   },
@@ -960,7 +1052,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   loginButtonText: {
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: 14,
     fontWeight: '400',
     color: '#000000',
   },
@@ -970,7 +1062,7 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   registerText: {
-    fontSize: 11.2, // 14 * 0.8
+    fontSize: 14,
     fontWeight: '400',
     color: '#FFFFFF',
   },

@@ -42,3 +42,6 @@ export * from './support.mutations';
 // Notification
 export * from './notification.mutations';
 
+// Rewards
+export * from './rewards.mutations';
+

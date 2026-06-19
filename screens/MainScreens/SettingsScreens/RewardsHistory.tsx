@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -7,11 +7,14 @@ import {
   Dimensions,
   StatusBar,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import { useGetRewardsHistory } from '../../../queries/rewards.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -22,49 +25,14 @@ interface RewardHistoryItem {
   tier: string;
   status: 'Successful' | 'Pending' | 'Failed';
   value: string;
-  expiryDate: string;
+  expiryDate: string | null;
   date: string;
-}
-
-interface RewardHistoryGroup {
-  date: string;
-  items: RewardHistoryItem[];
 }
 
 const RewardsHistory = () => {
   const navigation = useNavigation();
-
-  // Mock history data - Replace with API call
-  const historyData: RewardHistoryGroup[] = [
-    {
-      date: 'Today',
-      items: [
-        {
-          id: '1',
-          title: 'Birthday Gift',
-          tier: 'Silver tier',
-          status: 'Successful',
-          value: '1GB Data',
-          expiryDate: 'Oct 15, 2025',
-          date: 'Today',
-        },
-      ],
-    },
-    {
-      date: '11th Oct, 2024',
-      items: [
-        {
-          id: '2',
-          title: 'Birthday Gift',
-          tier: 'Gold tier',
-          status: 'Successful',
-          value: 'N1,000 Airtime',
-          expiryDate: 'Oct 15, 2025',
-          date: '11th Oct, 2024',
-        },
-      ],
-    },
-  ];
+  const { data: historyResponse, isLoading, isError, error, refetch } = useGetRewardsHistory();
+  const historyData = historyResponse?.data || [];
 
   // Hide bottom tab bar when screen is focused
   useFocusEffect(
@@ -76,24 +44,9 @@ const RewardsHistory = () => {
         });
       }
       return () => {
-        // Restore tab bar when leaving this screen
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -102,26 +55,18 @@ const RewardsHistory = () => {
 
   // Pull-to-refresh functionality
   const handleRefresh = async () => {
-    // TODO: Replace with actual API calls
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        console.log('Refreshing rewards history...');
-        resolve();
-      }, 1000);
-    });
+    await refetch();
   };
 
   const { refreshing, onRefresh } = usePullToRefresh({
     onRefresh: handleRefresh,
-    refreshDelay: 2000,
+    refreshDelay: 500,
   });
 
-  const formatDate = (dateString: string) => {
-    // If it's "Today", return as is, otherwise format the date
-    if (dateString === 'Today') {
-      return 'Today';
-    }
-    return dateString;
+  const getStatusColor = (status: RewardHistoryItem['status']) => {
+    if (status === 'Successful') return '#4CAF50';
+    if (status === 'Pending') return '#FFA500';
+    return '#FF0000';
   };
 
   return (
@@ -154,31 +99,52 @@ const RewardsHistory = () => {
 
         {/* History Content */}
         <View style={styles.historyContent}>
-          {historyData.map((group, groupIndex) => (
-            <View key={groupIndex} style={styles.historyGroup}>
-              <ThemedText style={styles.dateHeader}>{formatDate(group.date)}</ThemedText>
-              {group.items.map((item) => (
-                <View key={item.id} style={styles.historyCard}>
-                  <View style={styles.historyIconContainer}>
-                    <MaterialCommunityIcons name="gift" size={22} color="#4CAF50" />
-                  </View>
-                  <View style={styles.historyContentContainer}>
-                    <ThemedText style={styles.historyTitle}>
-                      {item.title} - {item.tier}
-                    </ThemedText>
-                    <View style={styles.statusContainer}>
-                      <View style={styles.statusDot} />
-                      <ThemedText style={styles.statusText}>{item.status}</ThemedText>
+          {isLoading ? (
+            <ActivityIndicator size="large" color="#A9EF45" style={{ marginTop: 40 }} />
+          ) : isError ? (
+            <ThemedText style={styles.emptyText}>
+              {error?.message || 'Failed to load rewards history'}
+            </ThemedText>
+          ) : historyData.length === 0 ? (
+            <ThemedText style={styles.emptyText}>No reward claims yet.</ThemedText>
+          ) : (
+            historyData.map((group, groupIndex) => (
+              <View key={`${group.date}-${groupIndex}`} style={styles.historyGroup}>
+                <ThemedText style={styles.dateHeader}>{group.date}</ThemedText>
+                {group.items.map((item) => (
+                  <View key={item.id} style={styles.historyCard}>
+                    <View style={styles.historyIconContainer}>
+                      <MaterialCommunityIcons name="gift" size={22} color="#4CAF50" />
+                    </View>
+                    <View style={styles.historyContentContainer}>
+                      <ThemedText style={styles.historyTitle}>
+                        {item.title} - {item.tier}
+                      </ThemedText>
+                      <View style={styles.statusContainer}>
+                        <View
+                          style={[
+                            styles.statusDot,
+                            { backgroundColor: getStatusColor(item.status) },
+                          ]}
+                        />
+                        <ThemedText
+                          style={[styles.statusText, { color: getStatusColor(item.status) }]}
+                        >
+                          {item.status}
+                        </ThemedText>
+                      </View>
+                    </View>
+                    <View style={styles.historyValueContainer}>
+                      <ThemedText style={styles.historyValue}>{item.value}</ThemedText>
+                      {item.expiryDate ? (
+                        <ThemedText style={styles.historyExpiry}>{item.expiryDate}</ThemedText>
+                      ) : null}
                     </View>
                   </View>
-                  <View style={styles.historyValueContainer}>
-                    <ThemedText style={styles.historyValue}>{item.value}</ThemedText>
-                    <ThemedText style={styles.historyExpiry}>{item.expiryDate}</ThemedText>
-                  </View>
-                </View>
-              ))}
-            </View>
-          ))}
+                ))}
+              </View>
+            ))
+          )}
         </View>
 
         {/* Bottom spacing */}
@@ -294,6 +260,12 @@ const styles = StyleSheet.create({
     fontSize: 8 * 1,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.6)',
+  },
+  emptyText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+    marginTop: 40 * SCALE,
+    fontSize: 14 * SCALE,
   },
   bottomSpacer: {
     height: 40 * SCALE,

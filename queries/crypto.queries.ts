@@ -35,6 +35,66 @@ export const useGetTokensBySymbol = (
   });
 };
 
+export type UnifiedNetworkBalance = {
+  virtualAccountId: number;
+  currency: string;
+  blockchain: string;
+  blockchainName: string | null;
+  balance: string;
+  available: string;
+  depositAddress: string | null;
+};
+
+export type UnifiedBalance = {
+  symbol: string;
+  totalBalance: string;
+  totalAvailable: string;
+  isUnifiedStable: boolean;
+  networks: UnifiedNetworkBalance[];
+};
+
+/**
+ * Aggregated crypto balances (single USDT / USDC across networks)
+ */
+export const getUnifiedBalances = async (): Promise<ApiResponse<UnifiedBalance[]>> => {
+  try {
+    const response = await apiClient.get(API_ROUTES.CRYPTO.UNIFIED_BALANCES);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useGetUnifiedBalances = (options?: UseQueryOptions<ApiResponse<UnifiedBalance[]>, Error>) => {
+  return useQuery<ApiResponse<UnifiedBalance[]>, Error>({
+    queryKey: ['crypto', 'unified-balances'],
+    queryFn: getUnifiedBalances,
+    ...options,
+  });
+};
+
+export const getUnifiedBalanceBySymbol = async (symbol: string): Promise<ApiResponse<UnifiedBalance>> => {
+  try {
+    const route = buildRouteWithParams('/crypto/unified-balances/{symbol}', { symbol });
+    const response = await apiClient.get(route);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+export const useGetUnifiedBalanceBySymbol = (
+  symbol: string,
+  options?: UseQueryOptions<ApiResponse<UnifiedBalance>, Error>
+) => {
+  return useQuery<ApiResponse<UnifiedBalance>, Error>({
+    queryKey: ['crypto', 'unified-balances', symbol],
+    queryFn: () => getUnifiedBalanceBySymbol(symbol),
+    enabled: !!symbol,
+    ...options,
+  });
+};
+
 /**
  * Get all USDT tokens across different blockchains
  */

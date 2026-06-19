@@ -28,6 +28,8 @@ import { useGetP2PChatMessages, useGetP2POrderDetails } from '../../../queries/p
 import { useSendP2PMessage, useMarkMessagesAsRead } from '../../../mutations/p2p.mutations';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { showErrorAlert, showWarningAlert, showAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import { resolveUploadUri } from '../../../utils/walletFlags';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -63,15 +65,14 @@ const ChatScreen = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
-  // Store image URIs for sent messages (keyed by message text + timestamp)
-  const [sentImageMap, setSentImageMap] = useState<Map<string, string>>(new Map());
+  const [localImageByMessageId, setLocalImageByMessageId] = useState<Record<string, string>>({});
   const scrollViewRef = useRef<ScrollView>(null);
   // Determine if this is a P2P chat
   const isP2P = isP2PChat || !!orderId;
 
   // Get current user to determine if message is from current user
   const { data: currentUserData } = useGetCurrentUser();
-  const currentUserId = currentUserData?.data?.user?.id;
+  const currentUserId = currentUserData?.data?.id;
   
   // Debug: Log current user ID
   useEffect(() => {
@@ -223,22 +224,19 @@ const ChatScreen = () => {
       }
 
       const messageText = msg.message || msg.text || '';
-      
-      // Check if this message has an associated image in our sent image map
-      // Match by message text (which includes "[Image attached]" for image messages)
-      const storedImageUri = sentImageMap.get(messageText);
-      
-      // Use API image URL if available, otherwise use stored image URI
-      const imageUri = msg.imageUrl || msg.attachment?.url || storedImageUri || undefined;
+      const storedLocalImageUri = localImageByMessageId[String(msg.id)];
+      const resolvedImageUri =
+        resolveUploadUri(msg.imageUrl || msg.attachment?.url) ||
+        storedLocalImageUri ||
+        undefined;
 
       return {
         id: msg.id,
         text: messageText,
         sender: (isUserMessage ? 'user' : 'agent') as 'user' | 'agent',
         timestamp: formattedTimestamp,
-        imageUri: imageUri,
-        // If we have a stored image and no API image, use localImageUri
-        localImageUri: (!msg.imageUrl && !msg.attachment?.url && storedImageUri) ? storedImageUri : undefined,
+        imageUri: resolvedImageUri,
+        localImageUri: storedLocalImageUri || undefined,
       };
     });
 
@@ -254,7 +252,7 @@ const ChatScreen = () => {
     }
 
     return transformedMessages;
-  }, [chatDetailsData?.data, isP2P, currentUserId, pendingImageUri, message, sentImageMap]);
+  }, [chatDetailsData?.data, isP2P, currentUserId, pendingImageUri, message, localImageByMessageId]);
 
   // Mark support messages as read when chat is opened (for support chat only)
   const markSupportAsReadMutation = useMarkSupportMessagesRead(chatId ? Number(chatId) : 0, {
@@ -305,16 +303,6 @@ const ChatScreen = () => {
     onError: (error: any) => {
       console.error('[ChatScreen] Error sending support message:', error);
       setPendingImageUri(null);
-      setSentImageMap(prev => {
-        const newMap = new Map(prev);
-        for (const [key, value] of newMap.entries()) {
-          if (value === pendingImageUri) {
-            newMap.delete(key);
-            break;
-          }
-        }
-        return newMap;
-      });
       showErrorAlert('Error', error?.message || 'Failed to send message. Please try again.');
     },
   });
@@ -337,16 +325,6 @@ const ChatScreen = () => {
     onError: (error: any) => {
       console.error('[ChatScreen] Error sending P2P message:', error);
       setPendingImageUri(null);
-      setSentImageMap(prev => {
-        const newMap = new Map(prev);
-        for (const [key, value] of newMap.entries()) {
-          if (value === pendingImageUri) {
-            newMap.delete(key);
-            break;
-          }
-        }
-        return newMap;
-      });
       showErrorAlert('Error', error?.message || 'Failed to send message. Please try again.');
     },
   });
@@ -369,24 +347,9 @@ const ChatScreen = () => {
       }
 
       return () => {
-        // Restore tab bar when leaving this screen
         if (tabNavigator && typeof tabNavigator.setOptions === 'function') {
           tabNavigator.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * SCALE,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * SCALE,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -481,7 +444,7 @@ const ChatScreen = () => {
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -500,7 +463,7 @@ const ChatScreen = () => {
   const handlePickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -530,34 +493,34 @@ const ChatScreen = () => {
     }
 
     try {
-      // Store image URI for display while sending
       setPendingImageUri(imageUri);
-      
-      // Create message text - if there's text, include it, otherwise just indicate image
-      const imageMessage = message.trim() 
-        ? `${message.trim()}\n[Image attached]`
-        : '[Image attached]';
-      
-      // Store the image URI with the message text as the key
-      // This allows us to match it to the message after it's sent
-      setSentImageMap(prev => {
-        const newMap = new Map(prev);
-        newMap.set(imageMessage, imageUri);
-        return newMap;
-      });
-      
+      const imageCaption = message.trim();
+
       if (isP2P && orderId) {
         sendP2PMessageMutation.mutate({
           orderId: String(orderId),
-          message: imageMessage,
+          message: imageCaption || '[Image attached]',
         });
       } else if (!isP2P && chatId) {
-        sendSupportMessageMutation.mutate({
-          message: imageMessage,
-        });
+        sendSupportMessageMutation.mutate(
+          {
+            message: imageCaption,
+            imageUri,
+          },
+          {
+            onSuccess: (data) => {
+              const messageId = data?.data?.id;
+              if (messageId) {
+                setLocalImageByMessageId((prev) => ({
+                  ...prev,
+                  [String(messageId)]: imageUri,
+                }));
+              }
+            },
+          }
+        );
       }
 
-      // Clear selected image after sending
       setSelectedImage(null);
       setMessage('');
     } catch (error: any) {

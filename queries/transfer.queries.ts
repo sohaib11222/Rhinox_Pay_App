@@ -58,13 +58,47 @@ export const useGetTransferReceipt = (
   });
 };
 
+export interface ValidateRecipientParams {
+  email?: string;
+  userId?: string;
+  rhinoxPayId?: string;
+}
+
+export const buildValidateRecipientParams = (input: string): ValidateRecipientParams | null => {
+  const trimmed = input.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (trimmed.includes('@')) {
+    return { email: trimmed.toLowerCase() };
+  }
+
+  const upper = trimmed.toUpperCase();
+  if (/^RXP[A-Z0-9]+$/.test(upper)) {
+    return { rhinoxPayId: upper };
+  }
+
+  if (/^\d+$/.test(trimmed)) {
+    return { userId: trimmed };
+  }
+
+  return { rhinoxPayId: upper };
+};
+
 /**
- * Validate recipient (Rhinox Pay user) by email
+ * Validate recipient (Rhinox Pay user) by email, Rhinox Pay ID, or user ID
  */
-export const validateRecipient = async (email: string): Promise<ApiResponse> => {
+export const validateRecipient = async (
+  params: ValidateRecipientParams
+): Promise<ApiResponse> => {
   try {
     const response = await apiClient.get(API_ROUTES.TRANSFER.VALIDATE_RECIPIENT, {
-      params: { email },
+      params: {
+        ...(params.email ? { email: params.email } : {}),
+        ...(params.userId ? { userId: params.userId } : {}),
+        ...(params.rhinoxPayId ? { rhinoxPayId: params.rhinoxPayId } : {}),
+      },
     });
     return response.data;
   } catch (error: any) {
@@ -76,13 +110,15 @@ export const validateRecipient = async (email: string): Promise<ApiResponse> => 
  * Query hook for validating recipient
  */
 export const useValidateRecipient = (
-  email: string,
+  params: ValidateRecipientParams,
   options?: Omit<UseQueryOptions<ApiResponse, Error>, 'queryKey' | 'queryFn'>
 ) => {
+  const hasIdentifier = !!(params.email || params.userId || params.rhinoxPayId);
+
   return useQuery<ApiResponse, Error>({
-    queryKey: ['transfer', 'validate-recipient', email],
-    queryFn: () => validateRecipient(email),
-    enabled: !!email && email.includes('@'), // Only enable if email is provided and looks valid
+    queryKey: ['transfer', 'validate-recipient', params],
+    queryFn: () => validateRecipient(params),
+    enabled: hasIdentifier,
     ...options,
   });
 };

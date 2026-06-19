@@ -16,13 +16,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
 import { usePullToRefresh } from '../../../hooks/usePullToRefresh';
-import { useGetUSDTTokens, useGetDepositAddress, useGetVirtualAccounts } from '../../../queries/crypto.queries';
+import {
+  useGetUnifiedBalances,
+  useGetDepositAddress,
+  useGetVirtualAccounts,
+  type UnifiedBalance,
+  type UnifiedNetworkBalance,
+} from '../../../queries/crypto.queries';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
 import * as MediaLibrary from 'expo-media-library';
 import { captureRef } from 'react-native-view-shot';
 import { showSuccessAlert, showErrorAlert } from '../../../utils/customAlert';
 import QRCode from 'react-native-qrcode-svg';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -59,21 +66,7 @@ const CryptoFundDepositScreen = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -91,14 +84,13 @@ const CryptoFundDepositScreen = () => {
   const [isSharingQR, setIsSharingQR] = useState(false);
   const qrCardRef = useRef<View>(null);
 
-  // Fetch available tokens
   const {
-    data: tokensData,
+    data: unifiedBalancesData,
     isLoading: isLoadingTokens,
     isError: isTokensError,
     error: tokensError,
     refetch: refetchTokens,
-  } = useGetUSDTTokens();
+  } = useGetUnifiedBalances();
 
   // Fetch virtual accounts first (includes balances and deposit addresses)
   const {
@@ -109,47 +101,88 @@ const CryptoFundDepositScreen = () => {
     refetch: refetchVirtualAccounts,
   } = useGetVirtualAccounts();
 
-  // Transform tokens
-  const availableTokens = useMemo(() => {
-    if (!tokensData?.data || !Array.isArray(tokensData.data)) {
+  const getBaseSymbol = (currency: string): string => {
+    const u = (currency || '').toUpperCase();
+    if (u.startsWith('USDT')) return 'USDT';
+    if (u.startsWith('USDC')) return 'USDC';
+    return u;
+  };
+
+  const unifiedList: UnifiedBalance[] = useMemo(() => {
+    if (!unifiedBalancesData?.data || !Array.isArray(unifiedBalancesData.data)) {
       return [];
     }
-    return tokensData.data.map((token: any) => ({
-      id: token.id || `${token.blockchain}_${token.currency}`,
-      blockchain: token.blockchain || '',
-      blockchainName: token.blockchainName || token.blockchain || '',
-      currency: token.currency || token.symbol || '',
-      symbol: token.symbol || token.currency || '',
-      name: token.name || token.currency || '',
-      displayName: token.displayName || `${token.currency} (${token.blockchainName})`,
-      contractAddress: token.contractAddress,
-      decimals: token.decimals || 6,
-      isToken: token.isToken || false,
-      price: token.price || '0',
-      nairaPrice: token.nairaPrice || '0',
-    }));
-  }, [tokensData?.data]);
+    return unifiedBalancesData.data;
+  }, [unifiedBalancesData?.data]);
 
-  // Set default token - prioritize token from route params if provided
+  const networkToToken = (baseSymbol: string, net: UnifiedNetworkBalance): Token => ({
+    id: `${net.blockchain}_${net.currency}`,
+    blockchain: net.blockchain,
+    blockchainName: net.blockchainName || net.blockchain,
+    currency: net.currency,
+    symbol: baseSymbol,
+    name: baseSymbol,
+    displayName: `${baseSymbol} (${net.blockchainName || net.blockchain})`,
+    decimals: 6,
+    isToken: true,
+    price: '0',
+    nairaPrice: '0',
+  });
+
+  const availableBaseTokens = useMemo(() => {
+    return unifiedList.map((item) => ({
+      symbol: item.symbol,
+      displayName: item.symbol,
+      totalAvailable: item.totalAvailable || item.totalBalance || '0',
+      isUnifiedStable: item.isUnifiedStable,
+      networks: item.networks || [],
+    }));
+  }, [unifiedList]);
+
+  const networksForBaseSymbol = useMemo(() => {
+    if (!selectedToken) return [];
+    const base = getBaseSymbol(selectedToken.symbol || selectedToken.currency);
+    const unified = unifiedList.find((u) => u.symbol === base);
+    return unified?.networks || [];
+  }, [unifiedList, selectedToken]);
+
   useEffect(() => {
-    if (!selectedToken && availableTokens.length > 0) {
-      const routeCurrency = routeParams?.currency;
-      if (routeCurrency) {
-        // Try to find token matching the currency from route params
-        const matchingToken = availableTokens.find(
-          token => token.currency === routeCurrency || 
-                   token.symbol === routeCurrency ||
-                   token.currency?.toUpperCase() === routeCurrency.toUpperCase()
-        );
-        if (matchingToken) {
-          setSelectedToken(matchingToken);
-          return;
+    if (selectedToken || availableBaseTokens.length === 0) return;
+    const routeCurrency = routeParams?.currency;
+    if (routeCurrency) {
+      const base = getBaseSymbol(routeCurrency);
+      const unified = unifiedList.find((u) => u.symbol === base);
+      if (unified) {
+        if (unified.isUnifiedStable && unified.networks.length > 1) {
+          setShowNetworkModal(true);
+          setSelectedToken({
+            id: base,
+            blockchain: '',
+            blockchainName: '',
+            currency: base,
+            symbol: base,
+            name: base,
+            displayName: base,
+            decimals: 6,
+            isToken: true,
+            price: '0',
+            nairaPrice: '0',
+          });
+        } else if (unified.networks.length > 0) {
+          const net = unified.networks[0];
+          setSelectedToken(networkToToken(base, net));
+          setSelectedNetwork(net.blockchain);
         }
+        return;
       }
-      // Fallback to first available token
-      setSelectedToken(availableTokens[0]);
     }
-  }, [availableTokens, selectedToken, routeParams?.currency]);
+    const first = unifiedList[0];
+    if (first?.networks?.length) {
+      const net = first.networks[0];
+      setSelectedToken(networkToToken(first.symbol, net));
+      setSelectedNetwork(net.blockchain);
+    }
+  }, [availableBaseTokens, selectedToken, routeParams?.currency, unifiedList]);
 
   // Get deposit address from virtual accounts first, then fetch if not available
   const depositAddressFromVirtualAccount = useMemo(() => {
@@ -197,71 +230,81 @@ const CryptoFundDepositScreen = () => {
     } as any
   );
 
-  // Get networks for selected token
-  const networksForToken = useMemo(() => {
-    if (!selectedToken) return [];
-    return availableTokens.filter(token => token.currency === selectedToken.currency);
-  }, [availableTokens, selectedToken]);
+  const ledgerCurrency = useMemo(() => {
+    if (!selectedNetwork || networksForBaseSymbol.length === 0) {
+      return selectedToken?.currency || '';
+    }
+    const net = networksForBaseSymbol.find((n) => n.blockchain === selectedNetwork);
+    return net?.currency || selectedToken?.currency || '';
+  }, [networksForBaseSymbol, selectedNetwork, selectedToken?.currency]);
 
-  // Handle network selection
+  const depositAddressFromUnifiedNetwork = useMemo(() => {
+    if (!selectedNetwork) return null;
+    const net = networksForBaseSymbol.find((n) => n.blockchain === selectedNetwork);
+    return net?.depositAddress || null;
+  }, [networksForBaseSymbol, selectedNetwork]);
+
   const handleNetworkSelect = (network: string) => {
     setSelectedNetwork(network);
     setShowNetworkModal(false);
-    // Find the token for this network
-    const tokenForNetwork = availableTokens.find(
-      t => t.currency === selectedToken?.currency && t.blockchain === network
-    );
-    if (tokenForNetwork) {
-      setSelectedToken(tokenForNetwork);
+    const base = getBaseSymbol(selectedToken?.symbol || selectedToken?.currency || '');
+    const net = networksForBaseSymbol.find((n) => n.blockchain === network);
+    if (net) {
+      setSelectedToken(networkToToken(base, net));
     }
   };
 
-  // Update deposit address fetching to use selectedNetwork
-  const shouldFetchDepositAddressWithNetwork = useMemo(() => {
-    return (
-      !!selectedToken?.currency &&
-      !!selectedNetwork &&
-      !depositAddressFromVirtualAccount &&
-      !isLoadingVirtualAccounts
-    );
-  }, [selectedToken, selectedNetwork, depositAddressFromVirtualAccount, isLoadingVirtualAccounts]);
-
-  // Update deposit address query to use selectedNetwork
-  const {
-    data: depositAddressDataWithNetwork,
-    isLoading: isLoadingDepositAddressWithNetwork,
-    refetch: refetchDepositAddressWithNetwork,
-  } = useGetDepositAddress(
-    selectedToken?.currency || '',
-    selectedNetwork || '',
-    {
-      enabled: shouldFetchDepositAddressWithNetwork,
-      queryKey: ['crypto', 'deposit-address', selectedToken?.currency || '', selectedNetwork || ''],
-    } as any
-  );
-
-  // Get deposit address from virtual accounts for selected network
   const depositAddressFromVirtualAccountForNetwork = useMemo(() => {
     if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data) || !selectedToken || !selectedNetwork) {
       return null;
     }
     const account = virtualAccountsData.data.find(
       (va: any) =>
-        va.currency === selectedToken.currency &&
+        (va.currency === ledgerCurrency || va.currency === selectedToken.currency) &&
         va.blockchain === selectedNetwork
     );
-    
+
     if (account?.depositAddresses && Array.isArray(account.depositAddresses) && account.depositAddresses.length > 0) {
       return account.depositAddresses[0]?.address || null;
     }
     return null;
-  }, [virtualAccountsData?.data, selectedToken, selectedNetwork]);
+  }, [virtualAccountsData?.data, selectedToken, selectedNetwork, ledgerCurrency]);
+
+  const shouldFetchDepositAddressWithNetwork = useMemo(() => {
+    return (
+      !!ledgerCurrency &&
+      !!selectedNetwork &&
+      !depositAddressFromUnifiedNetwork &&
+      !depositAddressFromVirtualAccountForNetwork &&
+      !isLoadingVirtualAccounts
+    );
+  }, [
+    ledgerCurrency,
+    selectedNetwork,
+    depositAddressFromUnifiedNetwork,
+    depositAddressFromVirtualAccountForNetwork,
+    isLoadingVirtualAccounts,
+  ]);
+
+  const {
+    data: depositAddressDataWithNetwork,
+    isLoading: isLoadingDepositAddressWithNetwork,
+    refetch: refetchDepositAddressWithNetwork,
+  } = useGetDepositAddress(
+    ledgerCurrency || selectedToken?.currency || '',
+    selectedNetwork || selectedToken?.blockchain || '',
+    {
+      enabled: shouldFetchDepositAddressWithNetwork && !!ledgerCurrency,
+      queryKey: ['crypto', 'deposit-address', ledgerCurrency || '', selectedNetwork || ''],
+    } as any
+  );
 
   // Set deposit address from virtual account or API
   useEffect(() => {
     if (selectedNetwork) {
-      // Use network-specific address
-      if (depositAddressFromVirtualAccountForNetwork) {
+      if (depositAddressFromUnifiedNetwork) {
+        setDepositAddress(depositAddressFromUnifiedNetwork);
+      } else if (depositAddressFromVirtualAccountForNetwork) {
         setDepositAddress(depositAddressFromVirtualAccountForNetwork);
       } else if (depositAddressDataWithNetwork?.data?.address) {
         setDepositAddress(depositAddressDataWithNetwork.data.address);
@@ -275,7 +318,7 @@ const CryptoFundDepositScreen = () => {
     } else if (selectedToken && !shouldFetchDepositAddress && !isLoadingDepositAddress) {
       setDepositAddress(null);
     }
-  }, [depositAddressFromVirtualAccountForNetwork, depositAddressDataWithNetwork?.data?.address, depositAddressFromVirtualAccount, depositAddressData?.data?.address, selectedToken, selectedNetwork, shouldFetchDepositAddress, isLoadingDepositAddress]);
+  }, [depositAddressFromUnifiedNetwork, depositAddressFromVirtualAccountForNetwork, depositAddressDataWithNetwork?.data?.address, depositAddressFromVirtualAccount, depositAddressData?.data?.address, selectedToken, selectedNetwork, shouldFetchDepositAddress, isLoadingDepositAddress]);
 
   // Show QR modal when deposit address is ready
   useEffect(() => {
@@ -284,10 +327,15 @@ const CryptoFundDepositScreen = () => {
     }
   }, [depositAddress, selectedToken, selectedNetwork]);
 
-  // Get balance for selected token
   const tokenBalance = useMemo(() => {
-    if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data) || !selectedToken) {
-      return null; // Return null to indicate loading/unknown
+    if (!selectedToken) return null;
+    const base = getBaseSymbol(selectedToken.symbol || selectedToken.currency);
+    const unified = unifiedList.find((u) => u.symbol === base);
+    if (unified) {
+      return unified.totalAvailable || unified.totalBalance || '0.00';
+    }
+    if (!virtualAccountsData?.data || !Array.isArray(virtualAccountsData.data)) {
+      return null;
     }
     const account = virtualAccountsData.data.find(
       (va: any) =>
@@ -295,7 +343,7 @@ const CryptoFundDepositScreen = () => {
         va.blockchain === selectedToken.blockchain
     );
     return account?.availableBalance || account?.accountBalance || '0.00';
-  }, [virtualAccountsData?.data, selectedToken]);
+  }, [virtualAccountsData?.data, selectedToken, unifiedList]);
 
   // Determine if deposit address is loading
   const isDepositAddressLoading = useMemo(() => {
@@ -449,15 +497,18 @@ const CryptoFundDepositScreen = () => {
                   resizeMode="cover"
                 />
                 <View style={styles.tokenInfo}>
-                  <ThemedText style={styles.tokenName}>{selectedToken.displayName}</ThemedText>
-                  {isLoadingVirtualAccounts ? (
+                  <ThemedText style={styles.tokenName}>
+                    {getBaseSymbol(selectedToken.symbol || selectedToken.currency)}
+                    {selectedToken.blockchainName ? ` · ${selectedToken.blockchainName}` : ''}
+                  </ThemedText>
+                  {isLoadingTokens || isLoadingVirtualAccounts ? (
                     <View style={styles.balanceLoadingContainer}>
                       <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.7)" />
                       <ThemedText style={styles.tokenBalanceLoading}>Loading balance...</ThemedText>
                     </View>
                   ) : (
                     <ThemedText style={styles.tokenBalance}>
-                      Balance: {tokenBalance !== null ? `${tokenBalance} ${selectedToken.currency}` : `0.00 ${selectedToken.currency}`}
+                      Balance: {tokenBalance !== null ? `${tokenBalance} ${getBaseSymbol(selectedToken.symbol || selectedToken.currency)}` : `0.00 ${getBaseSymbol(selectedToken.symbol || selectedToken.currency)}`}
                     </ThemedText>
                   )}
                 </View>
@@ -635,14 +686,34 @@ const CryptoFundDepositScreen = () => {
               </View>
             ) : (
               <ScrollView style={styles.modalList}>
-                {availableTokens.map((token) => (
+                {availableBaseTokens.map((base) => (
                   <TouchableOpacity
-                    key={token.id}
+                    key={base.symbol}
                     style={styles.tokenItem}
                     onPress={() => {
-                      setSelectedToken(token);
                       setShowTokenModal(false);
-                      setShowNetworkModal(true);
+                      setSelectedNetwork(null);
+                      setDepositAddress(null);
+                      if (base.isUnifiedStable && base.networks.length > 1) {
+                        setSelectedToken({
+                          id: base.symbol,
+                          blockchain: '',
+                          blockchainName: '',
+                          currency: base.symbol,
+                          symbol: base.symbol,
+                          name: base.symbol,
+                          displayName: base.symbol,
+                          decimals: 6,
+                          isToken: true,
+                          price: '0',
+                          nairaPrice: '0',
+                        });
+                        setShowNetworkModal(true);
+                      } else if (base.networks.length > 0) {
+                        const net = base.networks[0];
+                        setSelectedToken(networkToToken(base.symbol, net));
+                        setSelectedNetwork(net.blockchain);
+                      }
                     }}
                   >
                     <Image
@@ -651,13 +722,23 @@ const CryptoFundDepositScreen = () => {
                       resizeMode="cover"
                     />
                     <View style={styles.tokenItemInfo}>
-                      <ThemedText style={styles.tokenItemName}>{token.displayName}</ThemedText>
-                      <ThemedText style={styles.tokenItemNetwork}>{token.blockchainName}</ThemedText>
+                      <ThemedText style={styles.tokenItemName}>{base.displayName}</ThemedText>
+                      <ThemedText style={styles.tokenItemNetwork}>
+                        {base.networks.length} network{base.networks.length !== 1 ? 's' : ''}
+                      </ThemedText>
                     </View>
                     <MaterialCommunityIcons
-                      name={selectedToken?.id === token.id ? 'radiobox-marked' : 'radiobox-blank'}
+                      name={
+                        getBaseSymbol(selectedToken?.symbol || selectedToken?.currency || '') === base.symbol
+                          ? 'radiobox-marked'
+                          : 'radiobox-blank'
+                      }
                       size={24 * SCALE}
-                      color={selectedToken?.id === token.id ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                      color={
+                        getBaseSymbol(selectedToken?.symbol || selectedToken?.currency || '') === base.symbol
+                          ? '#A9EF45'
+                          : 'rgba(255, 255, 255, 0.3)'
+                      }
                     />
                   </TouchableOpacity>
                 ))}
@@ -683,19 +764,20 @@ const CryptoFundDepositScreen = () => {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalList}>
-              {networksForToken.map((token) => (
+              {networksForBaseSymbol.map((net) => (
                 <TouchableOpacity
-                  key={token.id}
+                  key={`${net.blockchain}_${net.currency}`}
                   style={styles.tokenItem}
-                  onPress={() => handleNetworkSelect(token.blockchain)}
+                  onPress={() => handleNetworkSelect(net.blockchain)}
                 >
                   <View style={styles.tokenItemInfo}>
-                    <ThemedText style={styles.tokenItemName}>{token.blockchainName}</ThemedText>
+                    <ThemedText style={styles.tokenItemName}>{net.blockchainName || net.blockchain}</ThemedText>
+                    <ThemedText style={styles.tokenItemNetwork}>{net.available} available</ThemedText>
                   </View>
                   <MaterialCommunityIcons
-                    name={selectedNetwork === token.blockchain ? 'radiobox-marked' : 'radiobox-blank'}
+                    name={selectedNetwork === net.blockchain ? 'radiobox-marked' : 'radiobox-blank'}
                     size={24 * SCALE}
-                    color={selectedNetwork === token.blockchain ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
+                    color={selectedNetwork === net.blockchain ? '#A9EF45' : 'rgba(255, 255, 255, 0.3)'}
                   />
                 </TouchableOpacity>
               ))}
@@ -703,8 +785,8 @@ const CryptoFundDepositScreen = () => {
             <TouchableOpacity
               style={styles.applyButton}
               onPress={() => {
-                if (networksForToken.length > 0) {
-                  handleNetworkSelect(networksForToken[0].blockchain);
+                if (networksForBaseSymbol.length > 0) {
+                  handleNetworkSelect(networksForBaseSymbol[0].blockchain);
                 }
               }}
             >

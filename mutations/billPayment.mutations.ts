@@ -75,6 +75,7 @@ export interface InitiateBillPaymentRequest {
   accountType?: string;
   planId?: string | number;
   beneficiaryId?: number;
+  rewardClaimId?: number;
 }
 
 export const initiateBillPayment = async (data: InitiateBillPaymentRequest): Promise<ApiResponse> => {
@@ -104,7 +105,8 @@ export const useInitiateBillPayment = (
  */
 export interface ConfirmBillPaymentRequest {
   transactionId: number;
-  pin: string;
+  pin?: string;
+  emailOtp?: string;
 }
 
 export const confirmBillPayment = async (data: ConfirmBillPaymentRequest): Promise<ApiResponse> => {

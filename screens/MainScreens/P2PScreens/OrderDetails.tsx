@@ -30,6 +30,7 @@ import {
 } from '../../../mutations/p2p.mutations';
 import { showSuccessAlert, showErrorAlert, showConfirmAlert } from '../../../utils/customAlert';
 import { useQueryClient } from '@tanstack/react-query';
+import { getBaseSymbol } from '../../../utils/cryptoSymbols';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -658,7 +659,20 @@ const OrderDetails = () => {
         </TouchableOpacity>
         <ThemedText style={styles.headerTitle}>
           {/* Use userAction for display - this is what user sees, not vendor's ad type */}
-          {orderData?.userAction === 'buy' ? 'USDT Buy Order' : orderData?.userAction === 'sell' ? 'USDT Sell Order' : (orderData?.type === 'buy' ? 'USDT Sell Order' : 'USDT Buy Order')}
+          {(() => {
+            const base = getBaseSymbol(
+              orderDetailsData?.data?.cryptoCurrency || orderData?.cryptoCurrency || 'USDT'
+            );
+            const action =
+              orderData?.userAction === 'buy'
+                ? 'Buy'
+                : orderData?.userAction === 'sell'
+                  ? 'Sell'
+                  : orderData?.type === 'buy'
+                    ? 'Sell'
+                    : 'Buy';
+            return `${base} ${action} Order`;
+          })()}
         </ThemedText>
         <View style={{ width: 24 * SCALE }} />
       </View>

@@ -1,38 +1,47 @@
 /**
  * Country Queries
- * GET requests for country endpoints
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 import apiClient, { ApiResponse, handleApiError } from '../utils/apiClient';
 import { API_ROUTES, buildRouteWithParams } from '../utils/apiConfig';
+import { FALLBACK_COUNTRIES, filterSupportedCountries } from '../utils/supportedCountries';
 
-/**
- * Get all countries
- */
+const COUNTRIES_CACHE_KEY = 'rhinox_countries_cache_v1';
+
 export const getCountries = async (): Promise<ApiResponse> => {
   try {
     const response = await apiClient.get(API_ROUTES.COUNTRY.GET_ALL);
-    return response.data;
+    const payload = response.data;
+    if (payload?.data && Array.isArray(payload.data)) {
+      await AsyncStorage.setItem(COUNTRIES_CACHE_KEY, JSON.stringify(payload.data));
+    }
+    return payload;
   } catch (error: any) {
+    try {
+      const cached = await AsyncStorage.getItem(COUNTRIES_CACHE_KEY);
+      if (cached) {
+        return { success: true, data: JSON.parse(cached) };
+      }
+    } catch {
+      // ignore cache read errors
+    }
     throw handleApiError(error);
   }
 };
 
-/**
- * Query hook for getting all countries
- */
 export const useGetCountries = (options?: UseQueryOptions<ApiResponse, Error>) => {
   return useQuery<ApiResponse, Error>({
     queryKey: ['countries'],
     queryFn: getCountries,
+    retry: 3,
+    staleTime: 30 * 60 * 1000,
+    placeholderData: { success: true, data: filterSupportedCountries(FALLBACK_COUNTRIES) },
     ...options,
   });
 };
 
-/**
- * Get country by code
- */
 export const getCountryByCode = async (code: string): Promise<ApiResponse> => {
   try {
     const route = buildRouteWithParams(`/countries/{code}`, { code });
@@ -43,9 +52,6 @@ export const getCountryByCode = async (code: string): Promise<ApiResponse> => {
   }
 };
 
-/**
- * Query hook for getting country by code
- */
 export const useGetCountryByCode = (
   code: string,
   options?: UseQueryOptions<ApiResponse, Error>
@@ -57,4 +63,3 @@ export const useGetCountryByCode = (
     ...options,
   });
 };
-

@@ -57,3 +57,6 @@ export * from './notification.queries';
 // Transaction History
 export * from './transactionHistory.queries';
 
+// Rewards
+export * from './rewards.queries';
+

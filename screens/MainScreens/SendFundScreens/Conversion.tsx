@@ -28,7 +28,14 @@ import { useInitiateConversion, useConfirmConversion } from '../../../mutations/
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { getSecurityConfirmationSettings } from '../../../utils/apiClient';
+import {
+    proceedAfterTransactionInitiate,
+    verifySecurityBeforeTransaction,
+    getMissingVerificationMessage,
+} from '../../../utils/securityVerification';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -72,6 +79,44 @@ const getCurrencySymbol = (currency: string): string => {
     return symbolMap[currency] || currency;
 };
 
+const SUPPORTED_FIAT_CURRENCIES = ['NGN', 'KES', 'GHS', 'ZAR', 'BWP', 'TZS', 'UGX'];
+
+const mapCountryRow = (country: any) => {
+    const code = country.code || country.countryCode || '';
+    const currency = getCurrencyFromCountryCode(code);
+    const currencySymbol = getCurrencySymbol(currency);
+
+    let flagSource: any = require('../../../assets/login/nigeria-flag.png');
+    if (country.flag) {
+        if (typeof country.flag === 'string') {
+            if (country.flag.startsWith('/') || country.flag.startsWith('http')) {
+                flagSource = {
+                    uri: country.flag.startsWith('/')
+                        ? `${API_BASE_URL.replace('/api', '')}${country.flag}`
+                        : country.flag,
+                };
+            } else {
+                const fallback = FALLBACK_COUNTRIES.find((fc) => fc.code === code);
+                flagSource = fallback?.flag || flagSource;
+            }
+        } else {
+            flagSource = country.flag;
+        }
+    } else {
+        const fallback = FALLBACK_COUNTRIES.find((fc) => fc.code === code);
+        flagSource = fallback?.flag || flagSource;
+    }
+
+    return {
+        id: country.id,
+        name: country.name,
+        code,
+        currency,
+        currencySymbol,
+        flag: flagSource,
+    };
+};
+
 const Conversion = () => {
     const navigation = useNavigation();
 
@@ -80,31 +125,17 @@ const Conversion = () => {
         React.useCallback(() => {
             const parent = navigation.getParent();
             if (parent) {
-                parent.setOptions({
-                    tabBarStyle: { display: 'none' },
-                });
-            }
-            return () => {
-                if (parent) {
-                    parent.setOptions({
-                        tabBarStyle: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                            borderTopWidth: 0,
-                            height: 75 * 0.8,
-                            paddingBottom: 10,
-                            paddingTop: 0,
-                            position: 'absolute',
-                            bottom: 26 * 0.8,
-                            borderRadius: 100,
-                            overflow: 'hidden',
-                            elevation: 0,
-                            width: SCREEN_WIDTH * 0.86,
-                            marginLeft: 30,
-                            shadowOpacity: 0,
-                        },
-                    });
-                }
-            };
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+      return () => {
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: defaultTabBarStyle,
+          });
+        }
+      };
         }, [navigation])
     );
 
@@ -154,55 +185,49 @@ const Conversion = () => {
         return balancesData.data.fiat.map((w: any) => w.currency).filter(Boolean);
     }, [balancesData?.data?.fiat]);
 
-    // Transform countries data with currency info - FILTERED to only show countries with fiat wallets
-    const countries = useMemo(() => {
+    // All supported fiat countries (receive side can target wallets user does not have yet)
+    const allFiatCountries = useMemo(() => {
         if (!countriesData?.data || !Array.isArray(countriesData.data)) {
-            // Filter fallback countries too
-            return FALLBACK_COUNTRIES.filter(c => availableFiatCurrencies.includes(c.currency));
+            return FALLBACK_COUNTRIES.filter((c) => SUPPORTED_FIAT_CURRENCIES.includes(c.currency));
         }
         return countriesData.data
-            .map((country: any) => {
-                const code = country.code || country.countryCode || '';
-                const currency = getCurrencyFromCountryCode(code);
-                const currencySymbol = getCurrencySymbol(currency);
-                
-                // Handle flag - can be URL from backend or use fallback
-                let flagSource: any = require('../../../assets/login/nigeria-flag.png'); // Default fallback
-                if (country.flag) {
-                    if (typeof country.flag === 'string') {
-                        // If it's a URL path from backend
-                        if (country.flag.startsWith('/') || country.flag.startsWith('http')) {
-                            flagSource = { uri: country.flag.startsWith('/') 
-                                ? `${API_BASE_URL.replace('/api', '')}${country.flag}`
-                                : country.flag };
-                        } else {
-                            // Try to match with fallback countries
-                            const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
-                            flagSource = fallback?.flag || flagSource;
-                        }
-                    } else {
-                        flagSource = country.flag;
-                    }
-                } else {
-                    // Try to match with fallback countries by code
-                    const fallback = FALLBACK_COUNTRIES.find(fc => fc.code === code);
-                    flagSource = fallback?.flag || flagSource;
-                }
+            .map(mapCountryRow)
+            .filter((c: any) => SUPPORTED_FIAT_CURRENCIES.includes(c.currency));
+    }, [countriesData?.data]);
 
-                return {
-                    id: country.id,
-                    name: country.name,
-                    code: code,
-                    currency: currency,
-                    currencySymbol: currencySymbol,
-                    flag: flagSource,
-                };
-            })
-            .filter((c: any) => availableFiatCurrencies.includes(c.currency)); // Only show countries with fiat wallets
-    }, [countriesData?.data, availableFiatCurrencies]);
+    // Send side: only currencies the user already has a fiat wallet for
+    const sendCountries = useMemo(() => {
+        if (!availableFiatCurrencies.length) return [];
+        return allFiatCountries.filter((c) => availableFiatCurrencies.includes(c.currency));
+    }, [allFiatCountries, availableFiatCurrencies]);
 
-    const sendCountryData = countries.find(c => c.id === sendCountry || (c as any).code === sendCountry);
-    const receiveCountryData = countries.find(c => c.id === receiveCountry || (c as any).code === receiveCountry);
+    const receiveCountries = useMemo(() => allFiatCountries, [allFiatCountries]);
+
+    useEffect(() => {
+        if (!sendCountries.length) return;
+
+        const sendValid = sendCountries.some((c) => c.id === sendCountry);
+        const activeSend = sendValid
+            ? sendCountries.find((c) => c.id === sendCountry) || sendCountries[0]
+            : sendCountries[0];
+
+        if (!sendValid) {
+            setSendCountry(activeSend.id);
+        }
+
+        const receiveValid = receiveCountries.some(
+            (c) => c.id === receiveCountry && c.currency !== activeSend.currency
+        );
+        if (!receiveValid) {
+            const alternate = receiveCountries.find((c) => c.currency !== activeSend.currency);
+            if (alternate) {
+                setReceiveCountry(alternate.id);
+            }
+        }
+    }, [sendCountries, receiveCountries, sendCountry, receiveCountry]);
+
+    const sendCountryData = sendCountries.find((c) => c.id === sendCountry || c.code === sendCountry);
+    const receiveCountryData = receiveCountries.find((c) => c.id === receiveCountry || c.code === receiveCountry);
     
     // Get currency codes
     const fromCurrency = useMemo(() => {
@@ -210,18 +235,20 @@ const Conversion = () => {
             return sendCountryData.currency;
         }
         // Fallback: try to get from country ID
-        const country = countries.find(c => c.id === sendCountry);
-        return country?.currency || 'NGN';
-    }, [sendCountry, sendCountryData, countries]);
+        const country = sendCountries.find((c) => c.id === sendCountry);
+        return country?.currency || sendCountries[0]?.currency || 'NGN';
+    }, [sendCountry, sendCountryData, sendCountries]);
     
     const toCurrency = useMemo(() => {
         if (receiveCountryData) {
             return receiveCountryData.currency;
         }
-        // Fallback: try to get from country ID
-        const country = countries.find(c => c.id === receiveCountry);
+        const country = receiveCountries.find((c) => c.id === receiveCountry);
         return country?.currency || 'KES';
-    }, [receiveCountry, receiveCountryData, countries]);
+    }, [receiveCountry, receiveCountryData, receiveCountries]);
+
+    const hasSendWallet = availableFiatCurrencies.includes(fromCurrency);
+    const hasReceiveWallet = availableFiatCurrencies.includes(toCurrency);
     
     // Get numeric amount for API calls
     const numericAmount = useMemo(() => {
@@ -260,7 +287,7 @@ const Conversion = () => {
     const isValidAmount = !isNaN(numericAmountValue) && numericAmountValue > 0;
     // Ensure both currencies are valid before calculating
     const hasValidCurrencies = fromCurrency && toCurrency && fromCurrency !== toCurrency;
-    const shouldCalculate = isValidAmount && hasValidCurrencies && sendAmount.trim() !== '';
+    const shouldCalculate = isValidAmount && hasValidCurrencies && hasSendWallet && sendAmount.trim() !== '';
     
     const {
         data: calculateData,
@@ -278,6 +305,24 @@ const Conversion = () => {
             enabled: shouldCalculate && isValidAmount && hasValidCurrencies && sendAmount.trim() !== '' && !!fromCurrency && !!toCurrency,
         } as any
     );
+
+    const conversionErrorMessage = useMemo(() => {
+        if (!hasSendWallet) {
+            return `You don't have a ${fromCurrency} wallet. Fund your ${fromCurrency} wallet before converting.`;
+        }
+        if (!calculateError) return null;
+        const message = calculateError.message || '';
+        if (message.includes('Insufficient balance')) {
+            return `Insufficient ${fromCurrency} balance. You have ${sendCountryData?.currencySymbol || ''}${formatBalance(sendBalance)} available.`;
+        }
+        if (message.includes('not found') || message.includes('create it first')) {
+            return `You don't have a ${fromCurrency} wallet to convert from.`;
+        }
+        if (message.includes('same currency')) {
+            return 'Choose two different currencies to convert.';
+        }
+        return message || 'Unable to calculate exchange rate. Please try again.';
+    }, [calculateError, hasSendWallet, fromCurrency, sendBalance, sendCountryData?.currencySymbol]);
 
     // Update amounts and rates when calculation data changes
     // API Response: { fromAmount, toAmount, receivedAmount, fee, feeCurrency, exchangeRate }
@@ -362,11 +407,14 @@ const Conversion = () => {
     const initiateMutation = useInitiateConversion({
         onSuccess: (response) => {
             if (response?.data?.conversionReference) {
-                setConversionReference(response.data.conversionReference);
-                // Reset PIN before showing modal
+                const ref = response.data.conversionReference;
+                setConversionReference(ref);
                 setPin('');
                 setShowSummaryModal(false);
-                setShowPinModal(true);
+                proceedAfterTransactionInitiate(0, {
+                    showVerificationModal: () => setShowPinModal(true),
+                    confirm: () => confirmMutation.mutate({ conversionReference: ref, pin: '' }),
+                });
             } else {
                 showErrorAlert('Error', 'Failed to initiate conversion. Conversion reference not found.');
             }
@@ -654,13 +702,24 @@ const Conversion = () => {
     };
 
     const handleSwap = () => {
+        const nextSendCountry = receiveCountry;
+        const nextSendCurrency =
+            receiveCountries.find((c) => c.id === nextSendCountry)?.currency || toCurrency;
+
+        if (!availableFiatCurrencies.includes(nextSendCurrency)) {
+            showWarningAlert(
+                'Cannot swap',
+                `You don't have a ${nextSendCurrency} wallet. You can only send from currencies you already hold.`
+            );
+            return;
+        }
+
         const tempCountry = sendCountry;
         const tempAmount = sendAmount;
 
         setSendCountry(receiveCountry);
         setReceiveCountry(tempCountry);
         setSendAmount(receiveAmount);
-        // The receive amount and rates will be recalculated via the useCalculateConversion hook
     };
 
     const handlePinPress = React.useCallback((num: string) => {
@@ -722,40 +781,30 @@ const Conversion = () => {
     };
 
     // Handle PIN confirmation manually if user presses confirm button
-    const handleConfirmPin = () => {
-        console.log('[Conversion] Confirm PIN called, current PIN:', pin, 'Length:', pin?.length);
-        
-        // Validate PIN
-        if (!pin || pin.length !== 5) {
-            showErrorAlert('Error', 'Please enter your 5-digit PIN');
-            return;
-        }
-
-        // Validate PIN contains only digits
-        if (!/^\d{5}$/.test(pin)) {
-            showErrorAlert('Error', 'PIN must contain exactly 5 digits');
-            setPin('');
-            return;
-        }
-
-        // Validate conversion reference exists
+    const handleConfirmPin = async () => {
         if (!conversionReference) {
             showErrorAlert('Error', 'Conversion reference not found. Please try again.');
             setPin('');
             return;
         }
 
-        // Don't submit if already pending
         if (confirmMutation.isPending) {
-            console.log('[Conversion] Confirmation already in progress');
             return;
         }
 
-        console.log('[Conversion] Submitting confirmation with PIN');
-        // Confirm conversion with PIN
+        const verification = await verifySecurityBeforeTransaction({ pin });
+        if (!verification.success) {
+            showWarningAlert(
+                'Security Verification Required',
+                getMissingVerificationMessage(verification.missingVerifications)
+            );
+            return;
+        }
+
+        const settings = await getSecurityConfirmationSettings();
         confirmMutation.mutate({
             conversionReference,
-            pin: pin,
+            pin: settings.verifyWithPin && pin ? pin : '',
         });
     };
 
@@ -824,9 +873,9 @@ const Conversion = () => {
                             <ActivityIndicator size="small" color="#A9EF45" />
                             <ThemedText style={styles.exchangeRateValue}>Calculating...</ThemedText>
                         </View>
-                    ) : calculateError ? (
-                        <ThemedText style={[styles.exchangeRateValue, { color: '#ff0000', fontSize: 14 }]}>
-                            Error loading rate
+                    ) : conversionErrorMessage ? (
+                        <ThemedText style={[styles.exchangeRateValue, { color: '#ff6b6b', fontSize: 13 }]}>
+                            {conversionErrorMessage}
                         </ThemedText>
                     ) : (
                         <ThemedText style={styles.exchangeRateValue}>
@@ -938,7 +987,11 @@ const Conversion = () => {
                         {isLoadingBalances ? (
                             <ActivityIndicator size="small" color="rgba(255, 255, 255, 0.7)" />
                         ) : (
-                            <ThemedText style={styles.balanceText}>{receiveCountryData?.currencySymbol}{formatBalance(receiveBalance)}</ThemedText>
+                            <ThemedText style={styles.balanceText}>
+                                {hasReceiveWallet
+                                    ? `${receiveCountryData?.currencySymbol}${formatBalance(receiveBalance)}`
+                                    : 'No wallet yet — created on convert'}
+                            </ThemedText>
                         )}
                     </View>
                 </View>
@@ -1121,12 +1174,12 @@ const Conversion = () => {
                                 <View style={{ padding: 20, alignItems: 'center' }}>
                                     <ActivityIndicator size="small" color="#A9EF45" />
                                 </View>
-                            ) : countries.length === 0 ? (
+                            ) : sendCountries.length === 0 ? (
                                 <View style={{ padding: 20, alignItems: 'center' }}>
-                                    <ThemedText style={styles.countryName}>No countries available</ThemedText>
+                                    <ThemedText style={styles.countryName}>No fiat wallets available to convert from</ThemedText>
                                 </View>
                             ) : (
-                                countries.map((c) => (
+                                sendCountries.map((c) => (
                                     <TouchableOpacity
                                         key={c.id}
                                         style={styles.countryItem}
@@ -1193,12 +1246,12 @@ const Conversion = () => {
                                 <View style={{ padding: 20, alignItems: 'center' }}>
                                     <ActivityIndicator size="small" color="#A9EF45" />
                                 </View>
-                            ) : countries.length === 0 ? (
+                            ) : receiveCountries.length === 0 ? (
                                 <View style={{ padding: 20, alignItems: 'center' }}>
                                     <ThemedText style={styles.countryName}>No countries available</ThemedText>
                                 </View>
                             ) : (
-                                countries.map((c) => (
+                                receiveCountries.map((c) => (
                                     <TouchableOpacity
                                         key={c.id}
                                         style={styles.countryItem}

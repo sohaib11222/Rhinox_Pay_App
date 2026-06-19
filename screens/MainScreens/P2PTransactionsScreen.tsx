@@ -174,16 +174,46 @@ const P2PTransactionsScreen = () => {
     return [];
   }, [p2pTransactionsData]);
 
-  const summaryData = {
-    incoming: {
-      ngn: '0.00',
-      usd: '$0.00',
-    },
-    outgoing: {
-      ngn: '0.00',
-      usd: '$0.00',
-    },
-  };
+  const summaryData = useMemo(() => {
+    const apiSummary = p2pTransactionsData?.data?.summary;
+    const incoming = parseFloat(apiSummary?.incoming || '0');
+    const outgoing = parseFloat(apiSummary?.outgoing || '0');
+
+    if (apiSummary?.incoming != null || apiSummary?.outgoing != null) {
+      return {
+        incoming: {
+          ngn: incoming.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          usd: `$${incoming.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        },
+        outgoing: {
+          ngn: outgoing.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+          usd: `$${outgoing.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        },
+      };
+    }
+
+    let inc = 0;
+    let out = 0;
+    const list = p2pTransactionsData?.data?.transactions || p2pTransactionsData?.data?.data || [];
+    if (Array.isArray(list)) {
+      list.forEach((tx: any) => {
+        const amt = parseFloat(tx.amount || '0');
+        if (tx.direction === 'incoming') inc += amt;
+        else if (tx.direction === 'outgoing') out += amt;
+      });
+    }
+
+    return {
+      incoming: {
+        ngn: inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        usd: `$${inc.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      },
+      outgoing: {
+        ngn: out.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        usd: `$${out.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      },
+    };
+  }, [p2pTransactionsData]);
 
   const getStatusColor = (status: string) => {
     switch (status) {

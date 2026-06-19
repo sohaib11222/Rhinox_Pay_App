@@ -74,6 +74,21 @@ export const useGetMobileMoneyProviders = (
 };
 
 /**
+ * Get deposit payment status (syncs with PalmPay when still pending)
+ */
+export const getDepositStatus = async (transactionId: string): Promise<ApiResponse> => {
+  try {
+    const route = buildRouteWithParams(`${API_ROUTES.DEPOSIT.STATUS}/{transactionId}`, {
+      transactionId,
+    });
+    const response = await apiClient.get(route);
+    return response.data;
+  } catch (error: any) {
+    throw handleApiError(error);
+  }
+};
+
+/**
  * Get transaction receipt
  */
 export const getDepositReceipt = async (transactionId: string): Promise<ApiResponse> => {

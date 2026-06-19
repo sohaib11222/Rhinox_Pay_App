@@ -3,9 +3,10 @@
  * POST/PUT/DELETE requests for KYC-related endpoints
  */
 
-import { useMutation, UseMutationOptions } from '@tanstack/react-query';
+import { useMutation, UseMutationOptions, useQueryClient } from '@tanstack/react-query';
 import apiClient, { ApiResponse, handleApiError } from '../utils/apiClient';
 import { API_ROUTES } from '../utils/apiConfig';
+import { invalidateKycAndUserQueries } from '../utils/kycQuerySync';
 
 /**
  * Submit or update KYC registration information
@@ -37,9 +38,15 @@ export const submitKYC = async (data: SubmitKYCRequest): Promise<ApiResponse> =>
 export const useSubmitKYC = (
   options?: UseMutationOptions<ApiResponse, Error, SubmitKYCRequest>
 ) => {
+  const queryClient = useQueryClient();
+
   return useMutation<ApiResponse, Error, SubmitKYCRequest>({
     mutationFn: submitKYC,
     ...options,
+    onSuccess: async (data, variables, context) => {
+      await invalidateKycAndUserQueries(queryClient);
+      await options?.onSuccess?.(data, variables, context);
+    },
   });
 };
 
@@ -99,9 +106,15 @@ export const submitFaceVerification = async (
 export const useSubmitFaceVerification = (
   options?: UseMutationOptions<ApiResponse, Error, FaceVerificationRequest>
 ) => {
+  const queryClient = useQueryClient();
+
   return useMutation<ApiResponse, Error, FaceVerificationRequest>({
     mutationFn: submitFaceVerification,
     ...options,
+    onSuccess: async (data, variables, context) => {
+      await invalidateKycAndUserQueries(queryClient);
+      await options?.onSuccess?.(data, variables, context);
+    },
   });
 };
 

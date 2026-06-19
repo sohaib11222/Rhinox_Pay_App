@@ -24,10 +24,16 @@ import { useInitiateBillPayment, useConfirmBillPayment } from '../../../mutation
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetBillPayments, useGetTransactionDetails, mapBillPaymentStatusToAPI } from '../../../queries/transactionHistory.queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import TransactionErrorModal from '../../components/TransactionErrorModal';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
+import {
+  proceedAfterTransactionInitiate,
+  prepareTransactionConfirmPayload,
+} from '../../../utils/securityVerification';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -44,6 +50,12 @@ interface RecentTransaction {
 
 const DataRecharge = ({ route }: any) => {
   const navigation = useNavigation();
+  const queryClient = useQueryClient();
+
+  const isRewardRedemption = Boolean(route?.params?.isRewardRedemption);
+  const rewardClaimId = route?.params?.rewardClaimId as number | undefined;
+  const rewardTitle = route?.params?.rewardTitle as string | undefined;
+  const dataHint = route?.params?.dataHint as string | undefined;
   
   // Handle beneficiary selection from BeneficiariesScreen
   React.useEffect(() => {
@@ -74,21 +86,7 @@ const DataRecharge = ({ route }: any) => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -195,9 +193,14 @@ const DataRecharge = ({ route }: any) => {
     }
     
     return providersData.data.map((provider: any) => {
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -284,9 +287,14 @@ const DataRecharge = ({ route }: any) => {
 
     return transactions.map((tx: any) => {
       const provider = tx.provider || {};
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -423,9 +431,14 @@ const DataRecharge = ({ route }: any) => {
     }
     return beneficiariesData.data.slice(0, 4).map((beneficiary: any) => {
       const provider = beneficiary.provider || {};
-      const logoUrl = provider.logoUrl 
-        ? `${API_BASE_URL.replace('/api', '')}${provider.logoUrl}`
-        : null;
+      const baseUrl = API_BASE_URL.replace('/api', '');
+      const logoUrlRaw = provider.logoUrl || provider.logo || provider.icon || null;
+      const logoUrl =
+        typeof logoUrlRaw === 'string' && logoUrlRaw.trim().length > 0
+          ? logoUrlRaw.startsWith('http')
+            ? logoUrlRaw
+            : `${baseUrl}${logoUrlRaw.startsWith('/') ? '' : '/'}${logoUrlRaw}`
+          : null;
       
       // Default icon mapping
       let icon = require('../../../assets/Ellipse 20.png');
@@ -463,9 +476,16 @@ const DataRecharge = ({ route }: any) => {
       
       if (transactionId) {
         setPendingTransactionId(transactionId);
-        setShowPinModal(true);
+        proceedAfterTransactionInitiate(transactionId, {
+          showVerificationModal: () => setShowPinModal(true),
+          confirm: (payload) => confirmMutation.mutate(payload),
+        });
       } else {
-        setShowPinModal(true);
+        console.error('[DataRecharge] No transactionId found in response:', data);
+        showErrorAlert(
+          'Transaction Error',
+          'Transaction ID not found in response. Please try again.'
+        );
       }
     },
     onError: (error: any) => {
@@ -491,13 +511,28 @@ const DataRecharge = ({ route }: any) => {
       refetchTransactions();
       refetchBalances();
       refetchBeneficiaries();
+
+      if (isRewardRedemption) {
+        queryClient.invalidateQueries({ queryKey: ['rewards', 'dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['rewards', 'history'] });
+        showSuccessAlert(
+          'Reward Redeemed',
+          rewardTitle
+            ? `${rewardTitle} has been sent successfully!`
+            : 'Your reward data has been sent successfully!',
+          () => {
+            (navigation as any).navigate('Settings', { screen: 'Rewards' });
+          }
+        );
+        return;
+      }
       
       showSuccessAlert(
         'Success',
         'Data recharge successful!',
         () => {
           // @ts-ignore - allow parent route name
-          navigation.navigate('Call' as never);
+          navigation.navigate('BillPayment' as never);
         }
       );
     },
@@ -564,23 +599,23 @@ const DataRecharge = ({ route }: any) => {
       amount: selectedPlan.amount,
       accountNumber: mobileNumber,
       planId: selectedPlan.id,
+      ...(isRewardRedemption && rewardClaimId ? { rewardClaimId } : {}),
     });
   };
 
   const handleConfirmPayment = async () => {
-    if (!pin || pin.length < 5) {
-      showErrorAlert('Error', 'Please enter your 5-digit PIN');
+    if (!pendingTransactionId) {
+      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
       return;
     }
 
-    if (pendingTransactionId) {
-      confirmMutation.mutate({
-        transactionId: pendingTransactionId,
-        pin: pin,
-      });
-    } else {
-      showErrorAlert('Error', 'Transaction ID not found. Please try again.');
+    const result = await prepareTransactionConfirmPayload(pendingTransactionId, { pin });
+    if (!result.payload) {
+      showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
+      return;
     }
+
+    confirmMutation.mutate(result.payload);
   };
 
   const filteredNetworks = networks.filter((network) =>
@@ -588,12 +623,18 @@ const DataRecharge = ({ route }: any) => {
   );
 
   const filteredPlans = plans.filter((plan) => {
+    const matchesHint =
+      !isRewardRedemption || !dataHint
+        ? true
+        : plan.dataAmount?.toLowerCase().includes(dataHint.toLowerCase()) ||
+          plan.name?.toLowerCase().includes(dataHint.toLowerCase()) ||
+          plan.description?.toLowerCase().includes(dataHint.toLowerCase());
     const matchesSearch = 
       plan.name.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
       plan.dataAmount.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
       plan.amount.toLowerCase().includes(planSearchQuery.toLowerCase()) ||
       (plan.description && plan.description.toLowerCase().includes(planSearchQuery.toLowerCase()));
-    return matchesSearch;
+    return matchesSearch && matchesHint;
   });
 
   // Check if proceed button should be enabled
@@ -627,9 +668,13 @@ const DataRecharge = ({ route }: any) => {
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => {
+              if (isRewardRedemption) {
+                (navigation as any).navigate('Settings', { screen: 'Rewards' });
+                return;
+              }
               // Navigate back to BillPaymentMainScreen (Call tab)
               // @ts-ignore - allow parent route name
-              navigation.navigate('Call' as never);
+              navigation.navigate('BillPayment' as never);
             }}
           >
             <View style={styles.iconCircle}>
@@ -641,6 +686,16 @@ const DataRecharge = ({ route }: any) => {
           </View>
         </View>
 
+        {isRewardRedemption ? (
+          <View style={styles.rewardBanner}>
+            <MaterialCommunityIcons name="gift" size={18} color="#A9EF45" />
+            <ThemedText style={styles.rewardBannerText}>
+              {rewardTitle
+                ? `Redeeming ${rewardTitle}${dataHint ? ` (${dataHint})` : ''} — your wallet will not be charged`
+                : 'Redeeming reward data — your wallet will not be charged'}
+            </ThemedText>
+          </View>
+        ) : (
         <View style={styles.balanceSectionContainer}>
           <LinearGradient
             colors={['#A9EF4533', '#FFFFFF0D']}
@@ -701,6 +756,7 @@ const DataRecharge = ({ route }: any) => {
             </TouchableOpacity>
           </LinearGradient>
         </View>
+        )}
 
         {/* Main Card */}
         <View style={styles.mainCard}>
@@ -847,7 +903,7 @@ const DataRecharge = ({ route }: any) => {
             style={[{ marginBottom: -1, width: 14, height: 14 }]}
             resizeMode="cover"
           />
-          <ThemedText style={styles.feeText}>Fee : N200</ThemedText>
+          <ThemedText style={styles.feeText}>Fee : ₦200</ThemedText>
         </View>
 
         {/* Recent Section */}
@@ -1346,6 +1402,25 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginRight: 12 * SCALE,
+  },
+  rewardBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: SCREEN_WIDTH * 0.047,
+    marginBottom: 12 * SCALE,
+    paddingHorizontal: 14 * SCALE,
+    paddingVertical: 10 * SCALE,
+    borderRadius: 10,
+    backgroundColor: 'rgba(169, 239, 69, 0.12)',
+    borderWidth: 0.5,
+    borderColor: 'rgba(169, 239, 69, 0.35)',
+  },
+  rewardBannerText: {
+    flex: 1,
+    fontSize: 12 * SCALE,
+    color: '#A9EF45',
+    lineHeight: 18,
   },
   balanceSectionContainer: {
     paddingHorizontal: SCREEN_WIDTH * 0.047,

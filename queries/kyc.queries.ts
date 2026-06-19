@@ -3,9 +3,12 @@
  * GET requests for KYC-related endpoints
  */
 
-import { useQuery, UseQueryOptions } from '@tanstack/react-query';
+import { useQuery, useQueryClient, UseQueryOptions } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import apiClient, { ApiResponse, handleApiError } from '../utils/apiClient';
 import { API_ROUTES } from '../utils/apiConfig';
+import { invalidateKycAndUserQueries } from '../utils/kycQuerySync';
 
 /**
  * Get user KYC status and information
@@ -26,7 +29,21 @@ export const useGetKYCStatus = (options?: UseQueryOptions<ApiResponse, Error>) =
   return useQuery<ApiResponse, Error>({
     queryKey: ['kyc', 'status'],
     queryFn: getKYCStatus,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnReconnect: true,
     ...options,
   });
+};
+
+/** Refetch KYC + profile whenever the hosting screen gains focus. */
+export const useRefreshKYCOnFocus = () => {
+  const queryClient = useQueryClient();
+
+  useFocusEffect(
+    useCallback(() => {
+      invalidateKycAndUserQueries(queryClient);
+    }, [queryClient])
+  );
 };
 

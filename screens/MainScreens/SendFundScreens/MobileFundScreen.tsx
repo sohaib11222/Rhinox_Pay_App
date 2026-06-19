@@ -26,9 +26,16 @@ import { useGetPaymentSettingsMobileMoneyProviders } from '../../../queries/paym
 import { useGetCountries } from '../../../queries/country.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { useInitiateTransfer, useVerifyTransfer } from '../../../mutations/transfer.mutations';
-import { showSuccessAlert, showErrorAlert, showInfoAlert } from '../../../utils/customAlert';
+import { showSuccessAlert, showErrorAlert, showInfoAlert, showWarningAlert } from '../../../utils/customAlert';
+import { showTransferEligibilityAlert } from '../../../utils/transferEligibilityAlert';
+import {
+    proceedAfterTransactionInitiate,
+    prepareTransactionConfirmPayload,
+    checkSecurityRequirements,
+} from '../../../utils/securityVerification';
 import { useQueryClient } from '@tanstack/react-query';
 import { API_BASE_URL } from '../../../utils/apiConfig';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
@@ -56,31 +63,17 @@ const MobileFundScreen = () => {
         React.useCallback(() => {
             const parent = navigation.getParent();
             if (parent) {
-                parent.setOptions({
-                    tabBarStyle: { display: 'none' },
-                });
-            }
-            return () => {
-                if (parent) {
-                    parent.setOptions({
-                        tabBarStyle: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                            borderTopWidth: 0,
-                            height: 75 * 0.8,
-                            paddingBottom: 10,
-                            paddingTop: 0,
-                            position: 'absolute',
-                            bottom: 26 * 0.8,
-                            borderRadius: 100,
-                            overflow: 'hidden',
-                            elevation: 0,
-                            width: SCREEN_WIDTH * 0.86,
-                            marginLeft: 30,
-                            shadowOpacity: 0,
-                        },
-                    });
-                }
-            };
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+      return () => {
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: defaultTabBarStyle,
+          });
+        }
+      };
         }, [navigation])
     );
 
@@ -238,8 +231,21 @@ const MobileFundScreen = () => {
                 setTransactionId(transactionIdFromResponse);
                 setTransferData(data.data);
                 setShowSummaryModal(false);
-                setShowPinModal(true);
-                showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+                proceedAfterTransactionInitiate(transactionIdFromResponse, {
+                    showVerificationModal: async () => {
+                        setShowPinModal(true);
+                        const requirements = await checkSecurityRequirements();
+                        if (requirements.methods.email) {
+                            showInfoAlert('OTP Sent', 'Please check your email for the verification code');
+                        }
+                    },
+                    confirm: (payload) =>
+                        verifyTransferMutation.mutate({
+                            transactionId: payload.transactionId,
+                            ...(payload.pin ? { pin: payload.pin } : {}),
+                            ...(payload.emailOtp ? { emailCode: payload.emailOtp } : {}),
+                        }),
+                });
             }
         },
         onError: (error: any) => {
@@ -304,25 +310,25 @@ const MobileFundScreen = () => {
         setPin(pin.slice(0, -1));
     };
 
-    const handleSecurityComplete = () => {
+    const handleSecurityComplete = async () => {
         if (!transactionId) {
             showErrorAlert('Error', 'Transaction ID not found');
             return;
         }
-        if (!emailCode || emailCode.length !== 5) {
-            showErrorAlert('Validation Error', 'Please enter a valid 5-digit email code');
-            return;
-        }
-        if (!pin || pin.length !== 5) {
-            showErrorAlert('Validation Error', 'Please enter a valid 5-digit PIN');
+
+        const result = await prepareTransactionConfirmPayload(transactionId, {
+            pin,
+            emailOtp: emailCode,
+        });
+        if (!result.payload) {
+            showWarningAlert('Security Verification Required', result.errorMessage || 'Verification required');
             return;
         }
 
-        // Verify transfer
         verifyTransferMutation.mutate({
-            transactionId: transactionId,
-            emailCode: emailCode,
-            pin: pin,
+            transactionId: result.payload.transactionId,
+            pin: result.payload.pin ?? '',
+            ...(result.payload.emailOtp ? { emailCode: result.payload.emailOtp } : {}),
         });
     };
 
@@ -341,7 +347,7 @@ const MobileFundScreen = () => {
             return;
         }
         if (!eligibilityData?.data?.eligible) {
-            showErrorAlert('Not Eligible', eligibilityData?.data?.message || 'You cannot complete your transaction because you are yet to complete your KYC');
+            showTransferEligibilityAlert(navigation, eligibilityData?.data);
             return;
         }
 

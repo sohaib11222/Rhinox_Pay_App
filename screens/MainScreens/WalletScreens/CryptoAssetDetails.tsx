@@ -570,10 +570,9 @@ const CryptoAssetDetails = () => {
                       },
                     } as never);
                   } else if (action.id === '2' && action.title === 'Withdraw') {
-                    // Navigate to CryptoWithdrawals screen in Transactions stack
-                    // @ts-ignore - allow parent route name
-                    navigation.navigate('Transactions' as never, {
-                      screen: 'CryptoWithdrawals' as never,
+                    navigation.navigate('WalletMain' as never, {
+                      openSendFundsModal: true,
+                      sendFundsWalletType: 'Crypto',
                     } as never);
                   } else if (action.id === '3' && action.title === 'P2P') {
                     // Navigate to P2PTransactions screen in Transactions stack

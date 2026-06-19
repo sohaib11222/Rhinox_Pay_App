@@ -20,6 +20,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { showSuccessAlert, showErrorAlert, showInfoAlert, showConfirmAlert } from '../../utils/customAlert';
+import { isRhinoxPayUserTransfer, isRhinoxIncomingTransfer, enrichReceiptTransaction } from '../../utils/transferReceipt';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SCALE = 1;
@@ -41,7 +42,10 @@ interface TransactionReceiptModalProps {
     amountNGN?: string;
     // Transaction status
     status?: 'Successful' | 'Pending' | 'Failed' | 'Cancelled' | 'successful' | 'pending' | 'failed' | 'cancelled' | 'canceled' | 'Completed' | 'completed';
-    // Fund transaction fields
+    channel?: string;
+    rhinoxPayId?: string;
+    transferDirection?: 'incoming' | 'outgoing';
+    senderName?: string;
     fundingRoute?: string;
     route?: string;
     provider?: string;
@@ -80,12 +84,13 @@ interface TransactionReceiptModalProps {
 
 const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
   visible,
-  transaction,
+  transaction: rawTransaction,
   onClose,
 }) => {
   const navigation = useNavigation();
   const receiptRef = useRef<View>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const transaction = enrichReceiptTransaction(rawTransaction);
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
@@ -235,23 +240,56 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
     const method = transaction.paymentMethod?.toLowerCase();
     const route = (transaction.route || transaction.fundingRoute || '').toLowerCase();
     const title = transaction.transactionTitle?.toLowerCase() || '';
+    const channel = transaction.channel?.toLowerCase() || '';
     return (
+      channel === 'bank_account' ||
       method === 'bank transfer' ||
       route === 'bank transfer' ||
       route === 'bank_transfer' ||
       title.includes('bank transfer') ||
+      title.includes('withdrawal') ||
       title.includes('palmpay virtual')
     );
   };
 
   const displayPaymentMethod = (value?: string) => {
     const lowerValue = value?.toLowerCase();
+    if (isRhinoxPayUserTransfer({ channel: transaction.channel, paymentMethod: value })) {
+      return 'RhinoxPay Transfer';
+    }
+    if (transaction.channel?.toLowerCase() === 'bank_account') {
+      return 'Bank Transfer';
+    }
     if (!lowerValue || ['failed', 'pending', 'processing', 'completed', 'successful', 'success'].includes(lowerValue)) {
       if (isBankTransferLike()) return 'Bank Transfer';
       return 'N/A';
     }
     return value;
   };
+
+  const isRhinoxIncoming =
+    transaction.transferDirection === 'incoming' ||
+    isRhinoxIncomingTransfer({
+      channel: transaction.channel,
+      paymentMethod: transaction.paymentMethod,
+      type: transactionType === 'fund' || transactionType === 'deposit' ? 'deposit' : undefined,
+      senderInfo: transaction.senderName ? { name: transaction.senderName } : undefined,
+      description: transaction.transactionTitle,
+    });
+
+  const isRhinoxPayTransfer =
+    isRhinoxIncoming ||
+    isRhinoxPayUserTransfer({
+      channel: transaction.channel,
+      paymentMethod: transaction.paymentMethod,
+    });
+
+  const rhinoxPayIdValue =
+    transaction.rhinoxPayId || (isRhinoxPayTransfer ? transaction.accountNumber : undefined);
+
+  const counterpartyName =
+    transaction.accountName ||
+    (isRhinoxIncoming ? transaction.senderName || transaction.recipientName : transaction.recipientName);
 
   const displayCountry = () => {
     if (transaction.country) {
@@ -412,7 +450,9 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
       case 'deposit':
         return `Congratulations, you have successfully deposited ${amount} to your ${displayCountry() || 'wallet'}`;
       case 'fund':
-        return `Congratulations, you have successfully received ${amount}.`;
+        return isRhinoxIncoming && counterpartyName
+          ? `Congratulations, you have successfully received ${amount} from ${counterpartyName}.`
+          : `Congratulations, you have successfully received ${amount}.`;
       case 'withdrawal':
         return `Congratulations, you have successfully withdrawn ${amount}.`;
       case 'billPayment':
@@ -422,7 +462,13 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                         transaction.recipientName?.includes('Electricity') ? 'Paid' :
                         transaction.recipientName?.includes('Cable') ? 'Paid' :
                         transaction.recipientName?.includes('Internet') ? 'Paid' : 'Paid';
-        const planText = transaction.plan || 'bill';
+        const planText =
+          typeof (transaction as any).plan === 'string'
+            ? (transaction as any).plan
+            : (transaction as any).plan?.name ||
+              (transaction as any).plan?.itemName ||
+              (transaction as any).plan?.code ||
+              'bill';
         const mobileText = transaction.mobileNumber || transaction.accountNumber || 'recipient';
         // For Data and Airtime: "Recharged {plan} to {mobile}"
         // For others: "Paid {plan} to {mobile}"
@@ -758,37 +804,69 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
                   <ThemedText style={styles.detailLabel}>Plan</ThemedText>
-                  <ThemedText style={styles.detailValue}>{displayValue(transaction.plan)}</ThemedText>
+                  <ThemedText style={styles.detailValue}>
+                    {displayValue(
+                      typeof (transaction as any).plan === 'string'
+                        ? (transaction as any).plan
+                        : (transaction as any).plan?.name ||
+                            (transaction as any).plan?.itemName ||
+                            (transaction as any).plan?.code ||
+                            ''
+                    )}
+                  </ThemedText>
                 </View>
               </>
-            ) : (
+            ) : !isRhinoxIncoming ? (
               <View style={[styles.detailRow, styles.detailRowBorder]}>
                 <ThemedText style={styles.detailLabel}>Country</ThemedText>
                 <ThemedText style={styles.detailValue}>{displayValue(displayCountry())}</ThemedText>
               </View>
-            )}
-            {(transactionType === 'send' || transactionType === 'withdrawal' || ((transactionType === 'fund' || transactionType === 'deposit') && (transaction.bank || transaction.accountNumber || transaction.accountName))) && (
+            ) : null}
+            {(transactionType === 'send' ||
+              transactionType === 'withdrawal' ||
+              isRhinoxIncoming ||
+              ((transactionType === 'fund' || transactionType === 'deposit') &&
+                (transaction.bank || transaction.accountNumber || transaction.accountName || isRhinoxPayTransfer))) && (
               <>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <ThemedText style={styles.detailLabel}>Bank</ThemedText>
-                  <ThemedText style={styles.detailValue}>{displayValue(transaction.bank)}</ThemedText>
+                  <ThemedText style={styles.detailLabel}>
+                    {isRhinoxPayTransfer ? 'RhinoxPay Account' : 'Bank'}
+                  </ThemedText>
+                  <ThemedText style={styles.detailValue}>
+                    {displayValue(isRhinoxPayTransfer ? 'RhinoxPay Wallet' : transaction.bank)}
+                  </ThemedText>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <ThemedText style={styles.detailLabel}>Account Number</ThemedText>
+                  <ThemedText style={styles.detailLabel}>
+                    {isRhinoxPayTransfer ? 'Rhinox Pay ID' : 'Account Number'}
+                  </ThemedText>
                   <View style={styles.detailValueRow}>
                     <ThemedText style={styles.detailValue}>
-                      {displayValue(transaction.accountNumber)}
+                      {displayValue(
+                        isRhinoxPayTransfer
+                          ? rhinoxPayIdValue
+                          : transaction.accountNumber
+                      )}
                     </ThemedText>
                     <TouchableOpacity
-                      onPress={() => copyIfAvailable(transaction.accountNumber, 'Account Number')}
+                      onPress={() =>
+                        copyIfAvailable(
+                          isRhinoxPayTransfer
+                            ? rhinoxPayIdValue
+                            : transaction.accountNumber,
+                          isRhinoxPayTransfer ? 'Rhinox Pay ID' : 'Account Number'
+                        )
+                      }
                     >
                       <MaterialCommunityIcons name="content-copy" size={12 * SCALE} color="#FFFFFF" />
                     </TouchableOpacity>
                   </View>
                 </View>
                 <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <ThemedText style={styles.detailLabel}>Account Name</ThemedText>
-                  <ThemedText style={styles.detailValue}>{displayValue(transaction.accountName)}</ThemedText>
+                  <ThemedText style={styles.detailLabel}>
+                    {isRhinoxIncoming ? 'Sender Name' : isRhinoxPayTransfer ? 'Recipient Name' : 'Account Name'}
+                  </ThemedText>
+                  <ThemedText style={styles.detailValue}>{displayValue(counterpartyName)}</ThemedText>
                 </View>
               </>
             )}
@@ -798,14 +876,18 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                   <ThemedText style={styles.detailLabel}>Amount Received</ThemedText>
                   <ThemedText style={styles.detailValue}>{amount}</ThemedText>
                 </View>
-                <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <ThemedText style={styles.detailLabel}>Funding Route</ThemedText>
-                  <ThemedText style={styles.detailValue}>{displayValue(transaction.fundingRoute)}</ThemedText>
-                </View>
-                <View style={[styles.detailRow, styles.detailRowBorder]}>
-                  <ThemedText style={styles.detailLabel}>Route</ThemedText>
-                  <ThemedText style={styles.detailValue}>{displayValue(transaction.route)}</ThemedText>
-                </View>
+                {!isRhinoxIncoming && (
+                  <>
+                    <View style={[styles.detailRow, styles.detailRowBorder]}>
+                      <ThemedText style={styles.detailLabel}>Funding Route</ThemedText>
+                      <ThemedText style={styles.detailValue}>{displayValue(transaction.fundingRoute)}</ThemedText>
+                    </View>
+                    <View style={[styles.detailRow, styles.detailRowBorder]}>
+                      <ThemedText style={styles.detailLabel}>Route</ThemedText>
+                      <ThemedText style={styles.detailValue}>{displayValue(transaction.route)}</ThemedText>
+                    </View>
+                  </>
+                )}
               </>
             )}
             {transactionType === 'deposit' && (
@@ -879,7 +961,10 @@ const TransactionReceiptModal: React.FC<TransactionReceiptModalProps> = ({
                     <ThemedText style={styles.detailValue}>Bill Payment</ThemedText>
                   </View>
                 )}
-                {(transactionType === 'send' || transactionType === 'deposit' || transactionType === 'withdrawal') && (
+                {(transactionType === 'send' ||
+                  transactionType === 'deposit' ||
+                  transactionType === 'withdrawal' ||
+                  isRhinoxIncoming) && (
                   <View style={[styles.detailRow, styles.detailRowBorder]}>
                     <ThemedText style={styles.detailLabel}>Payment Method</ThemedText>
                     <ThemedText style={styles.detailValue}>{displayPaymentMethod(transaction.paymentMethod)}</ThemedText>

@@ -17,7 +17,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../components';
 import { usePullToRefresh } from '../../hooks/usePullToRefresh';
 import { useGetNotifications } from '../../queries/notification.queries';
-import { useMarkNotificationAsRead } from '../../mutations/notification.mutations';
+import {
+  useMarkAllNotificationsAsRead,
+  useMarkNotificationAsRead,
+} from '../../mutations/notification.mutations';
+import { defaultTabBarStyle } from '../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -43,39 +47,6 @@ interface Notification {
 const NotificationsScreen = () => {
   const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState<'all' | 'general' | 'transactions'>('all');
-
-  // Hide bottom tab bar when focused
-  useFocusEffect(
-    React.useCallback(() => {
-      const parent = navigation.getParent();
-      if (parent) {
-        parent.setOptions({
-          tabBarStyle: { display: 'none' },
-        });
-      }
-      return () => {
-        if (parent) {
-          parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * SCALE,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * SCALE,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
-          });
-        }
-      };
-    }, [navigation])
-  );
 
   // Format amount for display
   const formatAmount = (amount: string | number, currency: string) => {
@@ -182,6 +153,27 @@ const NotificationsScreen = () => {
     },
   });
 
+  const markAllAsReadMutation = useMarkAllNotificationsAsRead();
+
+  // Hide bottom tab bar when focused and refresh notifications
+  useFocusEffect(
+    React.useCallback(() => {
+      const parent = navigation.getParent();
+      if (parent) {
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+      return () => {
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: defaultTabBarStyle,
+          });
+        }
+      };
+    }, [navigation, refetchNotifications])
+  );
+
   // Transform API data to UI format
   const notifications: Notification[] = useMemo(() => {
     if (!notificationsData?.data || !Array.isArray(notificationsData.data)) {
@@ -227,6 +219,11 @@ const NotificationsScreen = () => {
       };
     });
   }, [notificationsData?.data]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.isRead).length,
+    [notifications]
+  );
 
   const filteredNotifications = notifications.filter((notification) => {
     if (activeTab === 'all') return true;
@@ -289,6 +286,15 @@ const NotificationsScreen = () => {
           </View>
         </TouchableOpacity>
         <ThemedText style={styles.headerTitle}>Notifications</ThemedText>
+        {unreadCount > 0 && (
+          <TouchableOpacity
+            style={styles.markAllReadButton}
+            onPress={() => markAllAsReadMutation.mutate()}
+            disabled={markAllAsReadMutation.isPending}
+          >
+            <ThemedText style={styles.markAllReadText}>Mark all read</ThemedText>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Tabs */}
@@ -490,6 +496,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
+  },
+  markAllReadButton: {
+    marginLeft: 'auto',
+    zIndex: 1,
+    paddingVertical: 6 * SCALE,
+    paddingHorizontal: 10 * SCALE,
+  },
+  markAllReadText: {
+    fontSize: 11 * SCALE,
+    fontWeight: '400',
+    color: '#A9EF45',
   },
   tabsContainer: {
     flexDirection: 'row',

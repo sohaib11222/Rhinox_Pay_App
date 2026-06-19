@@ -1,32 +1,52 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import OnboardingScreen1 from "../screens/OnboardingScreens/OnboardingScreen1";
 import OnboardingScreen2 from "../screens/OnboardingScreens/OnboardingScreen2";
 import OnboardingScreen3 from "../screens/OnboardingScreens/OnboardingScreen3";
 import WelcomeScreen from "../screens/OnboardingScreens/WelcomeScreen";
-import LoginScreen from "../screens/AuthScreens/LoginScreen";
-import RegisterScreen from "../screens/AuthScreens/RegisterScreen";
-import SetBiometrics from "../screens/AuthScreens/SetBiometrics";
-import Verification from "../screens/AuthScreens/Verification";
-import KYC from "../screens/AuthScreens/KYC";
-import FacialRegister from "../screens/AuthScreens/FacialRegister";
+import AuthNavigator from "./AuthNavigator";
+import AppLoadingScreen from "../components/AppLoadingScreen";
+import { HAS_SEEN_ONBOARDING_KEY, HAS_SEEN_WELCOME_KEY } from "../constants/onboarding";
+import { markSplashReady } from "../utils/splashReady";
 
 const Stack = createNativeStackNavigator();
 
 export default function OnboardingNavigator() {
+  const [initialRoute, setInitialRoute] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      AsyncStorage.getItem(HAS_SEEN_WELCOME_KEY),
+      AsyncStorage.getItem(HAS_SEEN_ONBOARDING_KEY),
+    ])
+      .then(([seenWelcome, seenOnboarding]) => {
+        if (seenWelcome === "true") {
+          setInitialRoute("Auth");
+        } else if (seenOnboarding === "true") {
+          setInitialRoute("Welcome");
+        } else {
+          setInitialRoute("Onboarding1");
+        }
+      })
+      .catch(() => setInitialRoute("Onboarding1"))
+      .finally(() => markSplashReady("onboarding"));
+  }, []);
+
+  if (!initialRoute) {
+    return <AppLoadingScreen />;
+  }
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      screenOptions={{ headerShown: false }}
+      initialRouteName={initialRoute}
+    >
       <Stack.Screen name="Onboarding1" component={OnboardingScreen1} />
       <Stack.Screen name="Onboarding2" component={OnboardingScreen2} />
       <Stack.Screen name="Onboarding3" component={OnboardingScreen3} />
       <Stack.Screen name="Welcome" component={WelcomeScreen} />
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
-      <Stack.Screen name="SetBiometrics" component={SetBiometrics} />
-      <Stack.Screen name="Verification" component={Verification} />
-      <Stack.Screen name="KYC" component={KYC} />
-      <Stack.Screen name="FacialRegister" component={FacialRegister} />
+      <Stack.Screen name="Auth" component={AuthNavigator} />
     </Stack.Navigator>
   );
 }
-

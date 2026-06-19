@@ -16,17 +16,23 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ThemedText } from '../../../components';
-import { useValidateRecipient } from '../../../queries/transfer.queries';
+import { useValidateRecipient, buildValidateRecipientParams } from '../../../queries/transfer.queries';
 import { useGetWalletBalances } from '../../../queries/wallet.queries';
 import { showErrorAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
 
 const SendToRhinoxPayUser = () => {
   const navigation = useNavigation();
-  const [recipientEmail, setRecipientEmail] = useState('');
+  const [recipientInput, setRecipientInput] = useState('');
   const [validatedRecipient, setValidatedRecipient] = useState<any>(null);
+
+  const recipientParams = useMemo(
+    () => buildValidateRecipientParams(recipientInput) || {},
+    [recipientInput]
+  );
 
   // Hide bottom tab bar when this screen is focused
   useFocusEffect(
@@ -40,21 +46,7 @@ const SendToRhinoxPayUser = () => {
       return () => {
         if (parent) {
           parent.setOptions({
-            tabBarStyle: {
-              backgroundColor: 'rgba(0, 0, 0, 0.2)',
-              borderTopWidth: 0,
-              height: 75 * 0.8,
-              paddingBottom: 10,
-              paddingTop: 0,
-              position: 'absolute',
-              bottom: 26 * 0.8,
-              borderRadius: 100,
-              overflow: 'hidden',
-              elevation: 0,
-              width: SCREEN_WIDTH * 0.86,
-              marginLeft: 30,
-              shadowOpacity: 0,
-            },
+            tabBarStyle: defaultTabBarStyle,
           });
         }
       };
@@ -67,9 +59,9 @@ const SendToRhinoxPayUser = () => {
     isLoading: isValidating,
     isError: isValidatingError,
     error: validationError,
-    refetch: validateRecipient,
-  } = useValidateRecipient(recipientEmail, {
-    enabled: false, // Don't auto-fetch, only on button press
+    refetch: validateRecipientQuery,
+  } = useValidateRecipient(recipientParams, {
+    enabled: false,
   });
 
   // Fetch wallet balances
@@ -88,23 +80,21 @@ const SendToRhinoxPayUser = () => {
   }, [recipientData, isValidatingError]);
 
   const handleValidate = async () => {
-    if (!recipientEmail.trim()) {
-      showErrorAlert('Error', 'Please enter a Rhinox Pay user email or ID');
+    if (!recipientInput.trim()) {
+      showErrorAlert('Error', 'Please enter a Rhinox Pay ID or email');
       return;
     }
 
-    if (!recipientEmail.includes('@')) {
-      // If it's not an email, treat it as user ID and convert to email format
-      // Or you might want to use a different API endpoint for user ID
-      showErrorAlert('Error', 'Please enter a valid email address');
+    if (!buildValidateRecipientParams(recipientInput)) {
+      showErrorAlert('Error', 'Please enter a valid Rhinox Pay ID or email');
       return;
     }
 
     try {
-      await validateRecipient();
+      await validateRecipientQuery();
     } catch (error: any) {
       console.error('[SendToRhinoxPayUser] Validation error:', error);
-      showErrorAlert('Error', error?.message || 'Failed to validate recipient');
+      showErrorAlert('Error', error.message || 'Failed to validate recipient');
     }
   };
 
@@ -114,12 +104,10 @@ const SendToRhinoxPayUser = () => {
       return;
     }
 
-    // Navigate to SendFundsDirectScreen with recipient data
     (navigation as any).navigate('Settings', {
-      screen: 'SendFundsDirect',
+      screen: 'SendFunds',
       params: {
         recipient: validatedRecipient,
-        recipientEmail: recipientEmail,
       },
     });
   };
@@ -194,27 +182,26 @@ const SendToRhinoxPayUser = () => {
         <View style={styles.mainCard}>
           {/* Recipient Input Section */}
           <View style={styles.inputSection}>
-            <ThemedText style={styles.sectionTitle}>Enter Rhinox Pay User Email</ThemedText>
+            <ThemedText style={styles.sectionTitle}>Enter Rhinox Pay ID or Email</ThemedText>
             <View style={styles.inputField}>
-              <MaterialCommunityIcons name="email-outline" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" style={{ marginRight: 12 }} />
+              <MaterialCommunityIcons name="account-outline" size={20 * SCALE} color="rgba(255, 255, 255, 0.5)" style={{ marginRight: 12 }} />
               <TextInput
                 style={styles.textInput}
-                placeholder="user@example.com"
+                placeholder="RXP12345678 or user@example.com"
                 placeholderTextColor="rgba(255, 255, 255, 0.5)"
-                value={recipientEmail}
+                value={recipientInput}
                 onChangeText={(text) => {
-                  setRecipientEmail(text);
-                  setValidatedRecipient(null); // Clear validation when email changes
+                  setRecipientInput(text);
+                  setValidatedRecipient(null);
                 }}
-                keyboardType="email-address"
-                autoCapitalize="none"
+                autoCapitalize="characters"
                 autoCorrect={false}
               />
             </View>
             <TouchableOpacity
-              style={[styles.validateButton, (!recipientEmail.trim() || isValidating) && styles.validateButtonDisabled]}
+              style={[styles.validateButton, (!recipientInput.trim() || isValidating) && styles.validateButtonDisabled]}
               onPress={handleValidate}
-              disabled={!recipientEmail.trim() || isValidating}
+              disabled={!recipientInput.trim() || isValidating}
             >
               {isValidating ? (
                 <ActivityIndicator size="small" color="#000000" />
@@ -241,7 +228,7 @@ const SendToRhinoxPayUser = () => {
                     {validatedRecipient.name || validatedRecipient.email || 'Unknown User'}
                   </ThemedText>
                   <ThemedText style={styles.recipientEmail}>
-                    {validatedRecipient.email || recipientEmail}
+                    {validatedRecipient.email || recipientInput}
                   </ThemedText>
                   {validatedRecipient.phoneNumber && (
                     <ThemedText style={styles.recipientPhone}>

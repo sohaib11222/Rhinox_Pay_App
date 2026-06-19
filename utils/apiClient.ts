@@ -9,13 +9,14 @@ import axios, {
   AxiosResponse,
   AxiosError,
 } from 'axios';
-import { API_BASE_URL } from './apiConfig';
+import { API_BASE_URL, API_ROUTES } from './apiConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Token storage keys
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';
 const BIOMETRIC_ENABLED_KEY = 'biometricEnabled';
+const BIOMETRIC_LOCKED_KEY = 'biometricLocked';
 const VERIFY_WITH_PIN_KEY = 'verifyWithPin';
 const VERIFY_WITH_EMAIL_KEY = 'verifyWithEmail';
 const VERIFY_WITH_2FA_KEY = 'verifyWith2FA';
@@ -97,6 +98,89 @@ export const clearTokens = async (): Promise<void> => {
 };
 
 /**
+ * Whether the app is waiting for biometric unlock (logged out but token kept).
+ */
+export const getBiometricLocked = async (): Promise<boolean> => {
+  try {
+    const value = await AsyncStorage.getItem(BIOMETRIC_LOCKED_KEY);
+    return value === 'true';
+  } catch (error) {
+    console.error('Error getting biometric lock state:', error);
+    return false;
+  }
+};
+
+export const setBiometricLocked = async (locked: boolean): Promise<void> => {
+  try {
+    if (locked) {
+      await AsyncStorage.setItem(BIOMETRIC_LOCKED_KEY, 'true');
+    } else {
+      await AsyncStorage.removeItem(BIOMETRIC_LOCKED_KEY);
+    }
+  } catch (error) {
+    console.error('Error setting biometric lock state:', error);
+  }
+};
+
+export const hasStoredAuthSession = async (): Promise<boolean> => {
+  const [accessToken, refreshToken] = await Promise.all([
+    getAccessToken(),
+    getRefreshToken(),
+  ]);
+  return !!(accessToken || refreshToken);
+};
+
+/**
+ * Clear session on logout. Keeps stored token when biometric login is enabled.
+ */
+export const clearTokensForLogout = async (): Promise<void> => {
+  try {
+    const biometricEnabled = await getBiometricEnabled();
+    if (biometricEnabled) {
+      await setBiometricLocked(true);
+      return;
+    }
+    await setBiometricLocked(false);
+    await clearTokens();
+  } catch (error) {
+    console.error('[clearTokensForLogout] Error:', error);
+    await setBiometricLocked(false);
+    await clearTokens();
+  }
+};
+
+/**
+ * Refresh access token using stored refresh token.
+ */
+export const refreshAccessToken = async (): Promise<string | null> => {
+  try {
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) {
+      return null;
+    }
+
+    const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+      refreshToken,
+    });
+
+    const { accessToken, refreshToken: newRefreshToken } = response.data.data || response.data;
+    if (!accessToken) {
+      return null;
+    }
+
+    await setAccessToken(accessToken);
+    if (newRefreshToken) {
+      await setRefreshToken(newRefreshToken);
+    }
+
+    return accessToken;
+  } catch (error) {
+    console.error('[refreshAccessToken] Failed:', error);
+    return null;
+  }
+};
+
+/**
  * Get biometric login preference
  */
 export const getBiometricEnabled = async (): Promise<boolean> => {
@@ -115,6 +199,9 @@ export const getBiometricEnabled = async (): Promise<boolean> => {
 export const setBiometricEnabled = async (enabled: boolean): Promise<void> => {
   try {
     await AsyncStorage.setItem(BIOMETRIC_ENABLED_KEY, enabled.toString());
+    if (!enabled) {
+      await setBiometricLocked(false);
+    }
   } catch (error) {
     console.error('Error setting biometric preference:', error);
   }
@@ -211,6 +298,18 @@ apiClient.interceptors.request.use(
         const trimmedToken = token.trim();
         config.headers.Authorization = `Bearer ${trimmedToken}`;
       }
+
+      if (config.data instanceof FormData && config.headers) {
+        // Axios must not set Content-Type for multipart — RN sets boundary automatically.
+        if (typeof config.headers.delete === 'function') {
+          config.headers.delete('Content-Type');
+          config.headers.delete('content-type');
+        } else {
+          delete config.headers['Content-Type'];
+          delete config.headers['content-type'];
+        }
+        config.transformRequest = [(data) => data];
+      }
     } catch (error) {
       console.error('Error in request interceptor:', error);
     }
@@ -287,6 +386,8 @@ export interface ApiResponse<T = any> {
 export interface ApiError {
   message: string;
   status?: number;
+  code?: string;
+  data?: Record<string, unknown>;
   errors?: Record<string, string[]>;
 }
 
@@ -310,6 +411,8 @@ export const handleApiError = (error: AxiosError): ApiError => {
     return {
       message: sanitizeUserFacingError(data?.message || data?.error || 'An error occurred'),
       status: error.response.status,
+      code: data?.code,
+      data: data?.data,
       errors: data?.errors,
     };
   } else if (error.request) {
@@ -326,4 +429,45 @@ export const handleApiError = (error: AxiosError): ApiError => {
 };
 
 export default apiClient;
+
+const cacheSecuritySettings = async (settings: SecurityConfirmationSettings): Promise<void> => {
+  await AsyncStorage.multiSet([
+    [VERIFY_WITH_PIN_KEY, String(settings.verifyWithPin)],
+    [VERIFY_WITH_EMAIL_KEY, String(settings.verifyWithEmail)],
+    [VERIFY_WITH_2FA_KEY, String(settings.verifyWith2FA)],
+  ]);
+};
+
+export const syncSecurityConfirmationSettings = async (): Promise<SecurityConfirmationSettings> => {
+  try {
+    const token = await getAccessToken();
+    if (!token) {
+      return getSecurityConfirmationSettings();
+    }
+
+    const response = await apiClient.get(API_ROUTES.AUTH.SECURITY_SETTINGS);
+    const settings = response.data.data as SecurityConfirmationSettings;
+    await cacheSecuritySettings(settings);
+    return settings;
+  } catch (error) {
+    console.error('[syncSecurityConfirmationSettings] Error:', error);
+    return getSecurityConfirmationSettings();
+  }
+};
+
+export const persistSecurityConfirmationSettings = async (
+  partial: Partial<SecurityConfirmationSettings>
+): Promise<SecurityConfirmationSettings> => {
+  const current = await getSecurityConfirmationSettings();
+  const next: SecurityConfirmationSettings = {
+    verifyWithPin: partial.verifyWithPin ?? current.verifyWithPin,
+    verifyWithEmail: partial.verifyWithEmail ?? current.verifyWithEmail,
+    verifyWith2FA: partial.verifyWith2FA ?? current.verifyWith2FA,
+  };
+
+  const response = await apiClient.patch(API_ROUTES.AUTH.SECURITY_SETTINGS, next);
+  const settings = response.data.data as SecurityConfirmationSettings;
+  await cacheSecuritySettings(settings);
+  return settings;
+};
 

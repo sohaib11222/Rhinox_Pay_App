@@ -23,9 +23,34 @@ import { useGetSupportChats } from '../../../queries/support.queries';
 import { useCreateSupportChat } from '../../../mutations/support.mutations';
 import { useGetCurrentUser } from '../../../queries/auth.queries';
 import { showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import { defaultTabBarStyle } from '../../../navigation/tabBarConfig';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 0.9;
+const DEFAULT_SUPPORT_AGENT_NAME = 'Rhinox Agent';
+
+const getSupportAgentDisplayName = (chat: any): string => {
+    const assignee = chat?.assignee;
+    if (assignee) {
+        const name = [assignee.firstName, assignee.lastName].filter(Boolean).join(' ').trim();
+        return name || assignee.email || DEFAULT_SUPPORT_AGENT_NAME;
+    }
+    return DEFAULT_SUPPORT_AGENT_NAME;
+};
+
+const getProfileFromUserResponse = (userData: any) => {
+    const user = userData?.data;
+    if (!user) return null;
+
+    const fullName = user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.firstName || user.lastName || user.name || '';
+
+    return {
+        fullName,
+        email: user.email || '',
+    };
+};
 
 interface Chat {
     id: string | number;
@@ -54,41 +79,31 @@ const Support = () => {
 
     // Set user data when available - always update to ensure latest user data is used
     React.useEffect(() => {
-        if (userData?.data?.user) {
-            const user = userData.data.user;
-            const fullName = user.firstName && user.lastName 
-                ? `${user.firstName} ${user.lastName}`.trim()
-                : user.firstName || user.lastName || user.name || '';
-            const userEmail = user.email || '';
-            
-            // Always set from user data to ensure it's pre-filled
-            if (fullName) {
-                setChatName(fullName);
-            }
-            if (userEmail) {
-                setChatEmail(userEmail);
-            }
+        const profile = getProfileFromUserResponse(userData);
+        if (!profile) return;
+
+        if (profile.fullName) {
+            setChatName(profile.fullName);
         }
-    }, [userData?.data?.user]);
+        if (profile.email) {
+            setChatEmail(profile.email);
+        }
+    }, [userData?.data]);
 
     // When modal opens, ensure fields are pre-filled with user data
     React.useEffect(() => {
-        if (showDetailsModal && userData?.data?.user) {
-            const user = userData.data.user;
-            const fullName = user.firstName && user.lastName 
-                ? `${user.firstName} ${user.lastName}`.trim()
-                : user.firstName || user.lastName || user.name || '';
-            const userEmail = user.email || '';
-            
-            // Pre-fill when modal opens
-            if (fullName) {
-                setChatName(fullName);
-            }
-            if (userEmail) {
-                setChatEmail(userEmail);
-            }
+        if (!showDetailsModal) return;
+
+        const profile = getProfileFromUserResponse(userData);
+        if (!profile) return;
+
+        if (profile.fullName) {
+            setChatName(profile.fullName);
         }
-    }, [showDetailsModal, userData?.data?.user]);
+        if (profile.email) {
+            setChatEmail(profile.email);
+        }
+    }, [showDetailsModal, userData?.data]);
     const [reasonOptions] = useState([
         { id: 'Payment Issue', label: 'Payment Issue' },
         { id: 'Account issue', label: 'Account issue' },
@@ -143,7 +158,7 @@ const Support = () => {
 
             return {
                 id: chat.id,
-                agentName: chat.name || 'RhinoX Agent', // Use name from API or default
+                agentName: getSupportAgentDisplayName(chat),
                 agentAvatar: require('../../../assets/Frame 2398.png'),
                 lastMessage: chat.lastMessage?.message || 'No messages yet',
                 date: formattedDate,
@@ -190,31 +205,17 @@ const Support = () => {
         React.useCallback(() => {
             const parent = navigation.getParent();
             if (parent) {
-                parent.setOptions({
-                    tabBarStyle: { display: 'none' },
-                });
-            }
-            return () => {
-                if (parent) {
-                    parent.setOptions({
-                        tabBarStyle: {
-                            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-                            borderTopWidth: 0,
-                            height: 75 * SCALE,
-                            paddingBottom: 10,
-                            paddingTop: 0,
-                            position: 'absolute',
-                            bottom: 26 * SCALE,
-                            borderRadius: 100,
-                            overflow: 'hidden',
-                            elevation: 0,
-                            width: SCREEN_WIDTH * 0.86,
-                            marginLeft: 30,
-                            shadowOpacity: 0,
-                        },
-                    });
-                }
-            };
+        parent.setOptions({
+          tabBarStyle: { display: 'none' },
+        });
+      }
+      return () => {
+        if (parent) {
+          parent.setOptions({
+            tabBarStyle: defaultTabBarStyle,
+          });
+        }
+      };
         }, [navigation])
     );
 
@@ -239,23 +240,13 @@ const Support = () => {
     });
 
     const handleNewChat = () => {
-        // Always pre-fill with latest user data if available
-        if (userData?.data?.user) {
-            const user = userData.data.user;
-            const fullName = user.firstName && user.lastName 
-                ? `${user.firstName} ${user.lastName}`.trim()
-                : user.firstName || user.lastName || user.name || '';
-            const userEmail = user.email || '';
-            // Always set from user data to ensure fields are pre-filled
-            setChatName(fullName || '');
-            setChatEmail(userEmail || '');
-        } else {
-            // Only clear if user data is not available
-            // If user data is loading, keep existing values
-            if (!isLoadingUser) {
-                setChatName('');
-                setChatEmail('');
-            }
+        const profile = getProfileFromUserResponse(userData);
+        if (profile) {
+            setChatName(profile.fullName || '');
+            setChatEmail(profile.email || '');
+        } else if (!isLoadingUser) {
+            setChatName('');
+            setChatEmail('');
         }
         setSelectedReason('');
         setShowDetailsModal(true);
@@ -295,13 +286,14 @@ const Support = () => {
     };
 
     const handleChatPress = (chat: Chat) => {
+        const rawChat = chatsData?.data?.find((c: any) => c.id === chat.id);
         (navigation as any).navigate('Settings', {
             screen: 'ChatScreen',
             params: {
                 chatId: chat.id,
-                chatName: chat.agentName,
-                chatEmail: chatsData?.data?.find((c: any) => c.id === chat.id)?.email || 'support@rhinox.com',
-                reason: chatsData?.data?.find((c: any) => c.id === chat.id)?.reason || 'Payment Support',
+                chatName: rawChat?.name || 'N/A',
+                chatEmail: rawChat?.email || 'support@rhinox.com',
+                reason: rawChat?.reason || 'Payment Support',
             },
         });
     };

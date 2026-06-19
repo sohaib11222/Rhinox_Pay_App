@@ -21,6 +21,7 @@ import { API_BASE_URL } from '../../../utils/apiConfig';
 import TransactionReceiptModal from '../../components/TransactionReceiptModal';
 import TransactionErrorModal from '../../components/TransactionErrorModal';
 import { showWarningAlert } from '../../../utils/customAlert';
+import { formatNaira } from '../../../utils/naira';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SCALE = 1;
@@ -68,6 +69,13 @@ const BillPaymentMainScreen = () => {
       description: 'Fund your betting account easily ',
       icon: require('../../../assets/SoccerBall.png'),
       iconType: 'image',
+    },
+    {
+      id: '4',
+      title: 'Electricity',
+      description: 'Pay your electricity bills easily via rhinoxpay',
+      icon: 'flash',
+      iconType: 'icon',
     },
   ];
 
@@ -194,7 +202,7 @@ const BillPaymentMainScreen = () => {
       
       // Format amount
       const amount = parseFloat(tx.amount || '0');
-      const formattedAmount = `N${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+      const formattedAmount = formatNaira(amount, { compact: true });
       
       // Format date
       const date = tx.createdAt
@@ -289,9 +297,10 @@ const BillPaymentMainScreen = () => {
       navigation.navigate('Transactions' as never, {
         screen: 'DataRecharge' as never,
       } as never);
+    } else if (category.title === 'Electricity') {
+      showWarningAlert('Coming Soon', 'Electricity bill payment is coming soon.');
     } else if (
       category.title === 'Internet Subscription' ||
-      category.title === 'Electricity' ||
       category.title === 'Cable TV'
     ) {
       showWarningAlert('Under Maintenance', 'This bill payment service is temporarily unavailable.');
@@ -707,10 +716,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Aeonik_Pro_TRIAL',
   },
   categoryDescription: {
-    fontSize: 10 * SCALE,
+    fontSize: 14,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
-    lineHeight: 14 * SCALE,
+    lineHeight: 20,
     fontFamily: 'Aeonik_Pro_TRIAL',
   },
   recentTransactionsCard: {

@@ -21,7 +21,15 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '../../../components';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../../utils/customAlert';
+import {
+  afterPinEntryComplete,
+  checkSecurityRequirements,
+  runAfterSecurityCheck,
+  verifySecurityBeforeTransaction,
+  getMissingVerificationMessage,
+} from '../../../utils/securityVerification';
 import { useGetP2POrderDetails } from '../../../queries/p2p.queries';
+import { getBaseSymbol } from '../../../utils/cryptoSymbols';
 import { useCreateP2POrder, useMarkPaymentReceived, useCreateP2PReview } from '../../../mutations/p2p.mutations';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -64,6 +72,11 @@ const SellOrderFlow = () => {
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [showPinModal, setShowPinModal] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [securityRequirements, setSecurityRequirements] = useState({
+    pin: false,
+    email: false,
+    twoFA: false,
+  });
   const [countdown, setCountdown] = useState(30); // 30 seconds countdown
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const [reviewRating, setReviewRating] = useState<'positive' | 'negative' | null>(null);
@@ -201,6 +214,16 @@ const SellOrderFlow = () => {
     }
   }, [routeParams?.adId, routeParams?.cryptoAmount, routeParams?.paymentMethodId]);
 
+  const orderCryptoSymbol = useMemo(
+    () =>
+      getBaseSymbol(
+        orderDetailsData?.data?.cryptoCurrency ||
+          routeParams?.adDetails?.cryptoCurrency ||
+          'USDT'
+      ),
+    [orderDetailsData?.data?.cryptoCurrency, routeParams?.adDetails?.cryptoCurrency]
+  );
+
   // Transform API order data to UI format
   const orderData = useMemo(() => {
     if (orderDetailsData?.data) {
@@ -284,7 +307,7 @@ const SellOrderFlow = () => {
         rhinoxPayId: paymentMethod.type === 'rhinoxpay' || paymentMethod.type === 'rhinoxpay_id' 
           ? (paymentMethod.rhinoxpayId || paymentMethod.accountNumber || 'N/A')
           : null,
-        usdtAmount: `${cryptoAmount} USDT`,
+        usdtAmount: `${cryptoAmount} ${getBaseSymbol(order.cryptoCurrency || 'USDT')}`,
       };
     }
     
@@ -307,12 +330,12 @@ const SellOrderFlow = () => {
       accountNumber: 'N/A',
       accountName: 'N/A',
       usdtAmount: routeParams?.assetAmount || (orderDetailsData?.data?.cryptoAmount 
-        ? `${orderDetailsData.data.cryptoAmount} ${orderDetailsData.data.cryptoCurrency || 'USDT'}`
+        ? `${orderDetailsData.data.cryptoAmount} ${orderCryptoSymbol}`
         : routeParams?.cryptoAmount 
-          ? `${routeParams.cryptoAmount} USDT`
-          : '0 USDT'),
+          ? `${routeParams.cryptoAmount} ${orderCryptoSymbol}`
+          : `0 ${orderCryptoSymbol}`),
     };
-  }, [orderDetailsData?.data, routeParams]);
+  }, [orderDetailsData?.data, routeParams, orderCryptoSymbol]);
 
   // Countdown timer for Step 1
   useEffect(() => {
@@ -393,15 +416,32 @@ const SellOrderFlow = () => {
     setShowWarningModal(true);
   };
 
-  const handleWarningComplete = () => {
+  const handleWarningComplete = async () => {
     setShowWarningModal(false);
-    // If RhinoxPay ID is selected, skip verification modals and go directly to step 4
     if (selectedPaymentMethod?.name === 'RhinoxPay ID' || selectedPaymentMethod?.id === '2') {
       setPaymentConfirmed(true);
       setCurrentStep(4);
-    } else {
-      setShowPinModal(true);
+      return;
     }
+
+    await runAfterSecurityCheck({
+      onProceed: () => {
+        if (orderId) {
+          markPaymentReceivedMutation.mutate({
+            orderId: String(orderId),
+            confirmed: true,
+          });
+        }
+      },
+      showVerificationModal: async () => {
+        const requirements = await checkSecurityRequirements();
+        if (requirements.methods.pin) {
+          setShowPinModal(true);
+        } else {
+          setShowSecurityModal(true);
+        }
+      },
+    });
   };
 
   // Check biometric availability on mount
@@ -427,6 +467,20 @@ const SellOrderFlow = () => {
     }
     previousShowPinModal.current = showPinModal;
   }, [showPinModal]);
+
+  useEffect(() => {
+    if (showSecurityModal || showPinModal) {
+      checkSecurityRequirements().then((requirements) => {
+        setSecurityRequirements(requirements.methods);
+      });
+    }
+  }, [showSecurityModal, showPinModal]);
+
+  const canProceedSecurity = useMemo(() => {
+    const emailOk = !securityRequirements.email || emailCode.length >= 5;
+    const twoFaOk = !securityRequirements.twoFA || authenticatorCode.length >= 6;
+    return emailOk && twoFaOk;
+  }, [securityRequirements, emailCode, authenticatorCode]);
 
   const checkBiometricAvailability = async () => {
     try {
@@ -553,9 +607,25 @@ const SellOrderFlow = () => {
         
         // Auto proceed to security verification when PIN is complete
         if (newPin.length === 5) {
-          setTimeout(() => {
-            setShowPinModal(false);
-            setShowSecurityModal(true);
+          setTimeout(async () => {
+            await afterPinEntryComplete(newPin, {
+              onProceed: () => {
+                setShowPinModal(false);
+                if (orderId) {
+                  markPaymentReceivedMutation.mutate({
+                    orderId: String(orderId),
+                    confirmed: true,
+                  });
+                }
+              },
+              onShowAdditionalVerification: () => {
+                setShowPinModal(false);
+                setShowSecurityModal(true);
+              },
+              onInvalid: (message) => {
+                showWarningAlert('Security Verification Required', message);
+              },
+            });
           }, 300);
         }
         
@@ -589,25 +659,33 @@ const SellOrderFlow = () => {
     }, 200);
   }, []);
 
-  const handleSecurityProceed = () => {
-    if (emailCode && authenticatorCode && orderId) {
-      // Mark payment as received via API
-      markPaymentReceivedMutation.mutate({
-        orderId: String(orderId),
-        confirmed: true,
-      });
-      // Clear codes
-      setEmailCode('');
-      setAuthenticatorCode('');
-    } else if (emailCode && authenticatorCode) {
-      // Fallback for mock flow
-      setShowSecurityModal(false);
-      setPaymentConfirmed(true);
-      setCurrentStep(3);
-      setTimeout(() => {
-        setCurrentStep(4);
-      }, 2000);
+  const handleSecurityProceed = async () => {
+    if (!orderId) {
+      showErrorAlert('Error', 'Order ID not found');
+      return;
     }
+
+    const verification = await verifySecurityBeforeTransaction({
+      pin,
+      emailOtp: emailCode,
+      twoFACode: authenticatorCode,
+    });
+
+    if (!verification.success) {
+      showWarningAlert(
+        'Security Verification Required',
+        getMissingVerificationMessage(verification.missingVerifications)
+      );
+      return;
+    }
+
+    setShowSecurityModal(false);
+    setEmailCode('');
+    setAuthenticatorCode('');
+    markPaymentReceivedMutation.mutate({
+      orderId: String(orderId),
+      confirmed: true,
+    });
   };
 
   const handleCopyAccountNumber = async () => {
@@ -785,14 +863,14 @@ const SellOrderFlow = () => {
                 <View style={styles.receiveSection}>
                   <ThemedText style={styles.receiveLabel}>You will Receive</ThemedText>
                   <View style={styles.receiveValueContainer}>
-                    <ThemedText style={styles.receiveValue}>0.00 USDT</ThemedText>
+                    <ThemedText style={styles.receiveValue}>0.00 {orderCryptoSymbol}</ThemedText>
                   </View>
                 </View>
               </>
             ) : (
               <>
                 <View style={styles.amountSection}>
-                  <ThemedText style={styles.amountLabel}>Enter USDT Amount</ThemedText>
+                  <ThemedText style={styles.amountLabel}>Enter {orderCryptoSymbol} Amount</ThemedText>
                   <TextInput
                     style={styles.amountInput}
                     value={amount}
@@ -808,7 +886,7 @@ const SellOrderFlow = () => {
                   />
                   <View style={styles.balanceRow}>
                     <ThemedText style={styles.balanceLabel}>Balance</ThemedText>
-                    <ThemedText style={styles.balanceValue}>USDT 0.00</ThemedText>
+                    <ThemedText style={styles.balanceValue}>{orderCryptoSymbol} 0.00</ThemedText>
                   </View>
                 </View>
 
@@ -939,7 +1017,7 @@ const SellOrderFlow = () => {
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <ThemedText style={styles.headerTitle}>
-            USDT Sell Ad
+            {orderCryptoSymbol} Sell Ad
           </ThemedText>
         </View>
         <View style={styles.backButton} />
@@ -1537,9 +1615,9 @@ const SellOrderFlow = () => {
               </ScrollView>
 
               <TouchableOpacity
-                style={[styles.proceedButton, (!emailCode || !authenticatorCode) && styles.proceedButtonDisabled]}
+                style={[styles.proceedButton, (!canProceedSecurity || markPaymentReceivedMutation.isPending) && styles.proceedButtonDisabled]}
                 onPress={handleSecurityProceed}
-                disabled={!emailCode || !authenticatorCode}
+                disabled={!canProceedSecurity || markPaymentReceivedMutation.isPending}
               >
                 <ThemedText style={styles.proceedButtonText}>Proceed</ThemedText>
               </TouchableOpacity>

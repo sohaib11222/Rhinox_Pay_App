@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { ThemedText } from '../../components';
 import { useSetupPin, useMarkFaceVerified } from '../../mutations/auth.mutations';
-import { getAccessToken } from '../../utils/apiClient';
+import { getAccessToken, setBiometricEnabled } from '../../utils/apiClient';
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showAlert } from '../../utils/customAlert';
 
 const SetBiometrics = () => {
@@ -92,7 +92,7 @@ const SetBiometrics = () => {
       
       // Determine biometric type
       if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-        setBiometricType('Fingerprint');
+        setBiometricType('Face ID');
       } else if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
         setBiometricType('Fingerprint');
       } else if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
@@ -123,6 +123,8 @@ const SetBiometrics = () => {
       });
 
       if (result.success) {
+        await setBiometricEnabled(true);
+
         // Biometric setup successful - mark face as verified
         // Wait a moment to ensure any previous token operations are complete
         await new Promise(resolve => setTimeout(resolve, 300));
