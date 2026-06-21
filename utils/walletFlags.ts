@@ -30,13 +30,43 @@ export type CountryFlagRef = {
 export const normalizeFiatCurrency = (currency?: string | null): string =>
   (currency || '').toUpperCase() === 'KSH' ? 'KES' : (currency || '').toUpperCase();
 
+/** Normalize backend/DB flag values to `/uploads/flags/<file>`. */
+export const normalizeFlagPath = (flag: string): string => {
+  const trimmed = flag.trim();
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('content://')
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('/uploads/flags/')) {
+    return trimmed;
+  }
+  if (trimmed.includes('/uploads/flags/')) {
+    const idx = trimmed.lastIndexOf('/uploads/flags/');
+    return trimmed.slice(idx);
+  }
+  const filename = trimmed.replace(/^\/+/, '').replace(/^uploads\/flags\//, '');
+  return `/uploads/flags/${filename}`;
+};
+
 export const resolveFlagUri = (flag?: string | null): string | null => {
   if (!flag) return null;
-  if (flag.startsWith('http') || flag.startsWith('file://') || flag.startsWith('content://')) return flag;
 
-  const baseUrl = API_BASE_URL.replace(/\/api$/, '');
-  if (flag.startsWith('/')) return `${baseUrl}${flag}`;
-  return `${baseUrl}/uploads/flags/${flag}`;
+  const path = normalizeFlagPath(flag);
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('file://') ||
+    path.startsWith('content://')
+  ) {
+    return path;
+  }
+
+  const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+  return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 };
 
 /** Resolve backend upload paths or local URIs to a displayable image URL */

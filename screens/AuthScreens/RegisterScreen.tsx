@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ThemedText } from '../../components';
+import { ThemedText, CountryFlag } from '../../components';
 import OtpInput from '../../components/OtpInput';
 import KeyboardSafeModal from '../../components/KeyboardSafeModal';
 import { useRegister, useVerifyEmail, useResendVerification } from '../../mutations/auth.mutations';
@@ -30,7 +30,6 @@ import {
 } from '../../utils/passwordValidation';
 import { OTP_LENGTH } from '../../constants/otp';
 import { TYPOGRAPHY } from '../../constants/typography';
-import { resolveCountryFlagUrl } from '../../utils/mediaUrl';
 import { getAuthHeroHeight, getAuthHeroImageWidth } from '../../utils/responsiveAuth';
 
 interface Country {
@@ -636,15 +635,12 @@ const RegisterScreen = () => {
                     style={styles.countryItem}
                     onPress={() => handleCountrySelect(c)}
                   >
-                    {c.flag ? (
-                      <Image
-                        source={{ uri: resolveCountryFlagUrl(c.flag) ?? undefined }}
-                        style={styles.countryFlagImage}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <ThemedText style={styles.countryFlagEmoji}>🏳️</ThemedText>
-                    )}
+                    <CountryFlag
+                      flag={c.flag}
+                      countryCode={c.code}
+                      size={24}
+                      style={styles.countryFlagBadge}
+                    />
                     <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
@@ -1104,14 +1100,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginRight: 15,
   },
-  countryFlagEmoji: {
-    fontSize: 20,
+  countryFlagBadge: {
     marginRight: 15,
-  },
-  countryFlagImage: {
-    width: 24,
-    height: 18,
-    marginRight: 15,
+    backgroundColor: 'transparent',
   },
   countryName: {
     flex: 1,

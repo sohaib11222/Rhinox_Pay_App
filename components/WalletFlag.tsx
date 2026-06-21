@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Image, StyleSheet, ViewStyle } from 'react-native';
 import ThemedText from './ThemedText';
 import {
@@ -54,7 +54,18 @@ type CountryFlagProps = {
 
 export function CountryFlag({ flag, countryCode, size = 30, style }: CountryFlagProps) {
   const flagUri = resolveFlagUri(flag);
+  const [imageFailed, setImageFailed] = useState(false);
   const radius = size / 2;
+  const emoji =
+    countryCode && COUNTRY_FLAG_EMOJI[countryCode.toUpperCase()]
+      ? COUNTRY_FLAG_EMOJI[countryCode.toUpperCase()]
+      : '🏳️';
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [flag, flagUri]);
+
+  const showImage = Boolean(flagUri) && !imageFailed;
 
   return (
     <View
@@ -64,13 +75,16 @@ export function CountryFlag({ flag, countryCode, size = 30, style }: CountryFlag
         style,
       ]}
     >
-      {flagUri ? (
-        <Image source={{ uri: flagUri }} style={styles.image} resizeMode="contain" />
+      {showImage ? (
+        <Image
+          source={{ uri: flagUri! }}
+          style={styles.image}
+          resizeMode="contain"
+          onError={() => setImageFailed(true)}
+        />
       ) : (
         <ThemedText style={[styles.emoji, { fontSize: Math.round(size * 0.58) }]}>
-          {countryCode && COUNTRY_FLAG_EMOJI[countryCode.toUpperCase()]
-            ? COUNTRY_FLAG_EMOJI[countryCode.toUpperCase()]
-            : '🏳️'}
+          {emoji}
         </ThemedText>
       )}
     </View>

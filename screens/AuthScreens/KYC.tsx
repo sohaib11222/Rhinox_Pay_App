@@ -14,11 +14,10 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { ThemedText } from '../../components';
+import { ThemedText, CountryFlag } from '../../components';
 import { useSubmitKYC } from '../../mutations/kyc.mutations';
 import { useGetCountries } from '../../queries/country.queries';
 import { useGetKYCStatus, useRefreshKYCOnFocus } from '../../queries/kyc.queries';
-import { resolveCountryFlagUrl } from '../../utils/mediaUrl';
 import { TYPOGRAPHY } from '../../constants/typography';
 import { showSuccessAlert, showErrorAlert, showWarningAlert } from '../../utils/customAlert';
 
@@ -477,15 +476,12 @@ const KYC = () => {
                     style={styles.countryItem}
                     onPress={() => handleCountrySelect(c)}
                   >
-                    {c.flag ? (
-                      <Image
-                        source={{ uri: resolveCountryFlagUrl(c.flag) ?? undefined }}
-                        style={styles.countryFlagImage}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <ThemedText style={styles.countryFlag}>{c.code}</ThemedText>
-                    )}
+                    <CountryFlag
+                      flag={c.flag}
+                      countryCode={c.code}
+                      size={24}
+                      style={styles.countryFlagBadge}
+                    />
                     <ThemedText style={styles.countryName}>{c.name}</ThemedText>
                     <MaterialCommunityIcons
                       name={selectedCountry === c.id ? 'radiobox-marked' : 'radiobox-blank'}
@@ -918,11 +914,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     marginRight: 15,
   },
-  countryFlagImage: {
-    width: 30,
-    height: 20,
+  countryFlagBadge: {
     marginRight: 15,
-    borderRadius: 4,
+    backgroundColor: 'transparent',
   },
   loadingContainer: {
     padding: 40,
