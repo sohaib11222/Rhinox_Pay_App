@@ -3,6 +3,7 @@ import {
   NativeSyntheticEvent,
   StyleSheet,
   TextInput,
+  TextInputFocusEventData,
   TextInputKeyPressEventData,
   View,
 } from 'react-native';
@@ -14,9 +15,11 @@ interface OtpInputProps {
   onChange: (digits: string[]) => void;
   onComplete?: (code: string) => void;
   disabled?: boolean;
+  /** Called when any box is focused — use with keyboard-safe modal/screen scroll helpers */
+  onInputFocus?: (event: NativeSyntheticEvent<TextInputFocusEventData>) => void;
 }
 
-const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabled }) => {
+const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabled, onInputFocus }) => {
   const refs = useRef<(TextInput | null)[]>([]);
   const [focusedIndex, setFocusedIndex] = useState(0);
 
@@ -61,8 +64,12 @@ const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabl
     }
   };
 
-  const handleFocus = async (index: number) => {
+  const handleFocus = async (
+    index: number,
+    event: NativeSyntheticEvent<TextInputFocusEventData>
+  ) => {
     setFocusedIndex(index);
+    onInputFocus?.(event);
     try {
       const clip = await Clipboard.getStringAsync();
       if (clip && /^\d{4,8}$/.test(clip.trim())) {
@@ -85,7 +92,7 @@ const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabl
           value={value[index] || ''}
           onChangeText={(text) => handleChange(text, index)}
           onKeyPress={(e) => handleKeyPress(e, index)}
-          onFocus={() => handleFocus(index)}
+          onFocus={(event) => handleFocus(index, event)}
           keyboardType="number-pad"
           maxLength={index === 0 ? OTP_LENGTH : 1}
           editable={!disabled}

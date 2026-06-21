@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
-import { ThemedText, KeyboardSafeScreen } from '../../components';
+import { ThemedText, KeyboardSafeScreen, KeyboardAwareTextInput } from '../../components';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useVerifyDeviceLogin } from '../../mutations/auth.mutations';
 import { getBiometricEnabled, hasStoredAuthSession, setAccessToken, setRefreshToken, clearTokens, setBiometricLocked } from '../../utils/apiClient';
 import { getOrCreateDeviceId } from '../../utils/deviceId';
 import OtpInput from '../../components/OtpInput';
-import KeyboardSafeModal from '../../components/KeyboardSafeModal';
+import KeyboardSafeModal, { useKeyboardSafeModalInput, KeyboardAwareModalTextInput } from '../../components/KeyboardSafeModal';
 import { OTP_LENGTH } from '../../constants/otp';
 import {
   getBiometricCapability,
@@ -29,6 +29,11 @@ import {
 import { showSuccessAlert, showErrorAlert, showWarningAlert, showInfoAlert } from '../../utils/customAlert';
 import { useAuth } from '../../hooks/useAuth';
 import { getAuthHeroHeight, getAuthHeroImageWidth } from '../../utils/responsiveAuth';
+
+function ModalOtpInput(props: React.ComponentProps<typeof OtpInput>) {
+  const { onFocus } = useKeyboardSafeModalInput(40);
+  return <OtpInput {...props} onInputFocus={onFocus} />;
+}
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -532,7 +537,7 @@ const handleRegister = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Email</ThemedText>
               <View style={styles.inputWrapper}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input Email"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -566,7 +571,7 @@ const handleRegister = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Password</ThemedText>
               <View style={styles.inputWrapper}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input Password"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -575,6 +580,7 @@ const handleRegister = () => {
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  extraOffset={60}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -652,7 +658,7 @@ const handleRegister = () => {
                 <View style={styles.modalSection}>
                   <ThemedText style={styles.modalSectionTitle}>Enter Email Address</ThemedText>
                   <View style={styles.modalInputWrapper}>
-                    <TextInput
+                    <KeyboardAwareModalTextInput
                       style={styles.modalInput}
                       placeholder="Input your email address"
                       placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -715,7 +721,7 @@ const handleRegister = () => {
 
                 <View style={styles.modalSection}>
                   <ThemedText style={styles.modalSectionTitle}>Input Code</ThemedText>
-                  <OtpInput
+                  <ModalOtpInput
                     value={verificationCode}
                     onChange={setVerificationCode}
                     onComplete={() => handleVerifyOtp()}
@@ -769,7 +775,7 @@ const handleRegister = () => {
             <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>New Password</ThemedText>
               <View style={styles.modalInputWrapper}>
-                <TextInput
+                <KeyboardAwareModalTextInput
                   style={styles.modalInput}
                   placeholder="Enter new password"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -795,7 +801,7 @@ const handleRegister = () => {
             <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>Re-enter new Password</ThemedText>
               <View style={styles.modalInputWrapper}>
-                <TextInput
+                <KeyboardAwareModalTextInput
                   style={styles.modalInput}
                   placeholder="Re-enter new Password"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -804,6 +810,7 @@ const handleRegister = () => {
                   secureTextEntry={!showConfirmPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  extraOffset={50}
                 />
                 <TouchableOpacity
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -853,7 +860,7 @@ const handleRegister = () => {
               Enter the {OTP_LENGTH}-digit code sent to your email to sign in from this device.
             </ThemedText>
             <View style={styles.modalSection}>
-              <OtpInput
+              <ModalOtpInput
                 value={deviceOtpCode}
                 onChange={setDeviceOtpCode}
                 onComplete={() => handleVerifyDeviceOtp()}
