@@ -34,12 +34,24 @@ const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabl
     [onChange, onComplete]
   );
 
+  const onCompleteRef = useRef(onComplete);
+  const lastCompletedCodeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
   useEffect(() => {
     const code = value.join('');
     if (code.length === OTP_LENGTH && /^\d+$/.test(code)) {
-      onComplete?.(code);
+      if (lastCompletedCodeRef.current !== code) {
+        lastCompletedCodeRef.current = code;
+        onCompleteRef.current?.(code);
+      }
+      return;
     }
-  }, [value, onComplete]);
+    lastCompletedCodeRef.current = null;
+  }, [value]);
 
   const handleChange = (text: string, index: number) => {
     if (text.length > 1) {

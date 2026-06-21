@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { ThemedText, KeyboardSafeScreen, KeyboardAwareTextInput } from '../../components';
 import KeyboardSafeModal, { KeyboardAwareModalTextInput } from '../../components/KeyboardSafeModal';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useVerifyDeviceLogin } from '../../mutations/auth.mutations';
@@ -65,26 +65,6 @@ const LoginScreen = () => {
     getOrCreateDeviceId().then(setDeviceId).catch(() => {});
   }, []);
 
-  const navigateToMain = () => {
-    const rootNavigation = navigation.getParent()?.getParent();
-    if (rootNavigation) {
-      rootNavigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: 'Main' as never }],
-        })
-      );
-      return;
-    }
-
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'Main' as never }],
-      })
-    );
-  };
-
   const completeLoginSuccess = async (data: any) => {
     const accessToken = data?.data?.accessToken;
     const refreshToken = data?.data?.refreshToken;
@@ -96,7 +76,6 @@ const LoginScreen = () => {
       await setAuthenticated(accessToken);
     }
     await checkBiometricSession();
-    navigateToMain();
   };
 
   const verifyDeviceMutation = useVerifyDeviceLogin({
@@ -346,7 +325,6 @@ const LoginScreen = () => {
       }
 
       await setAuthenticated(activeToken);
-      navigateToMain();
     } catch (error) {
       console.error('Biometric authentication error:', error);
       showErrorAlert(
