@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
-import SafeRemoteImage from './SafeRemoteImage';
+import { View, Image, StyleSheet, ViewStyle } from 'react-native';
 import ThemedText from './ThemedText';
 import {
   COUNTRY_FLAG_EMOJI,
@@ -36,7 +35,7 @@ export function WalletFlag({
       ]}
     >
       {display.kind === 'image' ? (
-        <SafeRemoteImage source={display.source} style={styles.image} resizeMode="contain" />
+        <Image source={display.source} style={styles.image} resizeMode="contain" />
       ) : (
         <ThemedText style={[styles.emoji, { fontSize: Math.round(size * 0.58) }]}>
           {display.emoji}
@@ -77,7 +76,7 @@ export function CountryFlag({ flag, countryCode, size = 30, style }: CountryFlag
       ]}
     >
       {showImage ? (
-        <SafeRemoteImage
+        <Image
           source={{ uri: flagUri! }}
           style={styles.image}
           resizeMode="contain"

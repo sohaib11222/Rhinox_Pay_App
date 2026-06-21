@@ -1,33 +1,22 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Dimensions,
   NativeSyntheticEvent,
   StyleSheet,
   TextInput,
-  TextInputFocusEventData,
   TextInputKeyPressEventData,
   View,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { OTP_LENGTH } from '../constants/otp';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-/** Fit 6 boxes with gaps inside typical modal padding */
-const OTP_BOX_SIZE = Math.min(
-  46,
-  Math.max(36, Math.floor((SCREEN_WIDTH - 48 - (OTP_LENGTH - 1) * 6) / OTP_LENGTH))
-);
-
 interface OtpInputProps {
   value: string[];
   onChange: (digits: string[]) => void;
   onComplete?: (code: string) => void;
   disabled?: boolean;
-  /** Called when any box is focused — use with keyboard-safe modal/screen scroll helpers */
-  onInputFocus?: (event: NativeSyntheticEvent<TextInputFocusEventData>) => void;
 }
 
-const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabled, onInputFocus }) => {
+const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabled }) => {
   const refs = useRef<(TextInput | null)[]>([]);
   const [focusedIndex, setFocusedIndex] = useState(0);
 
@@ -72,12 +61,8 @@ const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabl
     }
   };
 
-  const handleFocus = async (
-    index: number,
-    event: NativeSyntheticEvent<TextInputFocusEventData>
-  ) => {
+  const handleFocus = async (index: number) => {
     setFocusedIndex(index);
-    onInputFocus?.(event);
     try {
       const clip = await Clipboard.getStringAsync();
       if (clip && /^\d{4,8}$/.test(clip.trim())) {
@@ -100,7 +85,7 @@ const OtpInput: React.FC<OtpInputProps> = ({ value, onChange, onComplete, disabl
           value={value[index] || ''}
           onChangeText={(text) => handleChange(text, index)}
           onKeyPress={(e) => handleKeyPress(e, index)}
-          onFocus={(event) => handleFocus(index, event)}
+          onFocus={() => handleFocus(index)}
           keyboardType="number-pad"
           maxLength={index === 0 ? OTP_LENGTH : 1}
           editable={!disabled}
@@ -115,26 +100,21 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-    width: '100%',
+    gap: 8,
   },
   box: {
-    width: OTP_BOX_SIZE,
-    height: OTP_BOX_SIZE + 8,
-    borderRadius: 12,
+    width: 44,
+    height: 52,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '600',
+    borderColor: 'rgba(255,255,255,0.25)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    color: '#fff',
+    fontSize: 20,
     textAlign: 'center',
   },
   boxFocused: {
     borderColor: '#A9EF45',
-    borderWidth: 1.5,
-    backgroundColor: 'rgba(169, 239, 69, 0.08)',
   },
 });
 
