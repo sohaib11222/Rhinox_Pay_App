@@ -71,6 +71,8 @@ interface KeyboardSafeModalProps {
   onRequestClose: () => void;
   children: React.ReactNode;
   contentStyle?: ViewStyle;
+  /** `sheet` = bottom sheet (auth OTP). `center` = centered card (default). */
+  presentation?: 'center' | 'sheet';
 }
 
 const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
@@ -78,10 +80,12 @@ const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
   onRequestClose,
   children,
   contentStyle,
+  presentation = 'center',
 }) => {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const isSheet = presentation === 'sheet';
 
   useEffect(() => {
     if (!visible) {
@@ -137,20 +141,23 @@ const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
     [scrollToFocusedInput]
   );
 
-  const bottomPad =
-    keyboardHeight > 0 ? keyboardHeight : Math.max(insets.bottom, 16);
+  const bottomPad = isSheet
+    ? Math.max(insets.bottom, keyboardHeight > 0 ? 12 : 20)
+    : keyboardHeight > 0
+      ? keyboardHeight
+      : Math.max(insets.bottom, 16);
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onRequestClose}>
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, isSheet && styles.overlaySheet]}>
         <KeyboardSafeModalContext.Provider value={contextValue}>
           <ScrollView
             ref={scrollRef}
             style={styles.flex}
             contentContainerStyle={[
-              styles.scrollContent,
+              isSheet ? styles.scrollContentSheet : styles.scrollContentCenter,
               {
-                paddingTop: Math.max(insets.top, 16),
+                paddingTop: isSheet ? 0 : Math.max(insets.top, 16),
                 paddingBottom: bottomPad,
               },
             ]}
@@ -160,7 +167,14 @@ const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
             bounces={false}
             nestedScrollEnabled
           >
-            <View style={[styles.content, contentStyle]}>{children}</View>
+            <View
+              style={[
+                isSheet ? styles.contentSheet : styles.contentCenter,
+                contentStyle,
+              ]}
+            >
+              {children}
+            </View>
           </ScrollView>
         </KeyboardSafeModalContext.Provider>
       </View>
@@ -171,20 +185,38 @@ const KeyboardSafeModal: React.FC<KeyboardSafeModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  overlaySheet: {
+    justifyContent: 'flex-end',
   },
   flex: {
     flex: 1,
   },
-  scrollContent: {
+  scrollContentCenter: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  content: {
+  scrollContentSheet: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+  },
+  contentCenter: {
     backgroundColor: '#0F1825',
     borderRadius: 16,
     padding: 20,
+  },
+  contentSheet: {
+    width: '100%',
+    backgroundColor: '#020c19',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 0.3,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    paddingBottom: 8,
+    overflow: 'hidden',
   },
 });
 

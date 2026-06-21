@@ -638,6 +638,7 @@ const handleRegister = () => {
       {/* Forgot Password Modal */}
       <KeyboardSafeModal
         visible={showForgotPasswordModal}
+        presentation="sheet"
         onRequestClose={() => setShowForgotPasswordModal(false)}
         contentStyle={styles.forgotPasswordModalContent}
       >
@@ -750,6 +751,7 @@ const handleRegister = () => {
       {/* Change Password Modal */}
       <KeyboardSafeModal
         visible={showChangePasswordModal}
+        presentation="sheet"
         onRequestClose={() => setShowChangePasswordModal(false)}
         contentStyle={styles.changePasswordModalContent}
       >

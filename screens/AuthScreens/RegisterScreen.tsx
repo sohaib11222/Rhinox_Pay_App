@@ -665,72 +665,99 @@ const RegisterScreen = () => {
       {/* Email Verification Modal */}
       <KeyboardSafeModal
         visible={showEmailVerifyModal}
+        presentation="sheet"
         onRequestClose={() => {
           showWarningAlert(
             'Verification Required',
             'You must verify your email before you can use Rhinox Pay.'
           );
         }}
-        contentStyle={styles.verifyModalContent}
       >
-            <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Email Verification</ThemedText>
-            </View>
-            <View style={styles.verifyIcon}>
-              <Image
-                source={require('../../assets/Group 49.png')}
-                style={{ width: 105, height: 105 }}
-                resizeMode="contain"
-              />
-            </View>
-            <ThemedText style={styles.verifyTitle}>Verify your email address</ThemedText>
-            <View style={styles.verifySubtitleContainer}>
-              <ThemedText style={styles.verifySubtitle}>
-                {emailResendClicked
-                  ? `A ${OTP_LENGTH}-digit code has been sent again to your registered email address`
-                  : `A ${OTP_LENGTH}-digit code has been sent to your registered email address`}
-                {' '}
+        <View style={styles.verifySheetHandle} />
+        <View style={styles.verifyModalHeader}>
+          <ThemedText style={styles.verifyModalTitle}>Email Verification</ThemedText>
+          <TouchableOpacity
+            onPress={() => {
+              showWarningAlert(
+                'Verification Required',
+                'You must verify your email before you can use Rhinox Pay.'
+              );
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialCommunityIcons name="close-circle" size={26} color="rgba(255,255,255,0.6)" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.verifySheetBody}>
+          <View style={styles.verifyIcon}>
+            <Image
+              source={require('../../assets/Group 49.png')}
+              style={styles.verifyIconImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          <ThemedText style={styles.verifyTitle}>Verify your email address</ThemedText>
+
+          <ThemedText style={styles.verifySubtitle}>
+            {emailResendClicked
+              ? `A ${OTP_LENGTH}-digit code has been sent again to your email.`
+              : `A ${OTP_LENGTH}-digit code has been sent to your email.`}
+          </ThemedText>
+
+          <View style={styles.verifyResendRow}>
+            {emailResendTimer > 0 ? (
+              <ThemedText style={styles.resendTextDisabled}>
+                Resend code in {emailResendTimer}s
               </ThemedText>
-              {emailResendTimer > 0 ? (
-                <ThemedText style={styles.resendTextDisabled}>
-                  Resend ({emailResendTimer}s)
-                </ThemedText>
-              ) : (
-                <TouchableOpacity 
-                  onPress={handleEmailResend} 
-                  activeOpacity={0.7}
-                  disabled={resendVerificationMutation.isPending}
-                >
-                  {resendVerificationMutation.isPending ? (
-                    <ActivityIndicator size="small" color="#A9EF45" />
-                  ) : (
-                    <ThemedText style={styles.resendText}>Resend</ThemedText>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.codeContainer}>
-              <EmailVerifyOtpInput
-                value={emailCode}
-                onChange={setEmailCode}
-                onComplete={() => handleVerifyEmail()}
-                disabled={verifyEmailMutation.isPending}
-              />
-            </View>
-            <TouchableOpacity 
-              style={[
-                styles.verifyButton,
-                (emailCode.every(digit => digit !== '') && !verifyEmailMutation.isPending) ? {} : styles.verifyButtonDisabled
-              ]} 
-              onPress={handleVerifyEmail}
-              disabled={!emailCode.every(digit => digit !== '') || verifyEmailMutation.isPending}
-            >
-              {verifyEmailMutation.isPending ? (
-                <ActivityIndicator size="small" color="#000000" />
-              ) : (
-                <ThemedText style={styles.verifyButtonText}>Proceed</ThemedText>
-              )}
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleEmailResend}
+                activeOpacity={0.7}
+                disabled={resendVerificationMutation.isPending}
+              >
+                {resendVerificationMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#A9EF45" />
+                ) : (
+                  <ThemedText style={styles.resendText}>Resend code</ThemedText>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <View style={styles.codeContainer}>
+            <EmailVerifyOtpInput
+              value={emailCode}
+              onChange={setEmailCode}
+              onComplete={() => handleVerifyEmail()}
+              disabled={verifyEmailMutation.isPending}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.verifyButton,
+              (!emailCode.every((digit) => digit !== '') || verifyEmailMutation.isPending) &&
+                styles.verifyButtonDisabled,
+            ]}
+            onPress={handleVerifyEmail}
+            disabled={!emailCode.every((digit) => digit !== '') || verifyEmailMutation.isPending}
+          >
+            {verifyEmailMutation.isPending ? (
+              <ActivityIndicator size="small" color="#000000" />
+            ) : (
+              <ThemedText
+                style={[
+                  styles.verifyButtonText,
+                  !emailCode.every((digit) => digit !== '') && styles.verifyButtonTextDisabled,
+                ]}
+              >
+                Proceed
+              </ThemedText>
+            )}
+          </TouchableOpacity>
+        </View>
       </KeyboardSafeModal>
 
       {/* Phone Verification Modal - Commented out for now */}
@@ -1125,52 +1152,75 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#000000',
   },
-  verifyModalContent: {
-    backgroundColor: '#020c19',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 20,
-    height: 464,
+  verifySheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  verifyModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 0.3,
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  verifyModalTitle: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#FFFFFF',
+  },
+  verifySheetBody: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   verifyIcon: {
     alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 30,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  verifyIconImage: {
+    width: 72,
+    height: 72,
   },
   verifyTitle: {
-    fontSize: 14,
-    fontWeight: '400',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#FFFFFF',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  verifySubtitleContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+  verifyResendRow: {
     alignItems: 'center',
-    marginHorizontal: 40,
-    marginBottom: 30,
+    marginBottom: 20,
   },
   verifySubtitle: {
-    fontSize: 9.8,
+    fontSize: 14,
     fontWeight: '300',
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 8,
+    paddingHorizontal: 8,
   },
   resendText: {
+    fontSize: 14,
+    fontWeight: '500',
     color: '#A9EF45',
   },
   resendTextDisabled: {
-    color: 'rgba(169, 239, 69, 0.5)',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.45)',
   },
   codeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 10,
-    marginHorizontal: 30,
-    marginBottom: 30,
-    paddingHorizontal: 10,
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   codeInput: {
     width: 60,
@@ -1190,20 +1240,22 @@ const styles = StyleSheet.create({
   },
   verifyButton: {
     backgroundColor: '#A9EF45',
-    height: 60,
+    height: 56,
     borderRadius: 100,
     alignItems: 'center',
     justifyContent: 'center',
-    marginHorizontal: 20,
+    marginHorizontal: 4,
   },
   verifyButtonDisabled: {
-    backgroundColor: 'rgba(169, 239, 69, 0.3)',
-    opacity: 0.5,
+    backgroundColor: 'rgba(169, 239, 69, 0.28)',
   },
   verifyButtonText: {
-    fontSize: 14,
-    fontWeight: '400',
+    fontSize: 16,
+    fontWeight: '500',
     color: '#000000',
+  },
+  verifyButtonTextDisabled: {
+    color: 'rgba(0, 0, 0, 0.35)',
   },
   registerButtonDisabled: {
     backgroundColor: 'rgba(169, 239, 69, 0.3)',
