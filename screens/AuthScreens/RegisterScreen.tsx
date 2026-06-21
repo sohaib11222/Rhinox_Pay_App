@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ThemedText, CountryFlag, KeyboardSafeScreen } from '../../components';
+import { ThemedText, CountryFlag, KeyboardSafeScreen, KeyboardAwareTextInput } from '../../components';
 import OtpInput from '../../components/OtpInput';
 import KeyboardSafeModal from '../../components/KeyboardSafeModal';
 import { useRegister, useVerifyEmail, useResendVerification } from '../../mutations/auth.mutations';
@@ -439,7 +439,7 @@ const RegisterScreen = () => {
               <View style={styles.inputGroup}>
                 <ThemedText style={styles.inputLabel}>First Name</ThemedText>
                 <View style={styles.inputWrapper}>
-                  <TextInput
+                  <KeyboardAwareTextInput
                     style={styles.input}
                     placeholder="Input your first name"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -453,12 +453,13 @@ const RegisterScreen = () => {
               <View style={styles.inputGroup}>
                 <ThemedText style={styles.inputLabel}>Last Name</ThemedText>
                 <View style={styles.inputWrapper}>
-                  <TextInput
+                  <KeyboardAwareTextInput
                     style={styles.input}
                     placeholder="Input your last name"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                     value={lastName}
                     onChangeText={setLastName}
+                    extraOffset={20}
                   />
                 </View>
               </View>
@@ -467,7 +468,7 @@ const RegisterScreen = () => {
               <View style={styles.inputGroup}>
                 <ThemedText style={styles.inputLabel}>Email</ThemedText>
                 <View style={styles.inputWrapper}>
-                  <TextInput
+                  <KeyboardAwareTextInput
                     style={styles.input}
                     placeholder="Input your email"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -475,6 +476,7 @@ const RegisterScreen = () => {
                     onChangeText={setEmail}
                     keyboardType="email-address"
                     autoCapitalize="none"
+                    extraOffset={40}
                   />
                 </View>
               </View>
@@ -483,13 +485,14 @@ const RegisterScreen = () => {
               <View style={styles.inputGroup}>
                 <ThemedText style={styles.inputLabel}>Phone number</ThemedText>
                 <View style={styles.inputWrapper}>
-                  <TextInput
+                  <KeyboardAwareTextInput
                     style={styles.input}
                     placeholder="Input your phone number"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
+                    extraOffset={60}
                   />
                 </View>
               </View>
@@ -498,7 +501,7 @@ const RegisterScreen = () => {
               <View style={styles.inputGroup}>
                 <ThemedText style={styles.inputLabel}>Password</ThemedText>
                 <View style={styles.inputWrapper}>
-                  <TextInput
+                  <KeyboardAwareTextInput
                     style={styles.input}
                     placeholder="Input your password"
                     placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -506,6 +509,7 @@ const RegisterScreen = () => {
                     onChangeText={handlePasswordChange}
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
+                    extraOffset={showPasswordRequirements ? 200 : 90}
                   />
                   <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
                     <MaterialCommunityIcons

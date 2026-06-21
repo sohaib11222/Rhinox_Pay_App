@@ -12,12 +12,12 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
-import { ThemedText, KeyboardSafeScreen } from '../../components';
+import { ThemedText, KeyboardSafeScreen, KeyboardAwareTextInput } from '../../components';
+import KeyboardSafeModal, { KeyboardAwareModalTextInput } from '../../components/KeyboardSafeModal';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useVerifyDeviceLogin } from '../../mutations/auth.mutations';
 import { getBiometricEnabled, hasStoredAuthSession, setAccessToken, setRefreshToken, clearTokens, setBiometricLocked } from '../../utils/apiClient';
 import { getOrCreateDeviceId } from '../../utils/deviceId';
 import OtpInput from '../../components/OtpInput';
-import KeyboardSafeModal from '../../components/KeyboardSafeModal';
 import { OTP_LENGTH } from '../../constants/otp';
 import {
   getBiometricCapability,
@@ -532,7 +532,7 @@ const handleRegister = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Email</ThemedText>
               <View style={styles.inputWrapper}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input Email"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -566,7 +566,7 @@ const handleRegister = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Password</ThemedText>
               <View style={styles.inputWrapper}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input Password"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -575,6 +575,7 @@ const handleRegister = () => {
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  extraOffset={50}
                 />
                 <TouchableOpacity
                   onPress={() => setShowPassword(!showPassword)}
@@ -652,7 +653,7 @@ const handleRegister = () => {
                 <View style={styles.modalSection}>
                   <ThemedText style={styles.modalSectionTitle}>Enter Email Address</ThemedText>
                   <View style={styles.modalInputWrapper}>
-                    <TextInput
+                    <KeyboardAwareModalTextInput
                       style={styles.modalInput}
                       placeholder="Input your email address"
                       placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -769,7 +770,7 @@ const handleRegister = () => {
             <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>New Password</ThemedText>
               <View style={styles.modalInputWrapper}>
-                <TextInput
+                <KeyboardAwareModalTextInput
                   style={styles.modalInput}
                   placeholder="Enter new password"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -778,6 +779,7 @@ const handleRegister = () => {
                   secureTextEntry={!showNewPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  extraOffset={40}
                 />
                 <TouchableOpacity
                   onPress={() => setShowNewPassword(!showNewPassword)}
@@ -795,7 +797,7 @@ const handleRegister = () => {
             <View style={styles.modalSection}>
               <ThemedText style={styles.modalSectionTitle}>Re-enter new Password</ThemedText>
               <View style={styles.modalInputWrapper}>
-                <TextInput
+                <KeyboardAwareModalTextInput
                   style={styles.modalInput}
                   placeholder="Re-enter new Password"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -804,6 +806,7 @@ const handleRegister = () => {
                   secureTextEntry={!showConfirmPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
+                  extraOffset={80}
                 />
                 <TouchableOpacity
                   onPress={() => setShowConfirmPassword(!showConfirmPassword)}

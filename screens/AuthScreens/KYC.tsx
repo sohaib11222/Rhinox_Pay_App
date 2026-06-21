@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { ThemedText, CountryFlag, KeyboardSafeScreen } from '../../components';
+import { ThemedText, CountryFlag, KeyboardSafeScreen, KeyboardAwareTextInput } from '../../components';
 import { useSubmitKYC } from '../../mutations/kyc.mutations';
 import { useGetCountries } from '../../queries/country.queries';
 import { useGetKYCStatus, useRefreshKYCOnFocus } from '../../queries/kyc.queries';
@@ -300,7 +300,7 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>First Name</ThemedText>
               <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input your first name"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
@@ -315,13 +315,14 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Last Name</ThemedText>
               <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input your last name"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={lastName}
                   onChangeText={setLastName}
                   editable={!isKYCVerified && !isKYCPending}
+                  extraOffset={20}
                 />
               </View>
             </View>
@@ -330,13 +331,14 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>Middle Name</ThemedText>
               <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input your Middle name (optional)"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={middleName}
                   onChangeText={setMiddleName}
                   editable={!isKYCVerified && !isKYCPending}
+                  extraOffset={40}
                 />
               </View>
             </View>
@@ -386,13 +388,14 @@ const KYC = () => {
             <View style={styles.inputGroup}>
               <ThemedText style={styles.inputLabel}>ID Number</ThemedText>
               <View style={[styles.inputWrapper, (isKYCVerified || isKYCPending) && styles.inputDisabled]}>
-                <TextInput
+                <KeyboardAwareTextInput
                   style={styles.input}
                   placeholder="Input id Number"
                   placeholderTextColor="rgba(255, 255, 255, 0.5)"
                   value={idNumber}
                   onChangeText={setIdNumber}
                   editable={!isKYCVerified && !isKYCPending}
+                  extraOffset={120}
                 />
               </View>
             </View>
