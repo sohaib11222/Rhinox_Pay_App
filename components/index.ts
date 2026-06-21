@@ -4,6 +4,7 @@ export { LoadingIndicator } from './LoadingIndicator';
 export { default as CustomAlert } from './CustomAlert';
 export { CustomAlertProvider } from './CustomAlertProvider';
 export { CryptoIcon } from './CryptoIcon';
+export { default as SafeRemoteImage } from './SafeRemoteImage';
 export {
   default as KeyboardSafeScreen,
   useKeyboardSafeInput,
