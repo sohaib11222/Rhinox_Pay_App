@@ -33,6 +33,10 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#020c19"
       },
+      "softwareKeyboardLayoutMode": "resize",
+      "navigationBar": {
+        "backgroundColor": "#020c19"
+      },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.rhinoxpay.app"

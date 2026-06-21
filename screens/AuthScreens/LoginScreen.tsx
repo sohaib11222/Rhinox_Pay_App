@@ -6,15 +6,13 @@ import {
   TouchableOpacity,
   Image,
   StatusBar,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, CommonActions } from '@react-navigation/native';
-import { ThemedText } from '../../components';
+import { ThemedText, KeyboardSafeScreen } from '../../components';
 import { useLogin, useForgotPassword, useVerifyPasswordResetOtp, useResetPassword, useVerifyDeviceLogin } from '../../mutations/auth.mutations';
 import { getBiometricEnabled, hasStoredAuthSession, setAccessToken, setRefreshToken, clearTokens, setBiometricLocked } from '../../utils/apiClient';
 import { getOrCreateDeviceId } from '../../utils/deviceId';
@@ -467,16 +465,9 @@ const handleRegister = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar barStyle="dark-content" />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
+    <>
+      <KeyboardSafeScreen>
+      <StatusBar barStyle="dark-content" backgroundColor="#020c19" />
         {/* Hero Section with Decorative Elements */}
         <View style={[styles.heroSection, { height: heroHeight }]}>
           {/* Background Image */}
@@ -634,10 +625,9 @@ const handleRegister = () => {
           </View>
         </View>
 
-        {/* Background Decorative Circles */}
         <View style={[styles.decorativeCircle, styles.circleTop]} />
         <View style={[styles.decorativeCircle, styles.circleBottom]} />
-      </ScrollView>
+      </KeyboardSafeScreen>
 
       {/* Forgot Password Modal */}
       <KeyboardSafeModal
@@ -885,7 +875,7 @@ const handleRegister = () => {
               )}
             </TouchableOpacity>
       </KeyboardSafeModal>
-    </KeyboardAvoidingView>
+    </>
   );
 };
 
@@ -901,7 +891,7 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#020c19',
     position: 'relative',
     overflow: 'hidden',
   },
@@ -973,7 +963,6 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   mainContent: {
-    flex: 1,
     paddingHorizontal: 21,
   },
   titleSection: {

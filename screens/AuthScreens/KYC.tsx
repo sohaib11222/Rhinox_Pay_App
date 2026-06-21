@@ -5,16 +5,14 @@ import {
   TextInput,
   TouchableOpacity,
   StatusBar,
-  ScrollView,
   Modal,
   Image,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
+  ScrollView,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { ThemedText, CountryFlag } from '../../components';
+import { ThemedText, CountryFlag, KeyboardSafeScreen } from '../../components';
 import { useSubmitKYC } from '../../mutations/kyc.mutations';
 import { useGetCountries } from '../../queries/country.queries';
 import { useGetKYCStatus, useRefreshKYCOnFocus } from '../../queries/kyc.queries';
@@ -235,10 +233,7 @@ const KYC = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
       {/* Header */}
@@ -254,7 +249,7 @@ const KYC = () => {
         <ThemedText style={styles.headerTitle}>KYC Registration</ThemedText>
       </View>
 
-      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeScreen contentContainerStyle={styles.kycScrollContent}>
         {/* Shield Icon */}
         <View style={styles.iconContainer}>
         <Image
@@ -403,7 +398,6 @@ const KYC = () => {
             </View>
           </View>
         </View>
-      </ScrollView>
 
       {/* Buttons */}
       <View style={styles.buttonContainer}>
@@ -434,6 +428,7 @@ const KYC = () => {
           </TouchableOpacity>
         )}
       </View>
+      </KeyboardSafeScreen>
 
       {/* Country Modal */}
       <Modal
@@ -718,7 +713,7 @@ const KYC = () => {
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
@@ -755,6 +750,9 @@ const styles = StyleSheet.create({
   shieldIcon: {
     width: 50,
     height: 50,
+  },
+  kycScrollContent: {
+    paddingBottom: 8,
   },
   scrollView: {
     flex: 1,

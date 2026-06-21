@@ -6,16 +6,15 @@ import {
   TouchableOpacity,
   Image,
   StatusBar,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Modal,
+  ScrollView,
   ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { ThemedText, CountryFlag } from '../../components';
+import { ThemedText, CountryFlag, KeyboardSafeScreen } from '../../components';
 import OtpInput from '../../components/OtpInput';
 import KeyboardSafeModal from '../../components/KeyboardSafeModal';
 import { useRegister, useVerifyEmail, useResendVerification } from '../../mutations/auth.mutations';
@@ -358,16 +357,9 @@ const RegisterScreen = () => {
   }, [phoneResendTimer]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <StatusBar barStyle="light-content" backgroundColor="#00010C" />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
+    <>
+      <KeyboardSafeScreen>
+        <StatusBar barStyle="light-content" backgroundColor="#020c19" />
         {/* Hero Section */}
         <View style={[styles.heroSection, { height: heroHeight }]}>
           <Image
@@ -586,7 +578,10 @@ const RegisterScreen = () => {
             </ThemedText>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+
+        <View style={[styles.decorativeCircle, styles.circleTop]} />
+        <View style={[styles.decorativeCircle, styles.circleBottom]} />
+      </KeyboardSafeScreen>
 
       {/* Country Modal */}
       <Modal
@@ -814,9 +809,7 @@ const RegisterScreen = () => {
         </View>
       </Modal> */}
 
-      <View style={[styles.decorativeCircle, styles.circleTop]} />
-      <View style={[styles.decorativeCircle, styles.circleBottom]} />
-    </KeyboardAvoidingView>
+    </>
   );
 };
 
@@ -832,7 +825,7 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#020c19',
     position: 'relative',
     overflow: 'hidden',
   },
@@ -905,7 +898,6 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   mainContent: {
-    flex: 1,
     paddingHorizontal: 21,
   },
   titleSection: {
