@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Dimensions,
   Image,
@@ -9,28 +9,49 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, {
-  Defs,
-  LinearGradient as SvgLinearGradient,
-  RadialGradient,
-  Rect,
-  Stop,
-} from 'react-native-svg';
-import OnboardingCutGlow, { GLOW_HEIGHT } from './OnboardingCutGlow';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import OnboardingBackground from './OnboardingBackground';
+import OnboardingCutGlow from './OnboardingCutGlow';
 import OnboardingNextBarNative from './OnboardingNextBarNative';
-import OnboardingStars from './OnboardingStars';
 import { ONBOARDING_COLORS } from './onboardingStyles';
+import {
+  ONBOARDING_SCREEN_LAYOUT,
+  scaleFromFigma,
+} from './onboardingScreenLayout';
 import { markOnboardingSeen } from '../../utils/onboardingPersistence';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-
-/** Green cut sits below center — ~60% from top in Figma. */
-const CUT_Y = screenHeight * 0.6;
+const HERO_IMAGE = require('../../assets/onboarding/Group 116 (3).png');
+const HERO_AREA_RATIO = 0.58;
 
 const OnboardingScreen1 = () => {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+
+  const layout = useMemo(() => {
+    const heroHeight = Math.round(screenHeight * HERO_AREA_RATIO);
+    const progressBarWidth = Math.min(
+      ONBOARDING_SCREEN_LAYOUT.progressBarWidth,
+      Math.floor(
+        (screenWidth -
+          ONBOARDING_SCREEN_LAYOUT.horizontalInset * 2 -
+          ONBOARDING_SCREEN_LAYOUT.progressGap * 2) /
+          3
+      )
+    );
+
+    return {
+      heroHeight,
+      progressBarWidth,
+      titleSize: scaleFromFigma(screenWidth, ONBOARDING_SCREEN_LAYOUT.titleFontSize),
+      titleLineHeight: scaleFromFigma(screenWidth, ONBOARDING_SCREEN_LAYOUT.titleLineHeight),
+      subtitleSize: scaleFromFigma(screenWidth, ONBOARDING_SCREEN_LAYOUT.subtitleFontSize),
+      subtitleLineHeight: scaleFromFigma(screenWidth, ONBOARDING_SCREEN_LAYOUT.subtitleLineHeight),
+      skipBottom: scaleFromFigma(screenWidth, ONBOARDING_SCREEN_LAYOUT.skipBottom),
+      contentPaddingTop: scaleFromFigma(screenWidth, ONBOARDING_SCREEN_LAYOUT.contentPaddingTop),
+    };
+  }, []);
+
   const goWelcome = async () => {
     await markOnboardingSeen();
     navigation.navigate('Welcome' as never);
@@ -38,77 +59,66 @@ const OnboardingScreen1 = () => {
   const goNext = () => navigation.navigate('Onboarding2' as never);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* Single continuous background (no panel seam) */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-        <Svg width={screenWidth} height={CUT_Y}>
-          <Defs>
-            {/* overall navy lift, brighter near top, fading toward the cut */}
-            <SvgLinearGradient id="screen1BaseNavy" x1="0%" y1="0%" x2="0%" y2="100%">
-              <Stop offset="0%" stopColor="#123a5c" stopOpacity="1" />
-              <Stop offset="50%" stopColor="#0d2840" stopOpacity="1" />
-              <Stop offset="100%" stopColor={ONBOARDING_COLORS.background} stopOpacity="1" />
-            </SvgLinearGradient>
-            {/* central blue glow behind the illustration */}
-            <RadialGradient id="screen1BlueGlow" cx="50%" cy="30%" rx="80%" ry="56%">
-              <Stop offset="0%" stopColor="#4a9bd4" stopOpacity="0.5" />
-              <Stop offset="42%" stopColor="#236496" stopOpacity="0.28" />
-              <Stop offset="100%" stopColor="#0d2840" stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Rect x={0} y={0} width={screenWidth} height={CUT_Y} fill="url(#screen1BaseNavy)" />
-          <Rect x={0} y={0} width={screenWidth} height={CUT_Y} fill="url(#screen1BlueGlow)" />
-        </Svg>
+      <OnboardingBackground />
 
-        <OnboardingStars width={screenWidth} height={CUT_Y} />
-      </View>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <View style={[styles.heroStack, { height: layout.heroHeight }]}>
+          <Image source={HERO_IMAGE} style={styles.heroImage} resizeMode="cover" fadeDuration={0} />
 
-      {/* Top half: illustration + skip */}
-      <View style={[styles.topSection, { height: CUT_Y, paddingTop: insets.top + 6 }]}>
-        <View style={styles.progressRow}>
-          <View style={[styles.progressBar, styles.progressActive]} />
-          <View style={styles.progressBar} />
-          <View style={styles.progressBar} />
+          <View style={[styles.progressRow, { top: ONBOARDING_SCREEN_LAYOUT.progressTop }]}>
+            <View style={[styles.progressBar, styles.progressActive, { width: layout.progressBarWidth }]} />
+            <View style={[styles.progressBar, { width: layout.progressBarWidth }]} />
+            <View style={[styles.progressBar, { width: layout.progressBarWidth }]} />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.skipButton, { bottom: layout.skipBottom }]}
+            onPress={goWelcome}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel="Skip onboarding"
+          >
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.heroWrap}>
-          <Image
-            source={require('../../assets/onboarding/main-illustration-1.png')}
-            style={styles.heroImage}
-            resizeMode="contain"
-          />
+        <View style={styles.lowerPanel}>
+          <View style={styles.cutHeader}>
+            <View style={styles.cutLine} />
+            <OnboardingCutGlow />
+          </View>
+
+          <View
+            style={[
+              styles.copyBlock,
+              {
+                paddingTop: layout.contentPaddingTop,
+                paddingBottom: ONBOARDING_SCREEN_LAYOUT.buttonReservedHeight,
+              },
+            ]}
+          >
+            <Text style={[styles.title, { fontSize: layout.titleSize, lineHeight: layout.titleLineHeight }]}>
+              Send and Receive Money{'\n'}
+              Across <Text style={styles.titleAccent}>Africa</Text>
+            </Text>
+            <Text
+              style={[
+                styles.subtitle,
+                { fontSize: layout.subtitleSize, lineHeight: layout.subtitleLineHeight },
+              ]}
+            >
+              You can send money across Africa via different channels
+            </Text>
+          </View>
+
+          <View style={[styles.buttonBlock, { bottom: insets.bottom + ONBOARDING_SCREEN_LAYOUT.buttonBottom,backgroundColor:'transparent' }]}>
+            <OnboardingNextBarNative variant="dual" onNext={goNext} onHome={goWelcome} />
+          </View>
         </View>
-
-        <TouchableOpacity
-          style={styles.skipButton}
-          onPress={goWelcome}
-          activeOpacity={0.8}
-          accessibilityRole="button"
-          accessibilityLabel="Skip onboarding"
-        >
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* The glowing cut */}
-      <OnboardingCutGlow />
-
-      {/* Bottom half: copy + actions */}
-      <View style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 20) }]}>
-        <View style={styles.copyBlock}>
-          <Text style={styles.title}>
-            Send and Receive Money{'\n'}
-            Across <Text style={styles.titleAccent}>Africa</Text>
-          </Text>
-          <Text style={styles.subtitle}>
-            You can send money across Africa via different channels
-          </Text>
-        </View>
-
-        <OnboardingNextBarNative variant="dual" onNext={goNext} onHome={goWelcome} />
-      </View>
+      </SafeAreaView>
     </View>
   );
 };
@@ -116,81 +126,72 @@ const OnboardingScreen1 = () => {
 export default OnboardingScreen1;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: ONBOARDING_COLORS.background,
-  },
-  topSection: {
-    width: '100%',
-  },
+  root: { flex: 1, backgroundColor: ONBOARDING_COLORS.background },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
+  heroStack: { width: screenWidth, overflow: 'hidden' },
+  heroImage: { width: screenWidth, height: '100%' },
   progressRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 20,
-    marginBottom: 2,
+    gap: ONBOARDING_SCREEN_LAYOUT.progressGap,
+    paddingHorizontal: ONBOARDING_SCREEN_LAYOUT.horizontalInset,
+    zIndex: 2,
   },
   progressBar: {
-    flex: 1,
-    height: 6,
+    height: ONBOARDING_SCREEN_LAYOUT.progressBarHeight,
     borderRadius: 100,
     backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
-  progressActive: {
-    backgroundColor: ONBOARDING_COLORS.primary,
-  },
-  heroWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroImage: {
-    width: screenWidth * 0.92,
-    height: '100%',
-  },
+  progressActive: { backgroundColor: ONBOARDING_COLORS.primary },
   skipButton: {
+    position: 'absolute',
     alignSelf: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 34,
-    paddingVertical: 9,
+    paddingHorizontal: ONBOARDING_SCREEN_LAYOUT.skipPaddingH,
+    paddingVertical: ONBOARDING_SCREEN_LAYOUT.skipPaddingV,
     borderRadius: 100,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: ONBOARDING_COLORS.border,
+    backgroundColor: 'rgba(2, 12, 25, 0.45)',
+    zIndex: 3,
   },
   skipText: {
+    fontFamily: 'SFProText_Regular',
     fontSize: 13,
     fontWeight: '400',
     color: ONBOARDING_COLORS.white,
+    includeFontPadding: false,
   },
-  bottomSection: {
+  lowerPanel: {
     flex: 1,
-    marginTop: -GLOW_HEIGHT + 2,
-    paddingTop: GLOW_HEIGHT * 0.5,
-    paddingHorizontal: 16,
-    justifyContent: 'space-between',
+    backgroundColor: ONBOARDING_COLORS.background,
+    paddingHorizontal: ONBOARDING_SCREEN_LAYOUT.contentPaddingHorizontal,
+    overflow: 'hidden',
   },
-  copyBlock: {
-    alignItems: 'center',
-    paddingTop: 8,
+  cutHeader: {
+    backgroundColor: ONBOARDING_COLORS.background,
+    marginHorizontal: -ONBOARDING_SCREEN_LAYOUT.contentPaddingHorizontal,
   },
+  cutLine: { height: 1.5, backgroundColor: ONBOARDING_COLORS.primary, width: '100%' },
+  copyBlock: { alignItems: 'center' },
   title: {
-    fontFamily: 'SFPRODISPLAYBOLD',
-    fontSize: 27,
+    fontFamily: 'SFProText_Bold',
     color: ONBOARDING_COLORS.white,
-    lineHeight: 34,
     textAlign: 'center',
     letterSpacing: -0.3,
-    marginBottom: 10,
+    marginBottom: ONBOARDING_SCREEN_LAYOUT.contentGap,
   },
-  titleAccent: {
-    fontFamily: 'SFPRODISPLAYBOLD',
-    color: ONBOARDING_COLORS.primary,
-  },
+  titleAccent: { fontFamily: 'SFProText_Bold', color: ONBOARDING_COLORS.primary },
   subtitle: {
-    fontFamily: 'SFPRODISPLAYREGULAR',
-    fontSize: 13,
+    fontFamily: 'SFProText_Regular',
     color: ONBOARDING_COLORS.muted,
-    lineHeight: 20,
     textAlign: 'center',
-    paddingHorizontal: 6,
+    paddingHorizontal: 12,
+  },
+  buttonBlock: {
+    position: 'absolute',
+    left: ONBOARDING_SCREEN_LAYOUT.contentPaddingHorizontal,
+    right: ONBOARDING_SCREEN_LAYOUT.contentPaddingHorizontal,
   },
 });

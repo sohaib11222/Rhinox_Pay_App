@@ -19,6 +19,14 @@ export function markSplashReady(key: ReadyKey) {
   }
 }
 
+/** Force-hide splash if a gate never fires (e.g. slow storage). */
+export function ensureSplashHidden(maxWaitMs = 8000) {
+  setTimeout(() => {
+    if (!readyState.fonts) return;
+    hideSplash?.();
+  }, maxWaitMs);
+}
+
 export function resetSplashReady() {
   readyState.auth = false;
   readyState.onboarding = false;

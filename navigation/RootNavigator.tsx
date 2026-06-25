@@ -8,6 +8,7 @@ import { CustomAlertProvider } from "../components";
 import AppLoadingScreen from "../components/AppLoadingScreen";
 import { useAuth } from "../hooks/useAuth";
 import { markSplashReady } from "../utils/splashReady";
+import { FORCE_ONBOARDING_ON_LAUNCH } from "../constants/onboarding";
 
 const RootStack = createNativeStackNavigator();
 
@@ -19,12 +20,16 @@ export default function RootNavigator() {
   useEffect(() => {
     if (!isLoading) {
       markSplashReady("auth");
+      // Authenticated users skip OnboardingNavigator — mark onboarding ready here.
+      if (isAuthenticated && !FORCE_ONBOARDING_ON_LAUNCH) {
+        markSplashReady("onboarding");
+      }
     }
-  }, [isLoading]);
+  }, [isLoading, isAuthenticated]);
 
   // Switch stacks when auth state changes (login/logout). Skip first paint — initialRouteName handles it.
   useEffect(() => {
-    if (isLoading || !navigationRef.current) {
+    if (FORCE_ONBOARDING_ON_LAUNCH || isLoading || !navigationRef.current) {
       return;
     }
 
@@ -58,7 +63,7 @@ export default function RootNavigator() {
       <NavigationContainer ref={navigationRef}>
         <RootStack.Navigator
           screenOptions={{ headerShown: false }}
-          initialRouteName={isAuthenticated ? "Main" : "Onboarding"}
+          initialRouteName={FORCE_ONBOARDING_ON_LAUNCH || !isAuthenticated ? "Onboarding" : "Main"}
         >
           <RootStack.Screen name="Onboarding" component={OnboardingNavigator} />
           <RootStack.Screen name="Auth" component={AuthNavigator} />

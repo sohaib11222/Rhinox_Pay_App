@@ -480,8 +480,14 @@ const BillPaymentMainScreen = () => {
                     )}
                   </View>
                 </View>
-                <ThemedText style={styles.categoryTitle}>{category.title}</ThemedText>
-                <ThemedText style={styles.categoryDescription}>{category.description}</ThemedText>
+                <View style={styles.categoryTextBlock}>
+                  <ThemedText style={styles.categoryTitle} numberOfLines={2}>
+                    {category.title}
+                  </ThemedText>
+                  <ThemedText style={styles.categoryDescription} numberOfLines={3}>
+                    {category.description}
+                  </ThemedText>
+                </View>
               </LinearGradient>
             </TouchableOpacity>
           ))}
@@ -689,7 +695,8 @@ const styles = StyleSheet.create({
     borderRadius: 15 * SCALE,
     padding: 12 * SCALE,
     width: (SCREEN_WIDTH - SCREEN_WIDTH * 0.047 * 2 - 10 * SCALE) / 2,
-    height: 130 * SCALE,
+    minHeight: 148 * SCALE,
+    overflow: 'hidden',
     justifyContent: 'flex-start',
   },
   categoryIconContainer: {
@@ -712,14 +719,17 @@ const styles = StyleSheet.create({
     fontSize: 13 * SCALE,
     fontWeight: '400',
     color: '#FFFFFF',
-    marginBottom: 6 * SCALE,
+    marginBottom: 4 * SCALE,
     fontFamily: 'Aeonik_Pro_TRIAL',
   },
+  categoryTextBlock: {
+    flex: 1,
+  },
   categoryDescription: {
-    fontSize: 14,
+    fontSize: 11 * SCALE,
     fontWeight: '300',
     color: 'rgba(255, 255, 255, 0.5)',
-    lineHeight: 20,
+    lineHeight: 15 * SCALE,
     fontFamily: 'Aeonik_Pro_TRIAL',
   },
   recentTransactionsCard: {

@@ -7,7 +7,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import RootNavigator from "./navigation/RootNavigator";
 import { AuthProvider } from "./hooks/useAuth";
 import { checkAndApplyOtaUpdate } from "./utils/otaUpdates";
-import { markSplashReady, registerSplashHide } from "./utils/splashReady";
+import { markSplashReady, registerSplashHide, ensureSplashHidden } from "./utils/splashReady";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +32,10 @@ export default function App() {
     SFPRODISPLAYSEMIBOLDITALIC: require("./assets/fonts/SFPRODISPLAYSEMIBOLDITALIC.OTF"),
     SFPRODISPLAYTHINITALIC: require("./assets/fonts/SFPRODISPLAYTHINITALIC.OTF"),
     SFPRODISPLAYULTRALIGHTITALIC: require("./assets/fonts/SFPRODISPLAYULTRALIGHTITALIC.OTF"),
+    SFProText_Regular: require("./assets/SF-Pro-Text-Font-Family/SF-Pro-Text-Regular.otf"),
+    SFProText_Medium: require("./assets/SF-Pro-Text-Font-Family/SF-Pro-Text-Medium.otf"),
+    SFProText_Semibold: require("./assets/SF-Pro-Text-Font-Family/SF-Pro-Text-Semibold.otf"),
+    SFProText_Bold: require("./assets/SF-Pro-Text-Font-Family/SF-Pro-Text-Bold.otf"),
     "Agbalumo-Regular": require("./assets/fonts/Agbalumo-Regular.ttf"),
   });
 
@@ -39,6 +43,7 @@ export default function App() {
     registerSplashHide(() => {
       SplashScreen.hideAsync().catch(() => {});
     });
+    ensureSplashHidden();
   }, []);
 
   useEffect(() => {

@@ -7,15 +7,22 @@ import OnboardingScreen3 from "../screens/OnboardingScreens/OnboardingScreen3";
 import WelcomeScreen from "../screens/OnboardingScreens/WelcomeScreen";
 import AuthNavigator from "./AuthNavigator";
 import AppLoadingScreen from "../components/AppLoadingScreen";
-import { HAS_SEEN_ONBOARDING_KEY, HAS_SEEN_WELCOME_KEY } from "../constants/onboarding";
+import { HAS_SEEN_ONBOARDING_KEY, HAS_SEEN_WELCOME_KEY, FORCE_ONBOARDING_ON_LAUNCH } from "../constants/onboarding";
 import { markSplashReady } from "../utils/splashReady";
 
 const Stack = createNativeStackNavigator();
 
 export default function OnboardingNavigator() {
-  const [initialRoute, setInitialRoute] = useState<string | null>(null);
+  const [initialRoute, setInitialRoute] = useState<string | null>(
+    FORCE_ONBOARDING_ON_LAUNCH ? "Onboarding1" : null
+  );
 
   useEffect(() => {
+    if (FORCE_ONBOARDING_ON_LAUNCH) {
+      markSplashReady("onboarding");
+      return;
+    }
+
     Promise.all([
       AsyncStorage.getItem(HAS_SEEN_WELCOME_KEY),
       AsyncStorage.getItem(HAS_SEEN_ONBOARDING_KEY),

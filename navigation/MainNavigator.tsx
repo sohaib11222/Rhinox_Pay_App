@@ -243,7 +243,7 @@ export default function MainNavigator() {
           tabBarLabelStyle: styles.tabBarLabel,
           tabBarLabel:
             route.name === 'BillPayment'
-              ? 'Bill Pay'
+              ? 'Bill'
               : route.name === 'Transactions'
                 ? 'Activity'
                 : route.name,
@@ -342,7 +342,7 @@ export default function MainNavigator() {
       <Tab.Screen
         name="BillPayment"
         component={BillPaymentMainScreen}
-        options={{ tabBarLabel: 'Bill Payment', tabBarAccessibilityLabel: 'Bill Payment' }}
+        options={{ tabBarLabel: 'Bill', tabBarAccessibilityLabel: 'Bill Payment' }}
       />
       <Tab.Screen 
         name="Wallet" 
@@ -430,8 +430,8 @@ const styles = StyleSheet.create({
   },
   tabBarLabel: {
     fontSize: 10,
-    marginTop: -2,
-    marginBottom: 4,
+    marginTop: 0,
+    marginBottom: 2,
   },
   tabIconContainer: {
     width: TAB_ACTIVE_CIRCLE_SIZE,
